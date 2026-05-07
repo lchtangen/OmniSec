@@ -1,0 +1,17 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-ids — Intrusion detection system
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-ids - Intrusion Detection System
+Usage: nh-ids {start|stop|status|alerts|help}
+EOF
+}
+case "${1:-status}" in
+    start) echo "Starting IDS..."; iptables -A INPUT -j LOG --log-prefix "IDS: " 2>/dev/null || echo "iptables not available" ;;
+    stop) iptables -D INPUT -j LOG --log-prefix "IDS: " 2>/dev/null || true ;;
+    status) echo "IDS status not implemented" ;;
+    alerts) dmesg | grep "IDS: " | tail -20 ;;
+    help|*) show_usage ;;
+esac

@@ -1,0 +1,126 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-kismet — Kismet server manager + channel hopping
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+KR="$(kali_root)"
+KISMET_LOG="$NHSYSTEM/logs/kismet.log"
+KISMET_PIDFILE="/data/local/tmp/nh-kismet.pid"
+KISMET_CONF="$NHSYSTEM/etc/kismet.conf"
+CHANNEL_HOP_CONF="$NHSYSTEM/etc/kismet-channel-hop.conf"
+mkdir -p "$NHSYSTEM/logs" "$NHSYSTEM/etc"
+
+start_kismet() {
+    [ -d "$KR" ] || { echo "Kali rootfs not found"; return 1; }
+    mount_root "$KR" 2>/dev/null || true
+    if [ -f "$KISMET_PIDFILE" ] && kill -0 "$(cat "$KISMET_PIDFILE")" 2>/dev/null; then
+        echo "Kismet already running (pid $(cat "$KISMET_PIDFILE"))"
+        return 0
+    fi
+
+    # Generate config if missing
+    if [ ! -f "$KISMET_CONF" ]; then
+        chroot_exec "$KR" /bin/sh -c '
+            kismet --no-plugins --no-root --write-config /tmp/kismet.conf 2>/dev/null || true
+        ' 2>/dev/null || true
+    fi
+
+    # Set channel hopping
+    CHANNEL_HOP="${1:-}"
+    if [ -n "$CHANNEL_HOP" ]; then
+        echo "$CHANNEL_HOP" > "$CHANNEL_HOP_CONF"
+        echo "channel hop: $CHANNEL_HOP"
+    fi
+
+    echo "starting Kismet..."
+    chroot_exec "$KR" /usr/bin/kismet \
+        --no-plugins \
+        --daemonize \
+        --logdir "$NHSYSTEM/logs/kismet" \
+        --conf "$KISMET_CONF" 2>/dev/null || \
+    chroot_exec "$KR" /usr/bin/kismet \
+        --daemonize 2>/dev/null || true
+
+    sleep 3
+    KISMET_PID=$(chroot_exec "$KR" /bin/sh -c 'pidof kismet 2>/dev/null || pidof kismet_server 2>/dev/null' 2>/dev/null)
+    if [ -n "$KISMET_PID" ]; then
+        echo "$KISMET_PID" > "$KISMET_PIDFILE"
+        echo "Kismet started (pid $KISMET_PID)"
+        echo "$(date) started Kismet pid $KISMET_PID" >> "$KISMET_LOG"
+        # Forward web UI port
+        ss -tlnp 2>/dev/null | grep -q ':2501' || \
+            echo "  Web UI: http://localhost:2501 (forward with: adb forward tcp:2501 tcp:2501)"
+    fi
+}
+
+stop_kismet() {
+    if [ -f "$KISMET_PIDFILE" ]; then
+        kill "$(cat "$KISMET_PIDFILE")" 2>/dev/null || true
+        rm -f "$KISMET_PIDFILE"
+    fi
+    if [ -d "$KR" ]; then
+        chroot_exec "$KR" /bin/sh -c 'killall kismet 2>/dev/null; killall kismet_server 2>/dev/null' || true
+    fi
+    echo "Kismet stopped"
+    echo "$(date) stopped Kismet" >> "$KISMET_LOG"
+}
+
+channel_hop() {
+    iface="${1:-}"
+    interval="${2:-1}"
+    channels="${3:-1,6,11,36,40,44,48,149,153,157,161}"
+
+    if [ -z "$iface" ]; then
+        # Auto-detect external or internal
+        iface=$(ip link show 2>/dev/null | grep -oE 'wlx[0-9a-f]+' | head -1)
+        [ -z "$iface" ] && iface=$(ip link show 2>/dev/null | grep -o 'wlan[0-9]*' | head -1)
+    fi
+    [ -z "$iface" ] && { echo "no wireless interface found"; exit 1; }
+
+    echo "channel hopping on $iface (interval: ${interval}s, channels: $channels)"
+    echo "  PID: $$"
+    echo "  To stop: kill $$"
+    echo ""
+
+    OLD_IFS="$IFS"; IFS=","; set -- $channels; IFS="$OLD_IFS"
+    while true; do
+        for ch; do
+            iw dev "$iface" set channel "$ch" 2>/dev/null || true
+            sleep "$interval"
+        done
+    done
+}
+
+case "${1:-status}" in
+    start)
+        start_kismet "${2:-}"
+        ;;
+    stop)
+        stop_kismet
+        ;;
+    restart)
+        stop_kismet
+        sleep 2
+        start_kismet
+        ;;
+    status)
+        if [ -f "$KISMET_PIDFILE" ] && kill -0 "$(cat "$KISMET_PIDFILE")" 2>/dev/null; then
+            echo "Kismet: running (pid $(cat "$KISMET_PIDFILE"))"
+            ss -tlnp 2>/dev/null | grep -q ':2501' && echo "  Web UI: http://localhost:2501" || echo "  Web UI: not listening"
+        else
+            echo "Kismet: not running"
+        fi
+        ;;
+    log)
+        cat "$KISMET_LOG" 2>/dev/null || echo "no log"
+        ;;
+    hop|channel-hop)
+        shift
+        channel_hop "$@"
+        ;;
+    *)
+        echo "usage: nh-kismet {start|stop|restart|status|log|hop <iface> [interval] [channels]}" >&2
+        exit 2
+        ;;
+esac

@@ -1,0 +1,479 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P2
+# nh-sensor - Unified sensor hub for Android devices
+# Performance: efficient polling, cached sensor lists, minimal battery impact
+set -u
+
+NHSYSTEM=${NHSYSTEM:-/data/local/nhsystem}
+SENSOR_DIR="$NHSYSTEM/sensors"
+DATA_DIR="$NHSYSTEM/logs/sensors"
+CONFIG_DIR="$NHSYSTEM/etc/sensors"
+
+# Polling intervals (seconds)
+DEFAULT_INTERVAL=1
+FAST_INTERVAL=0.5
+SLOW_INTERVAL=5
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# Ensure directories
+mkdir -p "$SENSOR_DIR" "$DATA_DIR" "$CONFIG_DIR"
+
+# ── Utility Functions ───────────────────────────────────────
+
+info()  { printf "${BLUE}[INFO]${NC} %s\n" "$*"; }
+ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+err()   { printf "${RED}[ERR]${NC} %s\n" "$*" >&2; }
+debug() { [ "${DEBUG:-0}" = "1" ] && printf "${CYAN}[DBG]${NC} %s\n" "$*" || true; }
+
+# ── Sensor Discovery ──────────────────────────────────────
+
+discover_sensors() {
+    local cache_file="$SENSOR_DIR/.sensor_cache"
+    local cache_age=60  # seconds
+    
+    # Check cache
+    if [ -f "$cache_file" ]; then
+        local file_time
+        file_time=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+        local now
+        now=$(date +%s)
+        local age=$((now - file_time))
+        if [ "$age" -lt "$cache_age" ]; then
+            debug "Using cached sensor list (age: ${age}s)"
+            cat "$cache_file"
+            return 0
+        fi
+    fi
+    
+    info "Discovering sensors..."
+    
+    # Get sensors from dumpsys
+    local sensors=""
+    if command -v dumpsys >/dev/null 2>&1; then
+        sensors=$(dumpsys sensors 2>/dev/null | grep -E "^[[:space:]]*[0-9]+:[[:space:]]" | \
+            sed 's/^[[:space:]]*//' | head -50)
+    fi
+    
+    # Also check common sensor paths
+    for path in /sys/class/thermal/*/temp /sys/class/backlight/*/brightness \
+             /sys/class/power_supply/*/capacity; do
+        [ -e "$path" ] && sensors="$sensors\n$(basename $(dirname $path)): $path"
+    done
+    
+    echo "$sensors" > "$cache_file"
+    echo "$sensors"
+}
+
+list_sensors() {
+    echo "── Available Sensors ──"
+    echo ""
+    
+    # Try to get sensor list from Android
+    if command -v dumpsys >/dev/null 2>&1; then
+        dumpsys sensors 2>/dev/null | grep -A1 "Sensor name" | head -40 | while IFS= read -r line; do
+            if echo "$line" | grep -q "Sensor name"; then
+                local name
+                name=$(echo "$line" | sed 's/.*Sensor name: //')
+                read -r next_line
+                local type
+                type=$(echo "$next_line" | sed 's/.*Sensor type: //')
+                printf "  %-30s %s\n" "$name" "(type: $type)"
+            fi
+        done
+    else
+        info "dumpsys not available, limited sensor info"
+        # List known sensor paths
+        echo "  Check /sys/class/ for sensor interfaces"
+    fi
+    
+    echo ""
+    echo "── System Sensors (sysfs) ──"
+    for sensor in /sys/class/thermal/thermal_zone*/temp \
+                    /sys/class/backlight/*/brightness \
+                    /sys/class/power_supply/*/capacity; do
+        [ -e "$sensor" ] && echo "  $sensor"
+    done
+}
+
+# ── Sensor Reading ────────────────────────────────────────
+
+read_sensor() {
+    local sensor_name="$1"
+    local value=""
+    
+    case "$sensor_name" in
+        temperature|temp|thermal)
+            # Read from thermal zones
+            for zone in /sys/class/thermal/thermal_zone*; do
+                [ -d "$zone" ] || continue
+                local type
+                local temp
+                type=$(cat "$zone/type" 2>/dev/null || echo "unknown")
+                temp=$(cat "$zone/temp" 2>/dev/null || continue)
+                # Convert from millidegrees if needed
+                if [ "$temp" -gt 1000 ]; then
+                    temp=$((temp / 1000))
+                fi
+                echo "  $type: ${temp}°C"
+            done
+            ;;
+        light|illuminance)
+            # Try to read light sensor
+            local light_path
+            light_path=$(find /sys/class/backlight -name "actual_brightness" 2>/dev/null | head -1)
+            if [ -n "$light_path" ]; then
+                local brightness
+                brightness=$(cat "$light_path" 2>/dev/null || echo "N/A")
+                echo "  Brightness: $brightness"
+            else
+                echo "  Light sensor: N/A"
+            fi
+            ;;
+        battery)
+            # Battery level
+            for ps in /sys/class/power_supply/*; do
+                [ -f "$ps/capacity" ] && cat "$ps/capacity" 2>/dev/null | xargs -I{} echo "  Battery: {}%"
+            done
+            ;;
+        accelerometer|accel)
+            # Accelerometer - usually needs Android API
+            if dumpsys sensors 2>/dev/null | grep -qi "accelerometer"; then
+                info "Accelerometer detected (requires app to read)"
+                echo "  Use Android app or Termux:sensors package"
+            else
+                echo "  Accelerometer: N/A"
+            fi
+            ;;
+        gyroscope|gyro)
+            if dumpsys sensors 2>/dev/null | grep -qi "gyroscope"; then
+                info "Gyroscope detected (requires app to read)"
+            else
+                echo "  Gyroscope: N/A"
+            fi
+            ;;
+        proximity)
+            if dumpsys sensors 2>/dev/null | grep -qi "proximity"; then
+                info "Proximity sensor detected"
+            else
+                echo "  Proximity: N/A"
+            fi
+            ;;
+        *)
+            # Try to find sensor by name
+            local found=0
+            for path in /sys/class/*/"$sensor_name"*; do
+                [ -e "$path" ] && { cat "$path" 2>/dev/null; found=1; }
+            done
+            [ "$found" -eq 0 ] && echo "  Sensor not found: $sensor_name"
+            ;;
+    esac
+}
+
+read_all_sensors() {
+    echo "── Sensor Readings ──"
+    echo "  Time: $(date +'%H:%M:%S')"
+    echo ""
+    
+    # Temperature
+    echo "  Temperature:"
+    read_sensor temperature | sed 's/^/    /'
+    
+    # Battery
+    echo "  Battery:"
+    read_sensor battery | sed 's/^/    /'
+    
+    # Light
+    echo "  Light:"
+    read_sensor light | sed 's/^/    /'
+    
+    # Try Android sensor service
+    if command -v dumpsys >/dev/null 2>&1; then
+        echo "  System Sensors (from dumpsys):"
+        dumpsys sensors 2>/dev/null | grep -A2 "Last sensor event" | head -20 | sed 's/^/    /'
+    fi
+}
+
+# ── Monitoring ───────────────────────────────────────────
+
+cmd_watch() {
+    local interval="${1:-$DEFAULT_INTERVAL}"
+    local duration="${2:-0}"  # 0 = forever
+    local count=0
+    
+    info "Monitoring sensors every ${interval}s (Ctrl+C to stop)..."
+    [ "$duration" -gt 0 ] && info "Will run for ${duration}s"
+    echo ""
+    
+    local start_time
+    start_time=$(date +%s)
+    
+    while true; do
+        clear
+        echo "════════════════════════════════════════════════════════════"
+        echo "  NH-SENSOR MONITOR (interval: ${interval}s, count: $count)"
+        echo "════════════════════════════════════════════════════════════"
+        echo ""
+        
+        read_all_sensors
+        
+        count=$((count + 1))
+        
+        # Check duration
+        if [ "$duration" -gt 0 ]; then
+            local now
+            now=$(date +%s)
+            local elapsed=$((now - start_time))
+            if [ "$elapsed" -ge "$duration" ]; then
+                info "Duration reached: ${duration}s"
+                break
+            fi
+        fi
+        
+        sleep "$interval"
+    done
+}
+
+cmd_log() {
+    local duration="${1:-60}"
+    local interval="${2:-$DEFAULT_INTERVAL}"
+    local sensor="${3:-all}"
+    
+    info "Logging sensor '$sensor' for ${duration}s (every ${interval}s)..."
+    
+    local log_file="$DATA_DIR/sensor-log-$(date +%Y%m%d-%H%M%S).csv"
+    echo "time,sensor,value" > "$log_file"
+    
+    local start_time
+    local now
+    start_time=$(date +%s)
+    
+    while true; do
+        now=$(date +%s)
+        local elapsed=$((now - start_time))
+        [ "$elapsed" -ge "$duration" ] && break
+        
+        local timestamp
+        timestamp=$(date +%s)
+        local value
+        
+        case "$sensor" in
+            temperature|temp)
+                value=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo "N/A")
+                [ "$value" != "N/A" ] && [ "$value" -gt 1000 ] && value=$((value / 1000))
+                ;;
+            battery)
+                value=$(cat /sys/class/power_supply/*/capacity 2>/dev/null | head -1 || echo "N/A")
+                ;;
+            *)
+                value="N/A"
+                ;;
+        esac
+        
+        echo "$timestamp,$sensor,$value" >> "$log_file"
+        sleep "$interval"
+    done
+    
+    ok "Log saved: $log_file"
+    info "Lines: $(wc -l < "$log_file")"
+}
+
+# ── Statistics ─────────────────────────────────────────
+
+cmd_stats() {
+    echo "── Sensor Statistics ──"
+    echo ""
+    
+    # Temperature stats
+    echo "  Temperature zones:"
+    for zone in /sys/class/thermal/thermal_zone*; do
+        [ -d "$zone" ] || continue
+        local type
+        local temp
+        type=$(cat "$zone/type" 2>/dev/null || echo "unknown")
+        temp=$(cat "$zone/temp" 2>/dev/null || continue)
+        [ "$temp" -gt 1000 ] && temp=$((temp / 1000))
+        echo "    $type: ${temp}°C"
+    done
+    
+    echo ""
+    
+    # Battery stats
+    echo "  Battery:"
+    for ps in /sys/class/power_supply/*; do
+        [ -f "$ps/capacity" ] || continue
+        local name
+        local capacity
+        name=$(basename "$ps")
+        capacity=$(cat "$ps/capacity" 2>/dev/null || echo "N/A")
+        local status=""
+        [ -f "$ps/status" ] && status=" ($(cat "$ps/status"))"
+        echo "    $name: ${capacity}%$status"
+    done
+    
+    echo ""
+    
+    # Memory from dumpsys
+    if command -v dumpsys >/dev/null 2>&1; then
+        local sensor_count
+        sensor_count=$(dumpsys sensors 2>/dev/null | grep -c "Sensor name" || echo 0)
+        echo "  Total sensors (from dumpsys): $sensor_count"
+    fi
+}
+
+# ── Trigger/Alert System ────────────────────────────────
+
+cmd_monitor() {
+    local sensor="$1"
+    local threshold="$2"
+    local action="${3:-alert}"
+    
+    [ -z "$sensor" ] || [ -z "$threshold" ] && { 
+        err "Usage: nh-sensor monitor <sensor> <threshold> [action]"
+        return 1
+    }
+    
+    info "Monitoring $sensor for threshold > $threshold"
+    info "Action on trigger: $action"
+    echo "Press Ctrl+C to stop"
+    echo ""
+    
+    while true; do
+        local value=""
+        
+        case "$sensor" in
+            temperature|temp)
+                value=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)
+                [ "$value" -gt 1000 ] && value=$((value / 1000))
+                ;;
+            battery)
+                value=$(cat /sys/class/power_supply/*/capacity 2>/dev/null | head -1 || echo 0)
+                ;;
+        esac
+        
+        if [ "$value" -ge "$threshold" ]; then
+            warn "TRIGGER: $sensor = $value (threshold: $threshold)"
+            case "$action" in
+                alert)
+                    # Send Android notification
+                    am broadcast -a android.intent.action.SENSOR_ALERT \
+                        --es sensor "$sensor" --es value "$value" >/dev/null 2>&1 || true
+                    ;;
+                log)
+                    echo "[$(date)] TRIGGER: $sensor=$value" >> "$DATA_DIR/triggers.log"
+                    ;;
+                *)
+                    warn "Unknown action: $action"
+                    ;;
+            esac
+        fi
+        
+        sleep "$DEFAULT_INTERVAL"
+    done
+}
+
+# ── Usage ──────────────────────────────────────────────
+
+usage() {
+    cat <<EOF
+nh-sensor - Unified Sensor Hub for Android
+
+Usage: nh-sensor <command> [options]
+
+Discovery:
+  list                 List all available sensors
+  discover             Discover and cache sensor list
+
+Reading:
+  read <sensor>        Read specific sensor (temperature, battery, light, etc.)
+  all                   Read all sensors
+  status                Show sensor status (alias for 'all')
+
+Monitoring:
+  watch [interval]     Monitor sensors in real-time
+  log [duration] [int] Log sensor data to CSV
+  monitor <s> <thr>   Monitor sensor and trigger alert at threshold
+
+Statistics:
+  stats                Show sensor statistics
+  history              Show logged data history
+
+Examples:
+  nh-sensor list
+  nh-sensor read temperature
+  nh-sensor watch 2
+  nh-sensor log 300 5 temperature
+  nh-sensor monitor battery 20 alert
+
+Common Sensors:
+  temperature, battery, light, proximity, accelerometer, gyroscope
+
+Files:
+  Data:   $DATA_DIR/
+  Config: $CONFIG_DIR/
+  Cache:  $SENSOR_DIR/
+
+Notes:
+  - Some sensors require Android API (use Termux:sensors package)
+  - System sensors available via /sys/class/
+  - dumpsys sensors provides comprehensive info (if available)
+EOF
+    exit 0
+}
+
+# ── Main ────────────────────────────────────────────────
+
+[ $# -ge 1 ] || usage
+
+case "$1" in
+    list)
+        list_sensors
+        ;;
+    discover)
+        discover_sensors >/dev/null && ok "Sensors discovered and cached"
+        list_sensors
+        ;;
+    read)
+        shift
+        [ $# -ge 1 ] || { err "Usage: nh-sensor read <sensor>"; exit 1; }
+        read_sensor "$1"
+        ;;
+    all|status)
+        read_all_sensors
+        ;;
+    watch)
+        shift
+        cmd_watch "${1:-$DEFAULT_INTERVAL}" "${2:-0}"
+        ;;
+    log)
+        shift
+        cmd_log "${1:-60}" "${2:-$DEFAULT_INTERVAL}" "${3:-all}"
+        ;;
+    stats)
+        cmd_stats
+        ;;
+    monitor)
+        shift
+        cmd_monitor "$@"
+        ;;
+    history)
+        echo "── Sensor Log History ──"
+        ls -lt "$DATA_DIR"/sensor-log-*.csv 2>/dev/null | head -10 || info "No logs found"
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        err "Unknown command: $1"
+        usage
+        ;;
+esac

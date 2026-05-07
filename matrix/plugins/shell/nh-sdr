@@ -1,0 +1,85 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-sdr - SDR device detection and status
+set -u
+
+NHSYSTEM="${NHSYSTEM:-/data/local/nhsystem}"
+LOG="$NHSYSTEM/logs/sdr.log"
+mkdir -p "$NHSYSTEM/logs"
+
+detect_usb_sdr() {
+    echo "── USB SDR Devices ──"
+    found=false
+    for dev in /sys/bus/usb/devices/*/uevent; do
+        [ -f "$dev" ] || continue
+        PRODUCT=$(grep PRODUCT "$dev" 2>/dev/null | cut -d= -f2 || echo "")
+        VENDOR=$(grep VENDOR "$dev" 2>/dev/null | cut -d= -f2 || echo "")
+        NAME=$(grep NAME "$dev" 2>/dev/null | cut -d= -f2 || grep DRIVER "$dev" 2>/dev/null | cut -d= -f2 || echo "unknown")
+
+        case "$PRODUCT" in
+            0bda:2838|0bda:2832|0bda:2835|0bda:2837)
+                echo "  RTL-SDR (Realtek $PRODUCT) — $NAME"
+                found=true ;;
+            1d50:6089|1d50:cc15|04b4:0088)
+                echo "  HackRF One ($PRODUCT) — $NAME"
+                found=true ;;
+            1d50:6108|1d50:6106|0403:6010)
+                echo "  LimeSDR ($PRODUCT) — $NAME"
+                found=true ;;
+            0bda:8812|0bda:8813)
+                echo "  RTL8812AU (Wi-Fi/SDR hybrid) — $PRODUCT"
+                found=true ;;
+            10c4:ea60)
+                echo "  CP2102 UART — possible SDR controller"
+                found=true ;;
+        esac
+    done
+    [ "$found" = false ] && echo "  No SDR devices detected"
+}
+
+detect_kernel_modules() {
+    echo ""
+    echo "── SDR Kernel Modules ──"
+    for mod in rtl-sdr rtl2832 rtl2838 r82xx dvb_usb_rtl28xxu hackrf lime-sdr; do
+        if lsmod 2>/dev/null | grep -qi "$mod"; then
+            echo "  $mod: LOADED"
+        fi
+    done
+    echo "  (use: modprobe <module> to load if available)"
+}
+
+check_userspace_tools() {
+    echo ""
+    echo "── SDR Userspace Tools ──"
+    for tool in rtl_test rtl_sdr rtl_power rtl_433 hackrf_transfer hackrf_info lime-fm; do
+        if command -v "$tool" >/dev/null 2>&1; then
+            echo "  $tool: available"
+        fi
+    done
+}
+
+case "${1:-status}" in
+    status|list)
+        detect_usb_sdr
+        check_userspace_tools
+        detect_kernel_modules
+        ;;
+    modules)
+        detect_kernel_modules
+        ;;
+    tools)
+        check_userspace_tools
+        ;;
+    test)
+        echo "── SDR Quick Test ──"
+        if command -v rtl_test >/dev/null 2>&1; then
+            rtl_test -t 2>&1 | head -10
+        else
+            echo "rtl_test not available (install rtl-sdr)"
+        fi
+        ;;
+    *)
+        echo "usage: nh-sdr {status|modules|tools|test}" >&2
+        exit 2
+        ;;
+esac

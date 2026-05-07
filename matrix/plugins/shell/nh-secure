@@ -1,0 +1,317 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-secure - Platform hardening and certificate management
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+NHWORK=$NHSYSTEM/workspaces/main
+NH_ETC=$NHSYSTEM/etc
+NH_LOGS=$NHSYSTEM/logs
+DATE=$(date +%Y%m%d-%H%M%S)
+
+ensure_dirs() {
+    mkdir -p "$NHWORK"/{certs,config,backup} "$NH_ETC" "$NH_LOGS"
+}
+
+check_root() {
+    [ "$(id -u 2>/dev/null)" = "0" ] || { echo "  Root required"; exit 1; }
+}
+
+scan_network() {
+    local subnet="${1:-$(ip route 2>/dev/null | grep default | awk '{print $3}' | cut -d. -f1-3).0/24}"
+    echo "── Network Scan: $subnet ──"
+    if command -v nmap >/dev/null 2>&1; then
+        nmap -sn "$subnet" 2>/dev/null | grep -E 'Nmap|Host' || \
+        echo "  No hosts found (try: nh-scan subnet)"
+    else
+        echo "  nmap not available, using ping sweep..."
+        local base=$(echo "$subnet" | cut -d/ -f1 | cut -d. -f1-3)
+        for i in 1 254; do
+            ping -c 1 -W 1 "$base.$i" 2>/dev/null | grep "bytes from" && echo "  Host: $base.$i" || true
+        done
+    fi
+}
+
+check_firewall() {
+    echo "── Firewall Status ──"
+    local ipchk=""
+    if command -v iptables >/dev/null 2>&1; then
+        ipchk=$(iptables -L 2>/dev/null | head -5)
+        [ -n "$ipchk" ] && echo "  iptables: active" || echo "  iptables: no rules"
+    else
+        echo "  iptables: not available"
+    fi
+
+    # Check system firewall
+    if [ -f /proc/sys/net/ipv4/ip_forward ]; then
+        local fwd=$(cat /proc/sys/net/ipv4/ip_forward)
+        echo "  IP forwarding: $([ "$fwd" = "1" ] && echo "ENABLED" || echo "disabled")"
+    fi
+
+    # Check listening ports
+    echo "  Listening ports:"
+    netstat -tln 2>/dev/null | grep LISTEN | awk '{print "    " $4}' | cut -d: -f2 | sort -n | uniq
+}
+
+harden_ssh() {
+    echo "── SSH Hardening ──"
+    local sshd_config=""
+
+    for f in "$NHSYSTEM"/roots/*/etc/ssh/sshd_config; do
+        [ -f "$f" ] || continue
+        sshd_config="$f"
+        echo "  Found: $f"
+        cp "$f" "$f.backup.$DATE"
+        # Apply hardening
+        sed -i 's/^#\?PermitRootLogin .*/PermitRootLogin prohibit-password/' "$f"
+        sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' "$f"
+        sed -i 's/^#\?PubkeyAuthentication .*/PubkeyAuthentication yes/' "$f"
+        sed -i 's/^#\?MaxAuthTries .*/MaxAuthTries 3/' "$f"
+        sed -i 's/^#\?ClientAliveInterval .*/ClientAliveInterval 300/' "$f"
+        sed -i 's/^#\?ClientAliveCountMax .*/ClientAliveCountMax 2/' "$f"
+        echo "  SSH hardened: $f"
+    done
+
+    [ -z "$sshd_config" ] && echo "  No SSH config found (install openssh in chroot)"
+}
+
+setup_certs() {
+    echo "── Certificate Trust Setup ──"
+    ensure_dirs
+
+    local cert_dir="$NHWORK/certs"
+    local system_ca_dir=""
+
+    # Find system CA directory
+    for d in /apex/com.android.conscrypt/cacerts /system/etc/security/cacerts; do
+        [ -d "$d" ] && system_ca_dir="$d" && break
+    done
+
+    if [ -n "$system_ca_dir" ]; then
+        echo "  System CA store: $system_ca_dir"
+        echo "  User CA store:  /data/misc/user/0/cacerts-added"
+
+        local user_certs=$(ls /data/misc/user/0/cacerts-added/ 2>/dev/null | wc -l)
+        local system_certs=$(ls "$system_ca_dir" 2>/dev/null | wc -l)
+        echo "  User certs:  $user_certs"
+        echo "  System certs: $system_certs"
+
+        echo ""
+        echo "  To promote user certs to system (MITM):"
+        echo "    1. nh-magisk fetch cert"
+        echo "    2. Install AlwaysTrustUserCerts in Magisk"
+        echo "    3. Install your CA cert in Settings -> Security"
+        echo "    4. Reboot"
+    fi
+
+    # Create helper cert directory
+    mkdir -p "$cert_dir"
+    echo "  Local cert storage: $cert_dir"
+    echo "  Place .pem/.crt files here for backup"
+}
+
+setup_vpn() {
+    echo "── VPN/WireGuard Setup ──"
+    ensure_dirs
+
+    # Check for WireGuard
+    if [ -d /sys/class/net/wg0 ] || command -v wg >/dev/null 2>&1; then
+        echo "  WireGuard detected"
+        wg show 2>/dev/null | head -5 || echo "  No WireGuard interfaces active"
+    else
+        echo "  WireGuard: not active"
+    fi
+
+    # Check for OpenVPN
+    if command -v openvpn >/dev/null 2>&1; then
+        echo "  OpenVPN: available"
+    else
+        echo "  OpenVPN: not installed (install via chroot)"
+    fi
+
+    # VPN config storage
+    mkdir -p "$NHWORK/config/vpn"
+    echo "  VPN configs: $NHWORK/config/vpn"
+}
+
+setup_backup() {
+    echo "── Secure Backup ──"
+    ensure_dirs
+    local backup_dir="$NHWORK/backup/$DATE"
+
+    mkdir -p "$backup_dir"
+
+    # Backup critical configs
+    echo "  Backing up configurations..."
+    [ -d "$NHSYSTEM/etc" ] && cp -a "$NHSYSTEM/etc" "$backup_dir/etc"
+    [ -d "$NHSYSTEM/modules" ] && cp -a "$NHSYSTEM/modules" "$backup_dir/modules"
+    [ -d "/data/adb/modules" ] && cp -a /data/adb/modules "$backup_dir/magisk-modules" 2>/dev/null || true
+    [ -f "/data/adb/post-fs-data.sh" ] && cp /data/adb/post-fs-data.sh "$backup_dir/" 2>/dev/null || true
+    [ -f "/data/adb/service.d" ] && cp -a /data/adb/service.d "$backup_dir/" 2>/dev/null || true
+
+    # Backup known SSH keys
+    for dir in /data/.ssh /root/.ssh /home/*/.ssh; do
+        [ -d "$dir" ] && cp -a "$dir" "$backup_dir/" 2>/dev/null || true
+    done
+
+    local size=$(du -sh "$backup_dir" 2>/dev/null | cut -f1)
+    local count=$(find "$backup_dir" -type f 2>/dev/null | wc -l)
+    echo "  Backup saved: $backup_dir"
+    echo "  Files: $count, Size: $size"
+}
+
+generate_keypair() {
+    echo "── SSH Key Generation ──"
+    local key_dir="$NHWORK/config/ssh-keys"
+    mkdir -p "$key_dir"
+
+    local key_type="${1:-ed25519}"
+    local key_file="$key_dir/id_$key_type"
+
+    if [ -f "$key_file" ]; then
+        echo "  Key already exists: $key_file"
+    else
+        if command -v ssh-keygen >/dev/null 2>&1; then
+            ssh-keygen -t "$key_type" -f "$key_file" -N "" -C "nethunter@android" 2>/dev/null
+            echo "  Generated: $key_file"
+            echo "  Public key: $key_file.pub"
+            echo ""
+            cat "$key_file.pub"
+        else
+            echo "  ssh-keygen not available"
+            # Generate simple key using openssl
+            if command -v openssl >/dev/null 2>&1; then
+                openssl genpkey -algorithm ED25519 -out "$key_file" 2>/dev/null
+                openssl pkey -in "$key_file" -pubout -out "$key_file.pub" 2>/dev/null
+                echo "  Generated (openssl): $key_file"
+            fi
+        fi
+    fi
+}
+
+firewall_setup() {
+    echo "── Firewall Rules ──"
+    if ! command -v iptables >/dev/null 2>&1; then
+        echo "  iptables not available (run in chroot)"
+        return 1
+    fi
+
+    # Save current rules
+    iptables-save 2>/dev/null > "$NHWORK/config/iptables-save.$DATE" 2>/dev/null || true
+    echo "  Saved current rules"
+
+    # Default secure rules
+    echo "  Applying secure defaults..."
+    iptables -P INPUT DROP 2>/dev/null && echo "  INPUT: DROP" || echo "  INPUT: default"
+    iptables -P FORWARD DROP 2>/dev/null && echo "  FORWARD: DROP" || echo "  FORWARD: default"
+    iptables -P OUTPUT ACCEPT 2>/dev/null
+
+    # Allow established/related
+    iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null
+
+    # Allow loopback
+    iptables -A INPUT -i lo -j ACCEPT 2>/dev/null
+
+    # Allow SSH (optional, port 2222 for Arch)
+    iptables -A INPUT -p tcp --dport 2222 -j ACCEPT 2>/dev/null
+
+    echo "  Rules applied (default: DROP incoming)"
+    echo "  Restore: iptables-restore < $NHWORK/config/iptables-save.$DATE"
+}
+
+audit_system() {
+    echo "══ Security Audit ── $DATE ══"
+    echo ""
+
+    # Check root status
+    echo "── Root Access ──"
+    local su_sources=""
+    [ -x /debug_ramdisk/su ] && su_sources="$su_sources magisk"
+    [ -f /data/adb/magisk/magisk64 ] && su_sources="$su_sources magisk64"
+    command -v su >/dev/null 2>&1 && su_sources="$su_sources path-su"
+    echo "  Available: $su_sources"
+
+    # Check SELinux
+    echo ""
+    echo "── SELinux ──"
+    if command -v getenforce >/dev/null 2>&1; then
+        local se=$(getenforce 2>/dev/null)
+        echo "  Status: $se"
+        [ "$se" != "Enforcing" ] && echo "  WARNING: SELinux not enforcing"
+    else
+        echo "  Status: $(cat /sys/fs/selinux/enforce 2>/dev/null || echo 'unknown')"
+    fi
+
+    # Check for common vulnerabilities
+    echo ""
+    echo "── Vulnerability Checks ──"
+    local issues=0
+
+    # Debug bridge
+    if [ -f /system/build.prop ]; then
+        local adb=$(getprop persist.adb.tcp.port 2>/dev/null || echo "")
+        [ -n "$adb" ] && echo "  WARNING: ADB over TCP enabled (port $adb)" && issues=$((issues + 1))
+    fi
+
+    # Check for su in PATH
+    local su_path=$(command -v su 2>/dev/null)
+    [ -n "$su_path" ] && echo "  INFO: su available at $su_path"
+
+    # Check Magisk hide/denylist
+    if [ -f /data/adb/magisk.db ]; then
+        echo "  INFO: Magisk database found"
+    fi
+
+    # Check for world-readable sensitive files
+    echo ""
+    echo "── Sensitive File Permissions ──"
+    for f in /data/adb/service.d /data/adb/post-fs-data.sh /data/adb/modules; do
+        [ -e "$f" ] && echo "  Found: $f"
+    done
+
+    echo ""
+    echo "── Audit Complete ──"
+    echo "  Log: $NH_LOGS/audit-$DATE.log"
+    [ -d "$NH_LOGS" ] && echo "Audit: $DATE" >> "$NH_LOGS/audit-$DATE.log"
+}
+
+usage() {
+    cat <<EOF
+nh-secure - Platform hardening and security tools
+
+Usage: nh-secure <command> [args]
+
+Commands:
+  audit           Run full security audit
+  scan [subnet]   Network discovery scan
+  firewall        Configure iptables firewall
+  ssh             Harden SSH configuration
+  certs           Certificate trust setup & info
+  vpn             VPN/WireGuard status and config
+  backup          Secure configuration backup
+  keygen [type]   Generate SSH key pair (ed25519|rsa)
+
+Examples:
+  nh-secure audit
+  nh-secure scan 192.168.1.0/24
+  nh-secure firewall
+  nh-secure ssh
+  nh-secure certs
+  nh-secure keygen ed25519
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    audit|diag) audit_system ;;
+    scan) shift; scan_network "${1:-}" ;;
+    firewall|iptables) firewall_setup ;;
+    ssh|ssh-hardening) harden_ssh ;;
+    certs|certificates) setup_certs ;;
+    vpn|wireguard) setup_vpn ;;
+    backup) setup_backup ;;
+    keygen|ssh-keygen) shift; generate_keypair "${1:-}" ;;
+    *) usage ;;
+esac

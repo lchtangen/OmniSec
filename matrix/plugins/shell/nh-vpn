@@ -1,0 +1,17 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-vpn — VPN management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-vpn - VPN Management
+Usage: nh-vpn {status|connect|disconnect|list|help}
+EOF
+}
+case "${1:-status}" in
+    status) ifconfig tun0 2>/dev/null || echo "No VPN connected" ;;
+    connect) openvpn "$2" 2>/dev/null & ;;
+    disconnect) pkill openvpn 2>/dev/null || true ;;
+    list) ls /data/local/nhsystem/config/vpn/*.ovpn 2>/dev/null || echo "No VPN configs" ;;
+    help|*) show_usage ;;
+esac

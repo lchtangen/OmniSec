@@ -1,0 +1,128 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-report — System report generator
+set -euo pipefail
+
+REPORT_DIR="/data/local/nhsystem/reports"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+show_usage() {
+    cat <<EOF
+nh-report - System Report Generator
+
+Usage: nh-report <command> [args]
+
+Commands:
+  gen [type]    Generate system report (full, hardware, network, security)
+  list          List generated reports
+  show <report> Show specific report
+  delete <report> Delete a report
+  email <r> <e> Email report (requires mail setup)
+  help          Show this message
+
+Report types: full, hardware, network, security
+EOF
+}
+
+init_report() {
+    mkdir -p "$REPORT_DIR"
+}
+
+generate_full_report() {
+    local report_file="$REPORT_DIR/report-full-$TIMESTAMP.txt"
+    
+    {
+        echo "══ NetHunter System Report ═════════════════"
+        echo "  Generated: $(date)"
+        echo "  Device: $(getprop ro.product.model 2>/dev/null || uname -a)"
+        echo "  Kernel: $(uname -r)"
+        echo ""
+        
+        echo "── Hardware ──"
+        echo "  CPU: $(cat /proc/cpuinfo | grep "model name" | head -1 | cut -d: -f2)"
+        echo "  Memory: $(free -h 2>/dev/null | awk '/Mem:/ {print $2}')"
+        echo "  Storage: $(df -h / | awk 'NR==2 {print $2 " total, " $4 " free"}')"
+        echo ""
+        
+        echo "── Network ──"
+        ip addr show 2>/dev/null | grep -E "inet |ether " | head -10
+        echo ""
+        
+        echo "── Security ──"
+        echo "  Open ports: $(ss -tlnp 2>/dev/null | grep -c LISTEN)"
+        echo "  Root access: $(if [ -f /data/local/nhsystem/bin/nh-ebpf ]; then echo "Available"; else echo "N/A"; fi)"
+        echo ""
+        
+        echo "── Chroots ──"
+        ls -d /data/local/nhsystem/roots/* 2>/dev/null | while read dir; do
+            echo "  $(basename $dir): $(du -sh $dir 2>/dev/null | awk '{print $1}')"
+        done
+        echo ""
+        
+        echo "══ End of Report ═══════════════════════"
+    } > "$report_file"
+    
+    echo "  Report saved: $report_file"
+    echo "  Size: $(du -h $report_file | awk '{print $1}')"
+}
+
+generate_hardware_report() {
+    local report_file="$REPORT_DIR/report-hardware-$TIMESTAMP.txt"
+    {
+        echo "══ Hardware Report ═════════════════"
+        echo "  Generated: $(date)"
+        echo ""
+        echo "── CPU ──"
+        cat /proc/cpuinfo | grep -E "Processor|model name|cpu MHz" | head -10
+        echo ""
+        echo "── Memory ──"
+        free -m 2>/dev/null || cat /proc/meminfo | head -10
+        echo ""
+        echo "── Storage ──"
+        df -h 2>/dev/null | head -10
+        echo ""
+        echo "── Thermal ──"
+        for zone in /sys/class/thermal/thermal_zone*; do
+            [ -f "$zone/temp" ] && echo "  ${zone##*/}: $(cat $zone/temp | awk '{print int($1/1000)}')°C"
+        done
+    } > "$report_file"
+    echo "  Report saved: $report_file"
+}
+
+cmd_list() {
+    echo "══ Generated Reports ═══════════════"
+    if [ -d "$REPORT_DIR" ]; then
+        ls -lht "$REPORT_DIR" | head -10 || echo "  No reports found"
+    else
+        echo "  No reports directory"
+    fi
+}
+
+cmd_show() {
+    local report="${1:-}"
+    [ -z "$report" ] && { echo "Usage: nh-report show <report>"; exit 1; }
+    
+    local report_file="$REPORT_DIR/$report"
+    [ ! -f "$report_file" ] && report_file="$REPORT_DIR/report-$report*.txt"
+    [ ! -f "$report_file" ] && { echo "  Report not found: $report"; exit 1; }
+    
+    cat "$report_file"
+}
+
+init_report
+
+case "${1:-gen}" in
+    gen)
+        local type="${2:-full}"
+        case "$type" in
+            full)     generate_full_report ;;
+            hardware) generate_hardware_report ;;
+            *)        echo "Unknown report type: $type"; show_usage ;;
+        esac
+        ;;
+    list)        cmd_list ;;
+    show)        cmd_show "${2:-}" ;;
+    delete)      rm -f "$REPORT_DIR/${2:-}" && echo "  Deleted" ;;
+    help|*)      show_usage ;;
+esac

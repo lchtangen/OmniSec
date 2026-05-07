@@ -1,0 +1,132 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-backup-pro — Enhanced backup with encryption
+set -euo pipefail
+
+BACKUP_DIR="/data/local/nhsystem/backups"
+ENCRYPT_KEY="/data/local/nhsystem/.backup_key"
+
+show_usage() {
+    cat <<EOF
+nh-backup-pro - Enhanced Backup Tool
+
+Usage: nh-backup-pro <command> [args]
+
+Commands:
+  create [name]   Create encrypted backup
+  list            List available backups
+  restore <name>  Restore from backup
+  verify <name>   Verify backup integrity
+  key             Generate new encryption key
+  help            Show this message
+EOF
+}
+
+generate_key() {
+    if [ ! -f "$ENCRYPT_KEY" ]; then
+        echo "  Generating encryption key..."
+        openssl rand -base64 32 > "$ENCRYPT_KEY" 2>/dev/null || {
+            echo "  openssl not available, using random key"
+            head -c 32 /dev/urandom | base64 > "$ENCRYPT_KEY"
+        }
+        chmod 600 "$ENCRYPT_KEY"
+        echo "  Key saved to $ENCRYPT_KEY"
+    else
+        echo "  Key already exists at $ENCRYPT_KEY"
+    fi
+}
+
+cmd_create() {
+    local name="${1:-$(date +%Y%m%d-%H%M%S)}"
+    local backup_file="$BACKUP_DIR/backup-$name.tar.gz"
+    local encrypted_file="$backup_file.enc"
+    
+    mkdir -p "$BACKUP_DIR"
+    generate_key
+    
+    echo "══ Creating Backup: $name ═════════════════════"
+    echo "  Backing up /data/local/nhsystem..."
+    
+    tar czf "$backup_file" -C /data/local nhsystem 2>/dev/null || {
+        echo "  Backup failed"
+        return 1
+    }
+    
+    echo "  Encrypting backup..."
+    if command -v openssl >/dev/null 2>&1; then
+        openssl enc -aes-256-cbc -salt -pbkdf2 -in "$backup_file" -out "$encrypted_file" -pass file:"$ENCRYPT_KEY" 2>/dev/null
+        rm -f "$backup_file"
+        echo "  Encrypted backup: $encrypted_file"
+    else
+        echo "  openssl not available, keeping unencrypted"
+        echo "  Backup: $backup_file"
+    fi
+    
+    echo "  Backup size: $(du -h ${encrypted_file:-$backup_file} | awk '{print $1}')"
+}
+
+cmd_list() {
+    echo "══ Available Backups ═════════════════════════"
+    if [ -d "$BACKUP_DIR" ]; then
+        ls -lht "$BACKUP_DIR" | grep -E "backup-.*\.(tar\.gz|enc)" | head -10 || echo "  No backups found"
+    else
+        echo "  Backup directory not found"
+    fi
+}
+
+cmd_restore() {
+    local name="${1:-}"
+    [ -z "$name" ] && { echo "Usage: nh-backup-pro restore <name>"; exit 1; }
+    
+    local backup_file="$BACKUP_DIR/backup-$name.tar.gz.enc"
+    local decrypted_file="$BACKUP_DIR/backup-$name.tar.gz"
+    
+    if [ ! -f "$backup_file" ] && [ ! -f "$decrypted_file" ]; then
+        # Try without extension
+        backup_file="$BACKUP_DIR/$name"
+        [ ! -f "$backup_file" ] && { echo "  Backup not found: $name"; exit 1; }
+    fi
+    
+    echo "══ Restoring Backup: $name ═══════════════════"
+    generate_key
+    
+    if [[ "$backup_file" == *.enc ]]; then
+        echo "  Decrypting..."
+        openssl enc -aes-256-cbc -d -pbkdf2 -in "$backup_file" -out "$decrypted_file" -pass file:"$ENCRYPT_KEY" 2>/dev/null || {
+            echo "  Decryption failed (wrong key?)"; exit 1;
+        }
+        backup_file="$decrypted_file"
+    fi
+    
+    echo "  Restoring to /data/local..."
+    tar xzf "$backup_file" -C /data/local 2>/dev/null
+    echo "  Restore complete"
+}
+
+cmd_verify() {
+    local name="${1:-}"
+    [ -z "$name" ] && { echo "Usage: nh-backup-pro verify <name>"; exit 1; }
+    
+    local backup_file="$BACKUP_DIR/backup-$name.tar.gz.enc"
+    [ ! -f "$backup_file" ] && backup_file="$BACKUP_DIR/backup-$name.tar.gz"
+    [ ! -f "$backup_file" ] && { echo "  Backup not found: $name"; exit 1; }
+    
+    echo "══ Verifying Backup: $name ═══════════════════"
+    if [[ "$backup_file" == *.enc ]]; then
+        generate_key
+        openssl enc -aes-256-cbc -d -pbkdf2 -in "$backup_file" -pass file:"$ENCRYPT_KEY" 2>/dev/null | tar tzf - >/dev/null 2>&1 && \
+            echo "  Backup valid" || echo "  Backup corrupt or wrong key"
+    else
+        tar tzf "$backup_file" >/dev/null 2>&1 && echo "  Backup valid" || echo "  Backup corrupt"
+    fi
+}
+
+case "${1:-create}" in
+    create)      cmd_create "${2:-}" ;;
+    list)        cmd_list ;;
+    restore)     cmd_restore "${2:-}" ;;
+    verify)      cmd_verify "${2:-}" ;;
+    key)         generate_key ;;
+    help|*)      show_usage ;;
+esac

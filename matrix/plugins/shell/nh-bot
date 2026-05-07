@@ -1,0 +1,189 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-bot - Bot integration (Telegram/Discord/ntfy)
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+BOT_CONF=$NHSYSTEM/etc/bot.conf
+BOT_LOG=$NHSYSTEM/logs/bot.log
+
+ensure_config() {
+    mkdir -p "$NHSYSTEM/etc" "$NHSYSTEM/logs"
+    if [ ! -f "$BOT_CONF" ]; then
+        cat > "$BOT_CONF" <<CONF
+# Bot Configuration
+# Uncomment and configure one platform:
+
+# Telegram
+# TELEGRAM_TOKEN=your_bot_token
+# TELEGRAM_CHAT_ID=your_chat_id
+
+# Discord
+# DISCORD_WEBHOOK=https://discord.com/api/webhooks/...
+
+# ntfy.sh (simple push notifications)
+# NTFY_TOPIC=mytopic
+
+# Default platform (telegram, discord, ntfy)
+BOT_PLATFORM=ntfy
+CONF
+        echo "  Config created: $BOT_CONF"
+        echo "  Edit to add your bot tokens"
+    fi
+}
+
+load_config() {
+    ensure_config
+    [ -f "$BOT_CONF" ] && . "$BOT_CONF" 2>/dev/null
+}
+
+send_telegram() {
+    local msg="$1"
+    local token="${TELEGRAM_TOKEN:-}"
+    local chat="${TELEGRAM_CHAT_ID:-}"
+
+    [ -z "$token" ] || [ -z "$chat" ] && { echo "  Telegram not configured"; return 1; }
+
+    curl -s -X POST "https://api.telegram.org/bot$token/sendMessage" \
+        -d "chat_id=$chat&text=$msg&parse_mode=Markdown" >/dev/null 2>&1 && {
+        echo "  Telegram: sent"
+        return 0
+    } || {
+        echo "  Telegram: failed"
+        return 1
+    }
+}
+
+send_discord() {
+    local msg="$1"
+    local webhook="${DISCORD_WEBHOOK:-}"
+
+    [ -z "$webhook" ] && { echo "  Discord not configured"; return 1; }
+
+    curl -s -X POST "$webhook" \
+        -H "Content-Type: application/json" \
+        -d "{\"content\":\"$msg\"}" >/dev/null 2>&1 && {
+        echo "  Discord: sent"
+        return 0
+    } || {
+        echo "  Discord: failed"
+        return 1
+    }
+}
+
+send_ntfy() {
+    local msg="$1"
+    local topic="${NTFY_TOPIC:-nethunter-$(hostname 2>/dev/null || echo 'android')}"
+    local title="${2:-NetHunter Alert}"
+    local priority="${3:-default}"
+
+    curl -s -X POST "https://ntfy.sh/$topic" \
+        -H "Title: $title" \
+        -H "Priority: $priority" \
+        -H "Tags: warning" \
+        -d "$msg" >/dev/null 2>&1 && {
+        echo "  ntfy: sent to $topic"
+        return 0
+    } || {
+        echo "  ntfy: failed"
+        return 1
+    }
+}
+
+send() {
+    local msg="$1"
+    local title="${2:-NetHunter Notification}"
+    local priority="${3:-default}"
+
+    load_config
+    local platform="${BOT_PLATFORM:-ntfy}"
+
+    echo "── Sending Notification ──"
+    echo "  Platform: $platform"
+    echo "  Message:  $msg"
+    echo ""
+
+    case "$platform" in
+        telegram|tg) send_telegram "$msg" ;;
+        discord) send_discord "$msg" ;;
+        ntfy|push) send_ntfy "$msg" "$title" "$priority" ;;
+        all)
+            send_telegram "$msg" || true
+            send_discord "$msg" || true
+            send_ntfy "$msg" "$title" "$priority" || true
+            ;;
+        *) echo "  Unknown platform: $platform" ;;
+    esac
+
+    echo "  $(date) SENT [$platform] $msg" >> "$BOT_LOG"
+}
+
+notify_alert() {
+    local message="${1:-}"
+    [ -z "$message" ] && message="NetHunter alert triggered at $(date)"
+
+    send "🚨 *ALERT*: $message" "NetHunter Alert" "urgent"
+}
+
+notify_scan() {
+    local target="${1:-unknown}"
+    local results="${2:-}"
+
+    send "🔍 *Scan Complete*: $target\n$results" "Scan Results" "default"
+}
+
+notify_status() {
+    local bat=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "?")
+    local mem=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo "?")
+    local up=$(awk '{print int($1/86400)"d"}' /proc/uptime 2>/dev/null || echo "?")
+
+    send "📊 *System Status*\nBattery: ${bat}%\nMemory: ${mem}MB free\nUptime: ${up}" "Status Report" "default"
+}
+
+test_bot() {
+    load_config
+    echo "── Testing Bot ──"
+    echo "  Platform: ${BOT_PLATFORM:-not set}"
+    echo ""
+
+    local result=$(send "🧪 *Test notification* from NetHunter NextGen" "Test" "default" 2>&1)
+    echo "$result"
+}
+
+usage() {
+    cat <<EOF
+nh-bot - Bot integration for notifications
+
+Usage: nh-bot <command> [args]
+
+Commands:
+  send <msg> [title] [priority]  Send notification
+  alert <msg>                    Send alert notification
+  scan <target> [results]        Send scan results
+  status                         Send status report
+  test                           Test bot configuration
+  config                         Show/edit config
+
+Platforms: telegram, discord, ntfy (configure in $BOT_CONF)
+
+Examples:
+  nh-bot send "System update complete"
+  nh-bot alert "Intrusion detected on wlan0"
+  nh-bot scan 192.168.1.0/24 "5 hosts found"
+  nh-bot status
+  nh-bot test
+EOF
+    exit 1
+}
+
+ensure_config
+case "${1:-help}" in
+    send|notify|msg) shift; send "$*" ;;
+    alert|alarm) shift; notify_alert "$*" ;;
+    scan|scanned) shift; notify_scan "$@" ;;
+    status|report) notify_status ;;
+    test|ping) test_bot ;;
+    config|conf) cat "$BOT_CONF" ;;
+    *) usage ;;
+esac

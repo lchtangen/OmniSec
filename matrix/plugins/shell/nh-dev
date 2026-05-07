@@ -1,0 +1,115 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-dev - Development environment manager
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+NHBIN=$NHSYSTEM/bin
+ARCHROOT=$NHSYSTEM/roots/archlinux
+
+usage() {
+    echo "usage: nh-dev <command>"
+    echo ""
+    echo "Commands:"
+    echo "  status          Check dev tool availability"
+    echo "  setup           Install/verify dev packages in Arch"
+    echo "  python          Enter Python dev shell"
+    echo "  node            Enter Node.js dev shell"
+    echo "  rust            Check Rust toolchain"
+    echo "  golang          Check Go toolchain"
+    echo "  android         Check Android SDK/NDK status"
+    echo "  upgrade         Upgrade dev packages"
+    echo "  info            Show dev environment summary"
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+CMD="$1"; shift
+
+require_arch() {
+    [ -d "$ARCHROOT/etc" ] || { echo "error: Arch rootfs not found"; exit 1; }
+}
+
+chroot_exec() {
+    /system/bin/chroot "$ARCHROOT" /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin "$@"
+}
+
+case "$CMD" in
+    status)
+        require_arch
+        echo "══ Dev Environment Status ══"
+        echo ""
+        for tool in python3 node rustc go gcc zig clang cargo go npm; do
+            if chroot_exec which "$tool" 2>/dev/null; then
+                VER=$(chroot_exec "$tool" --version 2>/dev/null | head -1)
+                echo "  ✓ $tool: $VER"
+            else
+                echo "  ✗ $tool: not installed"
+            fi
+        done
+        ;;
+    setup)
+        require_arch
+        echo "installing dev packages..."
+        chroot_exec pacman -S --noconfirm --needed \
+            base-devel git python python-pip nodejs npm rust go \
+            clang cmake ninja zig llvm lldb gdb strace ltrace \
+            valgrind perf ripgrep fd fzf bat eza jq yq \
+            tmux neovim starship zsh fish 2>&1 || echo "some packages may have failed"
+        echo "dev environment setup complete"
+        ;;
+    python)
+        require_arch
+        echo "starting Python dev shell..."
+        exec /system/bin/chroot "$ARCHROOT" /usr/bin/python3 "$@"
+        ;;
+    node)
+        require_arch
+        echo "starting Node.js dev shell..."
+        exec /system/bin/chroot "$ARCHROOT" /usr/bin/node "$@"
+        ;;
+    rust)
+        require_arch
+        echo "══ Rust Toolchain ══"
+        chroot_exec rustc --version 2>/dev/null || echo "rust not installed"
+        chroot_exec cargo --version 2>/dev/null || echo "cargo not installed"
+        echo ""
+        echo "  installed tools:"
+        chroot_exec cargo install --list 2>/dev/null | head -10 || echo "  no extra tools"
+        ;;
+    golang)
+        require_arch
+        chroot_exec go version 2>/dev/null || echo "go not installed"
+        echo ""
+        echo "  GOPATH: $(chroot_exec printenv GOPATH 2>/dev/null)"
+        echo "  GOROOT: $(chroot_exec printenv GOROOT 2>/dev/null)"
+        ;;
+    android)
+        echo "══ Android SDK/NDK ══"
+        echo "  SDK: $(getprop ro.build.version.sdk 2>/dev/null)"
+        echo "  ABI: $(getprop ro.product.cpu.abi 2>/dev/null)"
+        if chroot_exec which aarch64-linux-gnu-gcc 2>/dev/null; then
+            echo "  cross-compiler: installed"
+        else
+            echo "  cross-compiler: not in Arch chroot"
+        fi
+        ;;
+    upgrade)
+        require_arch
+        echo "upgrading dev packages..."
+        chroot_exec pacman -Syu --noconfirm 2>&1 || echo "upgrade failed"
+        ;;
+    info)
+        echo "══ Dev Environment Info ══"
+        echo "  Device: $(getprop ro.product.model 2>/dev/null)"
+        echo "  Android: $(getprop ro.build.version.release 2>/dev/null) (SDK $(getprop ro.build.version.sdk 2>/dev/null))"
+        echo "  Kernel: $(uname -r 2>/dev/null)"
+        echo "  Arch root: $ARCHROOT"
+        echo "  Workspace: $NHSYSTEM/workspaces/main"
+        echo "  Memory: $(free -m 2>/dev/null | grep Mem | awk '{print $2}')MB total"
+        echo "  Storage: $(df -h /data 2>/dev/null | tail -1 | awk '{print $2}') total"
+        ;;
+    *)
+        usage
+        ;;
+esac

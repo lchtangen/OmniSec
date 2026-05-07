@@ -1,0 +1,31 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# NetHunter — Emergency Android shell
+# Always works: no chroot, no mounts, pure Android environment
+# Use this when Kali/Arch chroots are broken or unmounted
+
+export PATH=/debug_ramdisk:/system/bin:/system/xbin:/system_ext/bin:/vendor/bin:$PATH
+export PS1='[emergency:\w]# '
+export TERM="${TERM:-xterm-256color}"
+
+echo ""
+echo "=== Emergency Shell (Android) ==="
+echo "  Android $(getprop ro.build.version.release) | $(uname -m)"
+echo "  Root: $(id)"
+echo ""
+echo "  Chroot status:"
+for r in /data/local/nhsystem/roots/kali-arm64 /data/local/nhsystem/roots/archlinux; do
+    name=$(basename "$r")
+    if grep -qs " $r/proc " /proc/mounts 2>/dev/null; then
+        echo "    $name: MOUNTED"
+    else
+        echo "    $name: not mounted"
+    fi
+done
+echo ""
+echo "  Remount:  /data/local/nhsystem/bin/nh-mount"
+echo "  Services: /data/local/nhsystem/bin/nh-services start"
+echo ""
+
+exec /system/bin/sh

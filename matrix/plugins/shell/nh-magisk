@@ -1,0 +1,266 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-magisk - Magisk module downloader and security tool manager
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+MAGISK_MODULES_DIR=$NHSYSTEM/workspaces/main/magisk-modules
+NH_CACHE=$NHSYSTEM/tmp/module-cache
+NH_LOGS=$NHSYSTEM/logs/nh-magisk.log
+
+log() { echo "[$(date '+%H:%M:%S')] $*" >> "$NH_LOGS"; }
+
+ensure_dirs() {
+    mkdir -p "$MAGISK_MODULES_DIR" "$NH_CACHE"
+}
+
+detect_magisk() {
+    local magisk=""
+    for p in /debug_ramdisk/magisk /data/adb/magisk/magisk64 /data/adb/magisk/magisk /sbin/magisk "$(magisk --path 2>/dev/null)/magisk"; do
+        [ -x "$p" ] && magisk="$p" && break
+    done
+    if [ -n "$magisk" ]; then
+        echo "  Magisk: $magisk"
+        local ver=$("$magisk" -v 2>/dev/null || echo "?")
+        echo "  Version: $ver"
+        [ -d /data/adb/modules ] && echo "  Modules: $(ls /data/adb/modules 2>/dev/null | wc -l) installed"
+        return 0
+    fi
+    echo "  Magisk not found (run this on device)"
+    return 1
+}
+
+list_installed_modules() {
+    echo "── Installed Magisk Modules ──"
+    local count=0
+    if [ -d /data/adb/modules ]; then
+        for m in /data/adb/modules/*/; do
+            [ -d "$m" ] || continue
+            local name=$(basename "$m")
+            local ver=$(cat "$m/module.prop" 2>/dev/null | grep '^version=' | cut -d= -f2 || echo "?")
+            local disable=""
+            [ -f "$m/disable" ] && disable=" [DISABLED]"
+            echo "  $name v$ver$disable"
+            count=$((count + 1))
+        done
+    fi
+    [ $count -eq 0 ] && echo "  No Magisk modules found"
+    echo "  Total: $count"
+}
+
+download_module() {
+    local name="$1"
+    local url="$2"
+    local outfile="$MAGISK_MODULES_DIR/$name.zip"
+
+    ensure_dirs
+    [ -f "$outfile" ] && echo "  Already downloaded: $name.zip" && return 0
+
+    echo "  Downloading $name..."
+    if command -v curl >/dev/null 2>&1; then
+        curl -sL --connect-timeout 30 "$url" -o "$outfile" || return 1
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q --timeout=30 "$url" -O "$outfile" || return 1
+    else
+        echo "  curl/wget not found" >&2
+        return 1
+    fi
+
+    local size=$(ls -lh "$outfile" 2>/dev/null | awk '{print $5}')
+    echo "  Saved: $outfile ($size)"
+    log "Downloaded $name from $url"
+    return 0
+}
+
+list_available() {
+    cat <<AVAIL
+── Available Security Modules for Magisk ──
+
+=== NetHunter Core ===
+  1) Kali NetHunter ARM64 (Full)
+     - Full Kali chroot with all tools
+     - URL: https://image-nethunter.kali.org/nethunter-installer/kali-daily/
+     - Size: ~2.2 GB
+     - Install: Flash in Magisk Manager, then download chroot
+
+  2) Kali NetHunter ARM64 (Minimal)
+     - Lightweight Kali chroot (~330 MB)
+     - URL: https://image-nethunter.kali.org/nethunter-installer/kali-daily/
+
+  3) NetHunter Terminal App Fix (Magisk 26+)
+     - Fixes Kali NetHunter Terminal for modern Magisk
+     - https://github.com/Dylanmurzello/kali-nethunter-nhterm-magisk-fix
+
+=== MITM / Certificate ===
+  4) AlwaysTrustUserCerts
+     - Auto-promote user certs to system CA store
+     - GitHub: NVISOsecurity/AlwaysTrustUserCerts
+     - Use: Install cert in Settings -> Trusted credentials, reboot
+
+  5) MagiskTrustUserCerts (fork)
+     - Alternative cert promotion module
+     - GitHub: Benojir/Always-Trust-User-Certs-Magisk
+
+=== Frida / Dynamic Instrumentation ===
+  6) MagiskFrida
+     - Run frida-server on boot, always up-to-date
+     - GitHub: ViRb3/magisk-frida
+     - Release: https://github.com/ViRb3/magisk-frida/releases
+
+  7) MagiskHluda (Stealth Frida)
+     - Modified Frida designed to be undetectable
+     - GitHub: Exo1i/MagiskHluda
+
+=== Pentest All-in-One ===
+  8) YayPentestMagiskModuleYay
+     - Combines MoveCert + Frida + tools
+     - GitHub: MaliciousErection/YayPentestMagiskModuleYay
+
+  9) Beerus Android Framework
+     - Full mobile pentest framework (APK + Magisk module)
+     - GitHub: hakaioffsec/beerus-android
+     - Features: Frida Core, ADB over network, proxy profiles, cert promotion
+
+=== Utilities ===
+  10) Busybox for Android
+     - Essential Linux utilities for Android
+     - Search: Magisk Module Repo "Busybox"
+
+  11) Systemless Hosts (AdAway)
+     - Systemless ad-blocking via hosts file
+     - Magisk Module Repo: Systemless Hosts
+
+  12) Riru / Zygisk modules
+     - Various Zygisk modules for enhanced functionality
+
+AVAIL
+}
+
+install_guide() {
+    cat <<GUIDE
+══ Module Installation Guide ══
+
+NetHunter via Magisk (Official Method):
+  1. Download NetHunter installer zip from:
+     https://image-nethunter.kali.org/nethunter-installer/kali-daily/
+  2. Open Magisk Manager -> Modules -> Install from storage
+  3. Select the zip, wait for flash, reboot
+  4. Install Nethunter APK from the zip (or from F-Droid)
+  5. Open Nethunter app, allow root, download chroot
+  6. Use Kali Chroot Manager to install
+
+Other Magisk Modules:
+  1. Download .zip to device
+  2. Magisk Manager -> Modules -> Install from storage
+  3. Reboot
+  4. Verify: ls /data/adb/modules/
+
+Quick Download:
+  nh-magisk fetch <module-number>
+  Then transfer the .zip and install in Magisk Manager
+
+NOTE: Full NetHunter requires a custom kernel for:
+  - Wi-Fi injection (monitor mode, packet injection)
+  - HID attacks (BadUSB, DuckHunter)
+  - Bluetooth Arsenal
+  Check: https://nethunter.kali.org/device-kernels.html
+GUIDE
+}
+
+fetch_module() {
+    ensure_dirs
+    local num="${1:-}"
+    case "$num" in
+        4|5|cert|certs)
+            echo "── AlwaysTrustUserCerts ──"
+            download_module "AlwaysTrustUserCerts" \
+                "https://github.com/NVISOsecurity/AlwaysTrustUserCerts/releases/latest/download/AlwaysTrustUserCerts.zip"
+            echo "  Install in Magisk Manager, then reboot"
+            echo "  Add user cert in Settings -> Security -> Trusted credentials"
+            ;;
+        6|frida)
+            echo "── MagiskFrida ──"
+            local tag=$(curl -s "https://api.github.com/repos/ViRb3/magisk-frida/releases/latest" 2>/dev/null | grep '"tag_name"' | cut -d'"' -f4)
+            [ -z "$tag" ] && tag="v1.7.0"
+            download_module "MagiskFrida" \
+                "https://github.com/ViRb3/magisk-frida/releases/download/$tag/MagiskFrida.zip"
+            echo "  Install in Magisk Manager, reboot"
+            echo "  Frida-server starts automatically on boot"
+            ;;
+        7|hluda)
+            echo "── MagiskHluda ──"
+            download_module "MagiskHluda" \
+                "https://github.com/Exo1i/MagiskHluda/releases/latest/download/MagiskHluda.zip"
+            echo "  Stealth Frida server (undetectable)"
+            ;;
+        8|yaypentest|yay)
+            echo "── YayPentestMagiskModuleYay ──"
+            download_module "YayPentestMagiskModuleYay" \
+                "https://github.com/MaliciousErection/YayPentestMagiskModuleYay/releases/latest/download/YayPentestMagiskModuleYay.zip"
+            echo "  Combines: MoveCert + Frida + custom tools"
+            ;;
+        9|beerus)
+            echo "── Beerus Android Framework ──"
+            echo "  Download APK + Magisk module from:"
+            echo "  https://github.com/hakaioffsec/beerus-android/releases"
+            echo "  Features: Frida Core, ADB over network, proxy, certs"
+            ;;
+        10|busybox)
+            echo "── Busybox ──"
+            echo "  Download from Magisk Module Repo or:"
+            echo "  https://github.com/Magisk-Modules-Repo/busybox-ndk"
+            ;;
+        11|hosts|adaway)
+            echo "── Systemless Hosts ──"
+            echo "  Download from Magisk Module Repo"
+            echo "  Blocks ads systemlessly via /etc/hosts"
+            ;;
+        12|zygisk)
+            echo "── Zygisk Modules ──"
+            echo "  Zygisk is built into Magisk 24+"
+            echo "  Popular Zygisk modules:"
+            echo "    - Zygisk-LSPosed (Xposed framework)"
+            echo "    - Shamiko (Zygisk hiding)"
+            echo "    - ZygiskFrida (Frida via Zygisk)"
+            ;;
+        *)
+            echo "Usage: nh-magisk fetch <number>"
+            echo "Numbers: 4(cert) 6(frida) 7(hluda) 8(yay) 9(beerus) 10(busybox) 11(hosts) 12(zygisk)"
+            ;;
+    esac
+}
+
+usage() {
+    cat <<EOF
+nh-magisk - Magisk module manager for NetHunter security tools
+
+Usage: nh-magisk <command>
+
+Commands:
+  list        List installed Magisk modules (on device)
+  available   List available security modules
+  fetch <n>   Download a module by number (save to workspace)
+  guide       Detailed installation guide
+  detect      Detect Magisk version and status
+
+Examples:
+  nh-magisk detect
+  nh-magisk available
+  nh-magisk fetch 4        # AlwaysTrustUserCerts
+  nh-magisk fetch frida    # MagiskFrida
+  nh-magisk list
+  nh-magisk guide
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    list|installed) list_installed_modules ;;
+    available|list-available) list_available ;;
+    fetch) shift; fetch_module "${1:-}" ;;
+    guide|install-guide) install_guide ;;
+    detect|status) detect_magisk ;;
+    *) usage ;;
+esac

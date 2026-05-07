@@ -1,0 +1,77 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-cross — cross-compilation toolchain setup inside Arch chroot
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+AR="$(arch_root)"
+[ -d "$AR" ] || { echo "Arch rootfs not found"; exit 1; }
+
+install_cross() {
+    local target="${1:-aarch64-linux-gnu}"
+    echo "installing cross-compiler: $target"
+    mount_root "$AR" 2>/dev/null || true
+
+    case "$target" in
+        aarch64-linux-gnu|arm64)
+            chroot_exec "$AR" /bin/sh -c '
+                pacman -S --needed --noconfirm aarch64-linux-gnu-gcc aarch64-linux-gnu-binutils 2>/dev/null
+            ' || true
+            ;;
+        arm-linux-gnueabihf|arm32)
+            chroot_exec "$AR" /bin/sh -c '
+                pacman -S --needed --noconfirm arm-linux-gnueabihf-gcc arm-linux-gnueabihf-binutils 2>/dev/null
+            ' || true
+            ;;
+        all)
+            chroot_exec "$AR" /bin/sh -c '
+                pacman -S --needed --noconfirm \
+                    aarch64-linux-gnu-gcc aarch64-linux-gnu-binutils \
+                    arm-linux-gnueabihf-gcc arm-linux-gnueabihf-binutils \
+                    base-devel 2>/dev/null
+            ' || true
+            ;;
+        *)
+            echo "unknown target: $target"
+            echo "supported: aarch64-linux-gnu, arm-linux-gnueabihf, all"
+            return 1
+            ;;
+    esac
+
+    # Verify
+    if chroot_exec "$AR" /bin/sh -c "command -v ${target}-gcc" 2>/dev/null; then
+        local ver
+        ver=$(chroot_exec "$AR" /bin/sh -c "${target}-gcc --version 2>/dev/null | head -1" 2>/dev/null || echo "?")
+        echo "✓ $target installed: $ver"
+    else
+        echo "⚠ $target installation may have failed — check pacman"
+    fi
+}
+
+list_cross() {
+    echo "── Cross-Compilers in Arch Chroot ──"
+    local count=0
+    for tc in aarch64-linux-gnu-gcc arm-linux-gnueabihf-gcc; do
+        if chroot_exec "$AR" /bin/sh -c "command -v $tc" 2>/dev/null; then
+            local ver
+            ver=$(chroot_exec "$AR" /bin/sh -c "$tc --version 2>/dev/null | head -1" 2>/dev/null || echo "?")
+            echo "  ✓ $tc: $ver"
+            count=$((count + 1))
+        fi
+    done
+    [ "$count" -eq 0 ] && echo "  No cross-compilers installed (nh-cross install)"
+    echo "  ${count} toolchain(s) detected"
+}
+
+case "${1:-list}" in
+    install)
+        install_cross "${2:-all}"
+        ;;
+    list|status)
+        list_cross
+        ;;
+    *)
+        echo "usage: nh-cross {list|install [target]}" >&2
+        exit 2
+        ;;
+esac

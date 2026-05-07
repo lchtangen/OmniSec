@@ -1,0 +1,132 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-automate — Automation framework
+set -euo pipefail
+
+AUTOMATE_DIR="/data/local/nhsystem/automate"
+TASKS_DIR="$AUTOMATE_DIR/tasks"
+LOGS_DIR="$AUTOMATE_DIR/logs"
+
+show_usage() {
+    cat <<EOF
+nh-automate - Automation Framework
+
+Usage: nh-automate <command> [args]
+
+Commands:
+  list            List available automation tasks
+  run <task>      Run a specific task
+  create <name>   Create new automation task
+  delete <name>   Delete a task
+  schedule <t> <task>  Schedule task (cron format)
+  logs [task]     Show task logs
+  help            Show this message
+
+Tasks are shell scripts stored in:
+  $TASKS_DIR
+EOF
+}
+
+init_automate() {
+    mkdir -p "$TASKS_DIR" "$LOGS_DIR"
+    if [ ! -f "$TASKS_DIR/example.sh" ]; then
+        cat > "$TASKS_DIR/example.sh" <<'EOF'
+#!/system/bin/sh
+# Example automation task
+echo "Running example task at $(date)"
+# Add your commands here
+EOF
+        chmod +x "$TASKS_DIR/example.sh"
+    fi
+}
+
+cmd_list() {
+    echo "══ Available Tasks ═══════════════════════"
+    if [ -d "$TASKS_DIR" ]; then
+        for task in "$TASKS_DIR"/*.sh; do
+            if [ -f "$task" ]; then
+                local name=$(basename "$task" .sh)
+                local desc=$(head -5 "$task" | grep "#" | head -1 | sed 's/# //')
+                echo "  $name: ${desc:-No description}"
+            fi
+        done
+    else
+        echo "  No tasks found"
+    fi
+}
+
+cmd_run() {
+    local task="${1:-}"
+    [ -z "$task" ] && { echo "Usage: nh-automate run <task>"; exit 1; }
+    
+    local task_file="$TASKS_DIR/$task.sh"
+    [ ! -f "$task_file" ] && { echo "  Task not found: $task"; exit 1; }
+    
+    echo "══ Running Task: $task ═════════════════"
+    local log_file="$LOGS_DIR/$task-$(date +%Y%m%d-%H%M%S).log"
+    {
+        echo "Task: $task"
+        echo "Start: $(date)"
+        sh "$task_file"
+        echo "End: $(date)"
+    } 2>&1 | tee "$log_file"
+    echo "  Log: $log_file"
+}
+
+cmd_create() {
+    local name="${1:-}"
+    [ -z "$name" ] && { echo "Usage: nh-automate create <name>"; exit 1; }
+    
+    local task_file="$TASKS_DIR/$name.sh"
+    if [ -f "$task_file" ]; then
+        echo "  Task already exists: $name"
+        return 1
+    fi
+    
+    cat > "$task_file" <<EOF
+#!/system/bin/sh
+# Automation task: $name
+set -euo pipefail
+
+echo "Running $name at \$(date)"
+# Add your commands below:
+
+EOF
+    chmod +x "$task_file"
+    echo "  Created task: $name"
+    echo "  Edit: $task_file"
+}
+
+cmd_delete() {
+    local name="${1:-}"
+    [ -z "$name" ] && { echo "Usage: nh-automate delete <name>"; exit 1; }
+    
+    local task_file="$TASKS_DIR/$name.sh"
+    [ ! -f "$task_file" ] && { echo "  Task not found: $name"; exit 1; }
+    
+    rm -f "$task_file"
+    echo "  Deleted task: $name"
+}
+
+cmd_logs() {
+    local task="${1:-}"
+    echo "══ Task Logs ═══════════════════════════"
+    if [ -n "$task" ]; then
+        ls -lht "$LOGS_DIR/$task"* 2>/dev/null | head -10 || echo "  No logs for $task"
+    else
+        ls -lht "$LOGS_DIR" 2>/dev/null | head -10 || echo "  No logs found"
+    fi
+}
+
+init_automate
+
+case "${1:-list}" in
+    list)        cmd_list ;;
+    run)         cmd_run "${2:-}" ;;
+    create)      cmd_create "${2:-}" ;;
+    delete)      cmd_delete "${2:-}" ;;
+    schedule)    ;; # Not implemented yet
+    logs)        cmd_logs "${2:-}" ;;
+    help|*)      show_usage ;;
+esac

@@ -1,0 +1,146 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-snapshot - Rootfs snapshot and restore (tar-based)
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+SNAPSHOT_DIR=$NHSYSTEM/workspaces/main/snapshots
+
+ensure_dirs() { mkdir -p "$SNAPSHOT_DIR"; }
+
+create_snapshot() {
+    local name="${1:-auto-$(date +%Y%m%d-%H%M%S)}"
+    local target="${2:-}"
+    local compress="${3:-gz}"
+
+    ensure_dirs
+    local outfile="$SNAPSHOT_DIR/$name.tar.$compress"
+
+    if [ -z "$target" ]; then
+        echo "── Snapshot Targets ──"
+        echo "  1) Arch Linux rootfs"
+        echo "  2) Kali rootfs"
+        echo "  3) nhsystem (tools + config)"
+        echo "  4) Workspace"
+        echo "  5) Custom path"
+        printf "  Select target [1-5]: "
+        read -r choice
+        case "$choice" in
+            1) target="$NHSYSTEM/roots/archlinux" ;;
+            2) target="$NHSYSTEM/kali-arm64" ;;
+            3) target="$NHSYSTEM" --exclude="$NHSYSTEM/roots/*" --exclude="$NHSYSTEM/kali-arm64" ;;
+            4) target="$NHSYSTEM/workspaces/main" ;;
+            5) printf "  Enter path: "; read -r target ;;
+            *) echo "  Invalid"; exit 1 ;;
+        esac
+    fi
+
+    [ -e "$target" ] || { echo "Target not found: $target"; exit 1; }
+
+    echo "── Creating Snapshot ──"
+    echo "  Name:   $name"
+    echo "  Target: $target"
+    echo "  Output: $outfile"
+    echo ""
+
+    local start=$(date +%s)
+    case "$compress" in
+        gz|gzip)  tar czf "$outfile" "$target" 2>/dev/null ;;
+        bz2|bzip2) tar cjf "$outfile" "$target" 2>/dev/null ;;
+        xz)       tar cJf "$outfile" "$target" 2>/dev/null ;;
+        zst|zstd) tar --zstd -cf "$outfile" "$target" 2>/dev/null || tar czf "$outfile" "$target" 2>/dev/null ;;
+        *)        tar cf "$outfile" "$target" 2>/dev/null ;;
+    esac
+
+    local rc=$?
+    local elapsed=$(( $(date +%s) - start ))
+    local size=$(ls -lh "$outfile" 2>/dev/null | awk '{print $5}')
+
+    if [ $rc -eq 0 ]; then
+        echo "  Snapshot created: $size (${elapsed}s)"
+        echo "  $(date) SNAPSHOT $name ($target) -> $outfile ($size)" >> "$SNAPSHOT_DIR/snapshot.log"
+    else
+        echo "  Snapshot failed"
+        rm -f "$outfile"
+        exit 1
+    fi
+}
+
+list_snapshots() {
+    ensure_dirs
+    echo "── Available Snapshots ──"
+    echo ""
+
+    local count=0
+    for f in "$SNAPSHOT_DIR"/*.tar.*; do
+        [ -f "$f" ] || continue
+        local name=$(basename "$f")
+        local size=$(ls -lh "$f" | awk '{print $5}')
+        local date=$(stat -c '%y' "$f" 2>/dev/null | cut -d. -f1)
+        printf "  %-40s %s  %s\n" "$name" "$size" "$date"
+        count=$((count + 1))
+    done
+
+    [ $count -eq 0 ] && echo "  No snapshots found"
+    echo "  $count snapshot(s)"
+    [ -f "$SNAPSHOT_DIR/snapshot.log" ] && echo "  Log: snapshot.log"
+}
+
+restore_snapshot() {
+    local name="${1:-}"
+    [ -z "$name" ] && { echo "Usage: nh-snapshot restore <name>"; list_snapshots; exit 1; }
+
+    local file="$SNAPSHOT_DIR/$name"
+    [ ! -f "$file" ] && file=$(ls "$SNAPSHOT_DIR/${name}.tar."* 2>/dev/null | head -1)
+    [ -f "$file" ] || { echo "Snapshot not found: $name"; exit 1; }
+
+    local size=$(ls -lh "$file" | awk '{print $5}')
+
+    echo "── Restore Snapshot ──"
+    echo "  File: $file ($size)"
+    echo "  WARNING: This will overwrite existing files!"
+    printf "  Continue? [y/N]: "
+    read -r ans
+    case "$ans" in y|Y) ;; *) echo "  Cancelled"; return ;; esac
+
+    local start=$(date +%s)
+    echo "  Restoring..."
+    tar xf "$file" -C / 2>/dev/null
+    local rc=$?
+    local elapsed=$(( $(date +%s) - start ))
+
+    if [ $rc -eq 0 ]; then
+        echo "  Restore complete (${elapsed}s)"
+        echo "  $(date) RESTORE $name from $file" >> "$SNAPSHOT_DIR/snapshot.log"
+    else
+        echo "  Restore failed"
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-snapshot - Rootfs snapshot and restore
+
+Usage: nh-snapshot <command> [args]
+
+Commands:
+  create [name] [path]  Create snapshot
+  list                  List snapshots
+  restore <name>        Restore snapshot
+
+Examples:
+  nh-snapshot create arch-backup /data/local/nhsystem/roots/archlinux
+  nh-snapshot create
+  nh-snapshot list
+  nh-snapshot restore arch-backup.tar.gz
+EOF
+    exit 1
+}
+
+case "${1:-help}" in
+    create|save|backup) shift; create_snapshot "$@" ;;
+    list|ls) list_snapshots ;;
+    restore|load|recover) shift; restore_snapshot "${1:-}" ;;
+    *) usage ;;
+esac

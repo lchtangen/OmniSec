@@ -50,7 +50,7 @@ stage-payload: build-c
 	@echo "  staged: $$(find $(PAYLOAD_DIR) -type f | wc -l) files"
 
 .PHONY: build-c
-build-c: $(BUILD_DIR)/nh-sudo $(BUILD_DIR)/no-close-range.so $(BUILD_DIR)/nh-diag
+build-c: $(BUILD_DIR)/nh-sudo $(BUILD_DIR)/no-close-range.so $(BUILD_DIR)/nh-diag $(BUILD_DIR)/nh-trace
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -66,6 +66,10 @@ $(BUILD_DIR)/no-close-range.so: $(SRC_DIR)/c/no-close-range.c | $(BUILD_DIR)
 $(BUILD_DIR)/nh-diag: $(SRC_DIR)/c/nh-diag.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -o $@ $< -static -s
 	@echo "  built: nh-diag ($@)"
+
+$(BUILD_DIR)/nh-trace: $(SRC_DIR)/c/nh-trace.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $@ $< -static -s
+	@echo "  built: nh-trace ($@)"
 
 .PHONY: build-module
 build-module: stage-payload

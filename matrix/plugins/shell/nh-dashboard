@@ -1,0 +1,115 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-dashboard — generate HTML system status dashboard
+set -u
+
+NHSYSTEM="${NHSYSTEM:-/data/local/nhsystem}"
+OUTPUT="${1:-$NHSYSTEM/dashboard.html}"
+LOG="$NHSYSTEM/logs/dashboard.log"
+mkdir -p "$NHSYSTEM/logs"
+
+gprop() { getprop "$1" 2>/dev/null || echo "?"; }
+
+MODEL="$(gprop ro.product.model)"
+ANDROID="$(gprop ro.build.version.release)"
+KERNEL="$(uname -r 2>/dev/null || echo "?")"
+UPTIME="$(uptime | sed 's/.*up //' | sed 's/,.*//' 2>/dev/null || echo "?")"
+
+DISK_TOTAL="$(df -h /data 2>/dev/null | tail -1 | awk '{print $2}')"
+DISK_USED="$(df -h /data 2>/dev/null | tail -1 | awk '{print $3}')"
+DISK_AVAIL="$(df -h /data 2>/dev/null | tail -1 | awk '{print $4}')"
+DISK_PCT="$(df -h /data 2>/dev/null | tail -1 | awk '{print $5}')"
+
+MEM_TOTAL="$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo "?")"
+MEM_AVAIL="$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo "?")"
+
+TEMP="$(cat /sys/class/thermal/thermal_message/temp 2>/dev/null || cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | head -1 | awk '{printf "%.1f", $1/1000}' || echo "?")"
+
+# Service status
+CHROOT_ARCH="$( [ -d /data/local/nhsystem/roots/archlinux/bin ] && echo "ok" || echo "missing")"
+CHROOT_KALI="$( [ -d /data/local/nhsystem/roots/kali-arm64/bin ] && echo "ok" || echo "missing")"
+SSHD_2222="$(ss -tlnp 2>/dev/null | grep -q ':2222' && echo "running" || echo "stopped")"
+SSHD_8022="$(ss -tlnp 2>/dev/null | grep -q ':8022' && echo "running" || echo "stopped")"
+VNC_5901="$(ss -tlnp 2>/dev/null | grep -q ':5901' && echo "running" || echo "stopped")"
+ADB_WIFI="$(ss -tlnp 2>/dev/null | grep -q ':52104' && echo "listening" || echo "not listening")"
+
+cat > "$OUTPUT" <<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetHunter Dashboard — $MODEL</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+       background: #0d1117; color: #c9d1d9; padding: 20px; max-width: 900px; margin: auto; }
+h1 { color: #58a6ff; font-size: 1.5em; margin-bottom: 5px; }
+h2 { color: #8b949e; font-size: 1em; margin-bottom: 20px; font-weight: normal; }
+.section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.section h3 { color: #58a6ff; font-size: 0.9em; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+.row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #21262d; font-size: 0.9em; }
+.row:last-child { border-bottom: none; }
+.label { color: #8b949e; }
+.value { color: #c9d1d9; font-weight: 500; }
+.ok { color: #3fb950; }
+.warn { color: #d29922; }
+.fail { color: #f85149; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.service { padding: 10px; border-radius: 6px; text-align: center; font-size: 0.85em; }
+.service.ok { background: #0d3a1a; border: 1px solid #3fb950; color: #7ee787; }
+.service.fail { background: #3a0d0d; border: 1px solid #f85149; color: #ff7b72; }
+footer { text-align: center; color: #484f58; font-size: 0.75em; margin-top: 30px; }
+a { color: #58a6ff; }
+</style>
+</head>
+<body>
+<h1>🔋 NetHunter Dashboard</h1>
+<h2>$MODEL · Android $ANDROID · Kernel $KERNEL</h2>
+
+<div class="section">
+<h3>System</h3>
+<div class="row"><span class="label">Uptime</span><span class="value">$UPTIME</span></div>
+<div class="row"><span class="label">Temperature</span><span class="value">${TEMP}°C</span></div>
+<div class="row"><span class="label">Memory</span><span class="value">${MEM_AVAIL}MB / ${MEM_TOTAL}MB available</span></div>
+<div class="row"><span class="label">Disk (/data)</span><span class="value">${DISK_USED} / ${DISK_TOTAL} (${DISK_AVAIL} free, ${DISK_PCT} used)</span></div>
+</div>
+
+<div class="section">
+<h3>Services</h3>
+<div class="grid">
+<div class="service ${CHROOT_ARCH}">Arch Chroot<br><small>${CHROOT_ARCH}</small></div>
+<div class="service ${CHROOT_KALI}">Kali Chroot<br><small>${CHROOT_KALI}</small></div>
+<div class="service ${SSHD_2222}">SSH Arch (:2222)<br><small>${SSHD_2222}</small></div>
+<div class="service ${VNC_5901}">VNC KEX (:5901)<br><small>${VNC_5901}</small></div>
+<div class="service ${SSHD_8022}">SSH Termux (:8022)<br><small>${SSHD_8022}</small></div>
+<div class="service ${ADB_WIFI}">ADB Wi-Fi<br><small>${ADB_WIFI}</small></div>
+</div>
+</div>
+
+<div class="section">
+<h3>Quick Links</h3>
+<div class="row"><span class="label">Arch SSH</span><span class="value">ssh -p 2222 archlinux@localhost</span></div>
+<div class="row"><span class="label">Kali SSH</span><span class="value">ssh -p 22 kali@localhost</span></div>
+<div class="row"><span class="label">VNC</span><span class="value">vncviewer localhost:5901</span></div>
+<div class="row"><span class="label">ADB</span><span class="value">adb connect $(getprop ro.product.board 2>/dev/null || echo 'device'):52104</span></div>
+</div>
+
+<footer>Generated $(date) by nh-dashboard · NetHunter Setup v2.0</footer>
+</body>
+</html>
+HTML
+
+echo "dashboard written: $OUTPUT"
+echo "$(date) dashboard generated" >> "$LOG"
+
+# Serve on port 8080 if python is available
+case "${2:-}" in
+    serve)
+        PORT="${3:-8080}"
+        echo "serving dashboard on http://0.0.0.0:$PORT"
+        cd "$(dirname "$OUTPUT")" && python3 -m http.server "$PORT" 2>/dev/null || \
+        python -m SimpleHTTPServer "$PORT" 2>/dev/null || \
+        echo "python not available for serving"
+        ;;
+esac

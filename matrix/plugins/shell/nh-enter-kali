@@ -1,0 +1,11 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# NetHunter terminal Kali entrypoint — elevate with Magisk and enter Kali user shell.
+. /data/local/nhsystem/bin/nh-lib
+
+if [ "$(id -u)" -eq 0 ]; then
+    exec "$NHSYSTEM/bin/nh-shell-kali"
+fi
+
+exec "$MAGISK_SU" --mount-master -c "$NHSYSTEM/bin/nh-shell-kali"

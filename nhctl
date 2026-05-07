@@ -470,6 +470,10 @@ Services:
   kismet {start|stop|status|hop}  Kismet server + channel hopping
   rtl {status|spectrum|adsb|noaa|aprs}  SDR radio tools
   pqc {status|keygen|encrypt|decrypt|sign|verify|keys}  Post-Quantum cryptography toolkit
+  hsm {detect|status|setup|ssh-key|ssh-keys|piv|openpgp|nfc}  Hardware Security Module (YubiKey/SoloKey)
+   mesh {status|setup|start|stop|identity|peers|yggdrasil}  Resilient mesh networking (Reticulum/Yggdrasil)
+   ebpf {status|list|monitor|trace|watch|audit}  eBPF kernel defense, syscall tracing, file integrity
+   threat {status|collect|share|fetch|analyze}  Autonomous threat intelligence (IoC, mesh sharing)
 
 Multi-Device:
   --device <serial>  Run command against specific device (e.g. --device 10.0.0.50:52104)
@@ -686,7 +690,34 @@ case "$cmd" in
         shift 2>/dev/null || true
         adbr "sh /data/local/nhsystem/bin/nh-pqc $action $@"
         ;;
-    container)
+    hsm|yubikey)
+        require_root
+        action="${2:-status}"
+        shift 2>/dev/null || true
+        adbr "sh /data/local/nhsystem/bin/nh-hsm $action $@"
+        ;;
+mesh|reticulum)
+    require_root
+    action="${2:-status}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-mesh $action $@"
+    ;;
+
+ebpf)
+    require_root
+    action="${2:-status}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-ebpf $action $@"
+    ;;
+
+threat)
+    require_root
+    action="${2:-status}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-threat $action $@"
+    ;;
+
+container)
         require_root
         shift 2>/dev/null || true
         adbr "sh /data/local/nhsystem/bin/nh-container $@"

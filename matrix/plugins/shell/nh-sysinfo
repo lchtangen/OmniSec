@@ -1,0 +1,59 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-sysinfo - Detailed system information display
+set -u
+
+echo "══ NetHunter System Info ══"
+echo ""
+
+echo "── Device ──"
+echo "  Model:      $(getprop ro.product.model 2>/dev/null || echo '?')"
+echo "  Codename:   $(getprop ro.product.name 2>/dev/null || echo '?')"
+echo "  Board:      $(getprop ro.product.board 2>/dev/null || echo '?')"
+echo "  Manufacturer: $(getprop ro.product.manufacturer 2>/dev/null || echo '?')"
+
+echo ""
+echo "── Android ──"
+echo "  Release:    $(getprop ro.build.version.release 2>/dev/null || echo '?')"
+echo "  SDK:        $(getprop ro.build.version.sdk 2>/dev/null || echo '?')"
+echo "  Security:   $(getprop ro.build.version.security_patch 2>/dev/null || echo '?')"
+echo "  Build:      $(getprop ro.build.display.id 2>/dev/null || echo '?')"
+echo "  Fingerprint: $(getprop ro.build.fingerprint 2>/dev/null | cut -c1-60 || echo '?')"
+
+echo ""
+echo "── Kernel ──"
+echo "  Release:    $(uname -r 2>/dev/null || echo '?')"
+echo "  Version:    $(uname -v 2>/dev/null | cut -c1-80 || echo '?')"
+echo "  Arch:       $(uname -m 2>/dev/null || echo '?')"
+
+echo ""
+echo "── Hardware ──"
+echo "  CPU:        $(cat /proc/cpuinfo 2>/dev/null | grep 'Hardware' | head -1 | cut -d: -f2 || echo '?')"
+echo "  Cores:      $(nproc --all 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo '?')"
+echo "  ABI:        $(getprop ro.product.cpu.abi 2>/dev/null || echo '?')"
+RAM=$(free -m 2>/dev/null | grep Mem | awk '{print $2}' || echo '?')
+echo "  Memory:     ${RAM}MB"
+
+echo ""
+echo "── Storage ──"
+df -h /data /system /vendor 2>/dev/null | awk 'NR>1 {printf "  %-8s %s used / %s total (%s free)\n", $1, $3, $2, $4}'
+
+echo ""
+echo "── Network ──"
+DEVICE_IP=$(ip -br addr show 2>/dev/null | grep -v '^lo' | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1)
+[ -n "$DEVICE_IP" ] && echo "  IP:         $DEVICE_IP" || echo "  IP:         not connected"
+echo "  MAC:        $(ip link show 2>/dev/null | grep 'link/ether' | head -1 | awk '{print $2}' || echo '?')"
+
+echo ""
+echo "── Sensors ──"
+for tz in /sys/class/thermal/thermal_zone*/temp; do
+    [ -f "$tz" ] || continue
+    TYPE=$(cat "${tz%/temp}/type" 2>/dev/null)
+    TEMP=$(cat "$tz" 2>/dev/null)
+    [ -n "$TEMP" ] && printf "  %-20s %d°C\n" "$TYPE:" "$((TEMP / 1000))"
+done
+
+echo ""
+echo "── Uptime ──"
+UPTIME=$(cat /proc/uptime 2>/dev/null | awk '{printf "%d days %02d:%02d:%02d", $1/86400, ($1%86400)/3600, ($1%3600)/60, $1%60}')
+echo "  $UPTIME"

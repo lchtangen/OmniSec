@@ -1,0 +1,82 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+echo "══════════════════════════════════════════════════════"
+echo "  $NH_LABEL Debug Report — $(date)"
+echo "  $ARCH_LABEL / $KALI_LABEL"
+echo "══════════════════════════════════════════════════════"
+
+echo ""
+echo "== Android =="
+getprop ro.product.model
+getprop ro.product.cpu.abi
+getprop ro.build.version.release
+uname -a
+id
+
+echo ""
+echo "== Disk =="
+df -h /data /sdcard 2>/dev/null || df -h
+du -sh "$NHSYSTEM" /data/data/com.termux/files 2>/dev/null || true
+
+echo ""
+echo "== nhsystem Layout =="
+for p in "$NHSYSTEM" "$NHROOTS/archlinux" "$NHROOTS/kali-arm64" "$NHWORK" "$NHSYSTEM/bin"; do
+    [ -e "$p" ] && echo "  OK  $p" || echo "  --  $p"
+done
+
+echo ""
+echo "== Services =="
+ps -A 2>/dev/null | grep -E 'sshd|vnc|Xvnc|Xtigervnc|tor$' | grep -v grep || true
+ss -tlnp 2>/dev/null | grep -E ':22 |:8022 |:2222 |:590|:9050' || true
+
+echo ""
+echo "== Chroot Commands =="
+KR="$(kali_root)"
+if [ -d "$KR" ]; then
+    mount_root "$KR" || true
+    chroot_exec "$KR" /bin/sh -lc \
+        'echo kali-rootfs; command -v id sudo su zsh sshd; id; sudo -V 2>&1 | head -2'
+fi
+AR="$(arch_root)"
+if [ -d "$AR" ]; then
+    mount_root "$AR" || true
+    chroot_exec "$AR" /bin/sh -lc \
+        'echo arch-rootfs; command -v id sudo su zsh sshd pacman starship; id; pacman --version 2>/dev/null | head -1'
+fi
+
+echo ""
+echo "== Arch Package Count =="
+if [ -d "$AR" ]; then
+    chroot_exec "$AR" /bin/sh -c 'pacman -Q 2>/dev/null | wc -l | xargs echo "  packages installed:"'
+fi
+
+echo ""
+echo "== Privacy / VPN =="
+if [ -d "$AR" ]; then
+    chroot_exec "$AR" /bin/sh -c \
+        'wg show 2>/dev/null || echo "  WireGuard: no active interface"
+         pgrep -x tor >/dev/null 2>&1 && echo "  Tor: running" || echo "  Tor: not running"'
+fi
+
+echo ""
+echo "== Last Backup =="
+LATEST=$(ls -d "$NHSYSTEM/backups/workspace-"* 2>/dev/null | sort | tail -1 || echo "")
+[ -n "$LATEST" ] && echo "  $LATEST ($(du -sh "$LATEST" 2>/dev/null | awk '{print $1}'))" \
+                 || echo "  no backups found"
+
+echo ""
+echo "== Termux =="
+if [ -d /data/data/com.termux/files ]; then
+    du -sh /data/data/com.termux/files 2>/dev/null | awk '{print "  size: " $1}'
+    [ -x /data/data/com.termux/files/usr/bin/dpkg ] && \
+        echo "  packages: $(dpkg -l 2>/dev/null | grep ^ii | wc -l) installed" || true
+else
+    echo "  Termux not installed"
+fi
+
+echo ""
+echo "══════════════════════════════════════════════════════"

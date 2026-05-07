@@ -1,0 +1,34 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# Update Arch Linux packages inside chroot
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+root="$(arch_root)"
+[ -d "$root" ] || { echo "arch rootfs not found: $root" >&2; exit 1; }
+
+mount_root "$root"
+
+# Reboots clear the tmpfs cache mount — remount before pacman to avoid
+# false "not enough free disk space" errors on Android encrypted-ext4
+if ! { mountpoint -q "$root/var/cache/pacman/pkg" 2>/dev/null || \
+       grep -qs " $root/var/cache/pacman/pkg " /proc/mounts 2>/dev/null || \
+       grep -qs " $root/var/cache/pacman/pkg " /proc/self/mountinfo 2>/dev/null; }; then
+    mkdir -p "$root/var/cache/pacman/pkg"
+    # Calculate safe tmpfs size: 50% of MemAvailable, capped at 600 MB
+    _avail_mb="$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 1200)"
+    _tmpfs_mb=$(( _avail_mb / 2 ))
+    [ "$_tmpfs_mb" -gt 600 ] && _tmpfs_mb=600
+    [ "$_tmpfs_mb" -lt 100 ] && _tmpfs_mb=100
+    mount -t tmpfs -o size="${_tmpfs_mb}m",mode=755 tmpfs "$root/var/cache/pacman/pkg" || true
+fi
+
+echo "[nh-update] updating Arch ARM64 packages"
+/system/bin/chroot "$root" /usr/bin/env -i \
+    HOME=/root USER=root LOGNAME=root \
+    TERM=xterm-256color LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    /usr/bin/pacman -Syu --noconfirm
+
+echo "[nh-update] done"

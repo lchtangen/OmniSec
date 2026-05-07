@@ -1,0 +1,17 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-web — Web server management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-web - Web Server Management
+Usage: nh-web {status|start|stop|deploy|help}
+EOF
+}
+case "${1:-status}" in
+    status) if pgrep nginx >/dev/null; then echo "Nginx running"; elif pgrep apache2 >/dev/null; then echo "Apache running"; else echo "No web server"; fi ;;
+    start) nginx 2>/dev/null || apache2 2>/dev/null || echo "No web server installed" ;;
+    stop) pkill nginx 2>/dev/null; pkill apache2 2>/dev/null ;;
+    deploy) cp -r "$2" /data/local/nhsystem/www/ 2>/dev/null ;;
+    help|*) show_usage ;;
+esac

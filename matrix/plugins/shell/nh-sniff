@@ -1,0 +1,146 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-sniff - Packet capture wrapper (tcpdump/tshark)
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+CAP_DIR=$NHSYSTEM/workspaces/main/captures
+DATE=$(date +%Y%m%d-%H%M%S)
+
+usage() {
+    cat <<EOF
+nh-sniff - Packet capture utility
+
+Usage: nh-sniff <command> [options]
+
+Commands:
+  start [interface]   Start tcpdump capture
+  stop                Stop active capture
+  status              Show capture status
+  list                List saved captures
+  analyze <file>      Analyze pcap with tshark
+  interfaces          List available interfaces
+
+Examples:
+  nh-sniff start wlan0
+  nh-sniff start wlan0 -p 80,443
+  nh-sniff analyze capture.pcap
+EOF
+    exit 1
+}
+
+ensure_capdir() { mkdir -p "$CAP_DIR"; }
+
+find_tcpdump() {
+    for p in /data/local/nhsystem/roots/archlinux/usr/bin/tcpdump \
+             /data/local/nhsystem/kali-arm64/usr/bin/tcpdump \
+             /system/bin/tcpdump /system/xbin/tcpdump; do
+        [ -x "$p" ] && echo "$p" && return 0
+    done
+    return 1
+}
+
+find_tshark() {
+    for p in /data/local/nhsystem/roots/archlinux/usr/bin/tshark \
+             /data/local/nhsystem/kali-arm64/usr/bin/tshark; do
+        [ -x "$p" ] && echo "$p" && return 0
+    done
+    return 1
+}
+
+cmd_start() {
+    local iface="${1:-wlan0}"
+    local filter=""
+    local pidfile="$CAP_DIR/.capture.pid"
+
+    ensure_capdir
+
+    local tcpdump=$(find_tcpdump)
+    [ -n "$tcpdump" ] || { echo "tcpdump not found"; exit 1; }
+
+    if [ -f "$pidfile" ] && kill -0 $(cat "$pidfile") 2>/dev/null; then
+        echo "Capture already running (PID: $(cat $pidfile))"
+        exit 1
+    fi
+
+    local outfile="$CAP_DIR/capture-$DATE.pcap"
+    shift 2>/dev/null || true
+    [ $# -ge 2 ] && [ "$1" = "-p" ] && filter="port $2" && shift 2
+
+    echo "Starting capture on $iface -> $outfile"
+    if [ -n "$filter" ]; then
+        $tcpdump -i "$iface" -w "$outfile" $filter &
+    else
+        $tcpdump -i "$iface" -w "$outfile" &
+    fi
+    echo $! > "$pidfile"
+    echo "PID: $(cat $pidfile)"
+}
+
+cmd_stop() {
+    local pidfile="$CAP_DIR/.capture.pid"
+    if [ -f "$pidfile" ]; then
+        local pid=$(cat "$pidfile")
+        kill "$pid" 2>/dev/null && echo "Capture stopped (PID: $pid)" || echo "Capture not running"
+        rm -f "$pidfile"
+    else
+        echo "No active capture"
+    fi
+}
+
+cmd_status() {
+    local pidfile="$CAP_DIR/.capture.pid"
+    if [ -f "$pidfile" ] && kill -0 $(cat "$pidfile") 2>/dev/null; then
+        echo "Capture active (PID: $(cat $pidfile))"
+        ls -lh "$CAP_DIR"/*.pcap 2>/dev/null | tail -1
+    else
+        echo "No active capture"
+    fi
+}
+
+cmd_list() {
+    ensure_capdir
+    local caps=$(ls "$CAP_DIR"/*.pcap 2>/dev/null)
+    if [ -z "$caps" ]; then
+        echo "No captures found"
+    else
+        echo "Saved captures:"
+        ls -lh "$CAP_DIR"/*.pcap | awk '{print "  " $NF " (" $5 ")"}'
+    fi
+}
+
+cmd_analyze() {
+    local pcap="${1:-}"
+    [ -z "$pcap" ] && { echo "Usage: nh-sniff analyze <file>"; exit 1; }
+    [ -f "$pcap" ] || pcap="$CAP_DIR/$pcap"
+    [ -f "$pcap" ] || { echo "File not found: $pcap"; exit 1; }
+
+    local tshark=$(find_tshark)
+    if [ -n "$tshark" ]; then
+        echo "Protocol hierarchy:"
+        $tshark -q -z io,phs -r "$pcap" 2>/dev/null | head -20
+        echo ""
+        echo "Top talkers:"
+        $tshark -q -z conv,ip -r "$pcap" 2>/dev/null | head -10
+    else
+        local tcpdump=$(find_tcpdump)
+        $tcpdump -nn -r "$pcap" 2>/dev/null | head -20
+        echo "... (install tshark for full analysis)"
+    fi
+}
+
+cmd_interfaces() {
+    ip link show 2>/dev/null | grep -E '^[0-9]' | awk '{print "  " $2}' | tr -d ':'
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    start) shift; cmd_start "$@" ;;
+    stop) cmd_stop ;;
+    status) cmd_status ;;
+    list) cmd_list ;;
+    analyze) shift; cmd_analyze "${1:-}" ;;
+    interfaces) cmd_interfaces ;;
+    *) usage ;;
+esac

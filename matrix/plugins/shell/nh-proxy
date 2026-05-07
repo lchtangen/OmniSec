@@ -1,0 +1,16 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-proxy — Proxy management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-proxy - Proxy Management
+Usage: nh-proxy {status|set|clear|help}
+EOF
+}
+case "${1:-status}" in
+    status) echo "Proxy: $(getprop net.proxy 2>/dev/null || echo 'Not set')" ;;
+    set) setprop net.proxy "$2" 2>/dev/null; echo "Proxy set to $2" ;;
+    clear) setprop net.proxy "" 2>/dev/null; echo "Proxy cleared" ;;
+    help|*) show_usage ;;
+esac

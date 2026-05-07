@@ -1,0 +1,44 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-temp - CPU/GPU/SoC temperature monitor
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+
+echo "══ SoC Temperature Monitor ══"
+echo ""
+
+# Thermal zones
+for tz in /sys/class/thermal/thermal_zone*; do
+    [ -d "$tz" ] || continue
+    TYPE=$(cat "$tz/type" 2>/dev/null)
+    TEMP=$(cat "$tz/temp" 2>/dev/null)
+    [ -n "$TEMP" ] || continue
+    TEMP_C=$((TEMP / 1000))
+    # Color based on temp
+    if [ "$TEMP_C" -lt 50 ]; then
+        COLOR="[32m"  # green
+    elif [ "$TEMP_C" -lt 70 ]; then
+        COLOR="[33m"  # yellow
+    else
+        COLOR="[31m"  # red
+    fi
+    printf "  \033${COLOR}%-20s\033[0m %d°C\n" "${TYPE}:" "$TEMP_C"
+done
+
+# Battery temp
+BAT_TEMP=$(cat /sys/class/power_supply/battery/temp 2>/dev/null)
+if [ -n "$BAT_TEMP" ]; then
+    BAT_C=$((BAT_TEMP / 10))
+    printf "  \033[36m%-20s\033[0m %d°C\n" "battery:" "$BAT_C"
+fi
+
+# CPU freq summary
+echo ""
+echo "── CPU Freqs ──"
+for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq; do
+    [ -f "$cpu" ] || continue
+    FREQ=$(cat "$cpu" 2>/dev/null)
+    CPU_NUM=$(echo "$cpu" | grep -oP 'cpu\K\d+')
+    printf "  CPU%s: %dMHz\n" "$CPU_NUM" "$((FREQ / 1000))"
+done

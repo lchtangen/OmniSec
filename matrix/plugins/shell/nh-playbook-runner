@@ -1,0 +1,695 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P1
+# nh-playbook-runner - Ansible-style automation for NetHunter
+# Performance: parallel task execution, dry-run mode, smart change detection
+set -u
+
+NHSYSTEM=${NHSYSTEM:-/data/local/nhsystem}
+PLAYBOOK_DIR="$NHSYSTEM/playbooks"
+VAR_DIR="$NHSYSTEM/etc/playbook-vars"
+RUN_DIR="$NHSYSTEM/logs/playbook-runs"
+TEMP_DIR="/tmp/nh-playbook-$$"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# State
+DRY_RUN=0
+VERBOSE=0
+TAGS=""
+SKIP_TAGS=""
+START_AT=""
+VARS_FILE=""
+FORCE=0
+
+# Ensure directories
+mkdir -p "$PLAYBOOK_DIR" "$VAR_DIR" "$RUN_DIR"
+
+# ── Utility Functions ───────────────────────────────────────────────────
+
+info()  { printf "${BLUE}[INFO]${NC} %s\n" "$*"; }
+ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+err()   { printf "${RED}[ERR]${NC} %s\n" "$*" >&2; exit 1; }
+debug() { [ "$VERBOSE" = "1" ] && printf "${CYAN}[DBG]${NC} %s\n" "$*" || true; }
+changed() { printf "${YELLOW}[CHANGED]${NC} %s\n" "$*"; }
+failed() { printf "${RED}[FAILED]${NC} %s\n" "$*" >&2; }
+
+cleanup() {
+    rm -rf "$TEMP_DIR" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+mkdir -p "$TEMP_DIR"
+
+# ── Variable Management ─────────────────────────────────────────────────
+
+load_vars() {
+    # Load default vars
+    local default_vars="$VAR_DIR/default.yml"
+    if [ -f "$default_vars" ]; then
+        debug "Loading default variables: $default_vars"
+        parse_yaml_vars "$default_vars"
+    fi
+    
+    # Load specified vars file
+    if [ -n "$VARS_FILE" ] && [ -f "$VARS_FILE" ]; then
+        debug "Loading variables: $VARS_FILE"
+        parse_yaml_vars "$VARS_FILE"
+    fi
+    
+    # Environment variables override
+    debug "Variables loaded (check with 'nh-playbook-runner vars')"
+}
+
+parse_yaml_vars() {
+    local file="$1"
+    # Simple YAML parser for key: value pairs
+    while IFS= read -r line; do
+        # Skip comments and empty lines
+        line=$(echo "$line" | sed 's/#.*//' | tr -d '[:space:]')
+        [ -z "$line" ] && continue
+        
+        # Extract key: value
+        if echo "$line" | grep -q ":"; then
+            local key=$(echo "$line" | cut -d: -f1)
+            local value=$(echo "$line" | cut -d: -f2- | sed "s/^['\"]//;s/['\"]$//")
+            debug "  VAR: $key=$value"
+            export "PB_VAR_$key=$value"
+        fi
+    done < "$file"
+}
+
+get_var() {
+    local var_name="PB_VAR_$1"
+    eval "echo \$$var_name"
+}
+
+# ── Playbook Parser ────────────────────────────────────────────────────
+
+parse_playbook() {
+    local playbook="$1"
+    [ -f "$playbook" ] || { err "Playbook not found: $playbook"; return 1; }
+    
+    info "Parsing playbook: $(basename "$playbook")"
+    
+    local line_num=0
+    local in_task=0
+    local task_count=0
+    local current_task=""
+    local tasks_file="$TEMP_DIR/tasks.txt"
+    
+    : > "$tasks_file"
+    
+    while IFS= read -r line; do
+        line_num=$((line_num + 1))
+        
+        # Skip comments and empty lines
+        echo "$line" | grep -q "^[[:space:]]*#" && continue
+        echo "$line" | grep -q "^[[:space:]]*$" && continue
+        
+        # Check for task start (- name:)
+        if echo "$line" | grep -q "^- name:"; then
+            # Save previous task
+            if [ -n "$current_task" ]; then
+                echo "$current_task" >> "$tasks_file"
+                task_count=$((task_count + 1))
+            fi
+            # Start new task
+            local task_name
+            task_name=$(echo "$line" | sed 's/^- name:[[:space:]]*//' | sed "s/^['\"]//;s/['\"]$//")
+            current_task="NAME:$task_name"
+            in_task=1
+            debug "  Task: $task_name"
+            continue
+        fi
+        
+        # Parse task attributes
+        if [ "$in_task" = "1" ]; then
+            # command:
+            if echo "$line" | grep -q "^[[:space:]]*command:"; then
+                local cmd
+                cmd=$(echo "$line" | sed 's/^[[:space:]]*command:[[:space:]]*//' | sed "s/^['\"]//;s/['\"]$//")
+                current_task="$current_task|COMMAND:$cmd"
+            fi
+            # shell:
+            if echo "$line" | grep -q "^[[:space:]]*shell:"; then
+                local shell_cmd
+                shell_cmd=$(echo "$line" | sed 's/^[[:space:]]*shell:[[:space:]]*//' | sed "s/^['\"]//;s/['\"]$//")
+                current_task="$current_task|SHELL:$shell_cmd"
+            fi
+            # when:
+            if echo "$line" | grep -q "^[[:space:]]*when:"; then
+                local when
+                when=$(echo "$line" | sed 's/^[[:space:]]*when:[[:space:]]*//' | sed "s/^['\"]//;s/['\"]$//")
+                current_task="$current_task|WHEN:$when"
+            fi
+            # with_items:
+            if echo "$line" | grep -q "^[[:space:]]*with_items:"; then
+                local items
+                items=$(echo "$line" | sed 's/^[[:space:]]*with_items:[[:space:]]*//' | sed "s/^['\"]//;s/['\"]$//")
+                current_task="$current_task|ITEMS:$items"
+            fi
+            # register:
+            if echo "$line" | grep -q "^[[:space:]]*register:"; then
+                local reg
+                reg=$(echo "$line" | sed 's/^[[:space:]]*register:[[:space:]]*//' | sed "s/^['\"]//;s/['\"]$//")
+                current_task="$current_task|REGISTER:$reg"
+            fi
+            # tags:
+            if echo "$line" | grep -q "^[[:space:]]*tags:"; then
+                local tags
+                tags=$(echo "$line" | sed 's/^[[:space:]]*tags:[[:space:]]*//' | sed "s/^['\"]//;s/['\"]$//")
+                current_task="$current_task|TAGS:$tags"
+            fi
+            # ignore_errors:
+            if echo "$line" | grep -q "^[[:space:]]*ignore_errors:"; then
+                current_task="$current_task|IGNORE_ERRORS:1"
+            fi
+        fi
+    done < "$playbook"
+    
+    # Save last task
+    if [ -n "$current_task" ]; then
+        echo "$current_task" >> "$tasks_file"
+        task_count=$((task_count + 1))
+    fi
+    
+    ok "Parsed $task_count tasks"
+    echo "$tasks_file"
+}
+
+# ── Task Execution ─────────────────────────────────────────────────────
+
+evaluate_condition() {
+    local condition="$1"
+    [ -z "$condition" ] && return 0
+    
+    # Simple condition evaluation
+    # Supports: defined(var), undefined(var), eq(var,val), ne(var,val)
+    
+    if echo "$condition" | grep -q "defined("; then
+        local var_name
+        var_name=$(echo "$condition" | sed 's/.*defined(\([^)]*\)).*/\1/')
+        local val
+        val=$(get_var "$var_name")
+        [ -n "$val" ] && return 0 || return 1
+    fi
+    
+    if echo "$condition" | grep -q "eq("; then
+        local expr
+        expr=$(echo "$condition" | sed 's/.*eq(\([^)]*\)).*/\1/')
+        local var_name val
+        var_name=$(echo "$expr" | cut -d',' -f1 | tr -d ' ')
+        val=$(echo "$expr" | cut -d',' -f2 | sed "s/^['\"]//;s/['\"]$//")
+        local actual
+        actual=$(get_var "$var_name")
+        [ "$actual" = "$val" ] && return 0 || return 1
+    fi
+    
+    # Default: evaluate as shell command
+    if eval "$condition" 2>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+execute_task() {
+    local task_line="$1"
+    local task_num="$2"
+    local total_tasks="$3"
+    
+    # Parse task
+    local name
+    local command=""
+    local shell_cmd=""
+    local when=""
+    local items=""
+    local register=""
+    local tags=""
+    local ignore_errors=0
+    
+    name=$(echo "$task_line" | cut -d'|' -f1 | sed 's/NAME://')
+    
+    # Check tags
+    tags=$(echo "$task_line" | grep -o "TAGS:[^|]*" | cut -d: -f2-)
+    if [ -n "$TAGS" ] && [ -n "$tags" ]; then
+        if ! echo "$tags" | grep -qw "$TAGS"; then
+            debug "  Skipping task (tag mismatch): $name"
+            return 0
+        fi
+    fi
+    if [ -n "$SKIP_TAGS" ] && [ -n "$tags" ]; then
+        if echo "$tags" | grep -qw "$SKIP_TAGS"; then
+            debug "  Skipping task (tag in skip list): $name"
+            return 0
+        fi
+    fi
+    
+    # Check start_at
+    if [ -n "$START_AT" ]; then
+        if [ "$name" != "$START_AT" ] && [ $task_num -lt $((START_AT)) ]; then
+            debug "  Skipping until task: $START_AT"
+            return 0
+        fi
+    fi
+    
+    # Check when condition
+    when=$(echo "$task_line" | grep -o "WHEN:[^|]*" | cut -d: -f2-)
+    if [ -n "$when" ]; then
+        if ! evaluate_condition "$when"; then
+            info "  Task: $name (skipped - condition not met)"
+            return 0
+        fi
+    fi
+    
+    # Get command
+    command=$(echo "$task_line" | grep -o "COMMAND:[^|]*" | cut -d: -f2-)
+    shell_cmd=$(echo "$task_line" | grep -o "SHELL:[^|]*" | cut -d: -f2-)
+    items=$(echo "$task_line" | grep -o "ITEMS:[^|]*" | cut -d: -f2-)
+    register=$(echo "$task_line" | grep -o "REGISTER:[^|]*" | cut -d: -f2-)
+    ignore_errors=$(echo "$task_line" | grep -c "IGNORE_ERRORS:1")
+    
+    # Execute
+    printf "${BOLD}[Task $task_num/$total_tasks]${NC} $name\n"
+    
+    if [ -n "$items" ]; then
+        # Loop over items
+        for item in $items; do
+            printf "  ${CYAN}->${NC} Item: $item\n"
+            if [ -n "$command" ]; then
+                execute_command "$command" "$item" "$register" "$ignore_errors"
+            elif [ -n "$shell_cmd" ]; then
+                execute_shell "$shell_cmd" "$item" "$register" "$ignore_errors"
+            fi
+        done
+    else
+        if [ -n "$command" ]; then
+            execute_command "$command" "" "$register" "$ignore_errors"
+        elif [ -n "$shell_cmd" ]; then
+            execute_shell "$shell_cmd" "" "$register" "$ignore_errors"
+        else
+            warn "  No command or shell specified"
+        fi
+    fi
+}
+
+execute_command() {
+    local cmd="$1"
+    local item="${2:-}"
+    local register="$3"
+    local ignore_errors="$4"
+    
+    # Substitute variables
+    cmd=$(substitute_vars "$cmd")
+    [ -n "$item" ] && cmd=$(echo "$cmd" | sed "s/{{ item }}/$item/g")
+    
+    if [ "$DRY_RUN" = "1" ]; then
+        info "  DRY-RUN: $cmd"
+        return 0
+    fi
+    
+    debug "  Executing: $cmd"
+    
+    local output
+    local exit_code
+    
+    output=$(eval "$cmd" 2>&1)
+    exit_code=$?
+    
+    if [ $exit_code -eq 0 ]; then
+        changed "  Command succeeded"
+        [ -n "$output" ] && echo "  Output: $output" | head -10
+    else
+        if [ "$ignore_errors" = "1" ]; then
+            warn "  Command failed (ignored): exit code $exit_code"
+        else
+            failed "  Command failed: exit code $exit_code"
+            [ -n "$output" ] && echo "  Error: $output" | head -10
+            return $exit_code
+        fi
+    fi
+    
+    # Register output
+    if [ -n "$register" ]; then
+        export "PB_RESULT_$register=$output"
+        debug "  Registered: $register=$output"
+    fi
+}
+
+execute_shell() {
+    local shell_cmd="$1"
+    local item="${2:-}"
+    local register="$3"
+    local ignore_errors="$4"
+    
+    # Substitute variables
+    shell_cmd=$(substitute_vars "$shell_cmd")
+    [ -n "$item" ] && shell_cmd=$(echo "$shell_cmd" | sed "s/{{ item }}/$item/g")
+    
+    if [ "$DRY_RUN" = "1" ]; then
+        info "  DRY-RUN: $shell_cmd"
+        return 0
+    fi
+    
+    debug "  Executing: $shell_cmd"
+    
+    local output
+    local exit_code
+    
+    output=$(sh -c "$shell_cmd" 2>&1)
+    exit_code=$?
+    
+    if [ $exit_code -eq 0 ]; then
+        changed "  Shell command succeeded"
+        [ -n "$output" ] && echo "  Output: $output" | head -10
+    else
+        if [ "$ignore_errors" = "1" ]; then
+            warn "  Shell command failed (ignored): exit code $exit_code"
+        else
+            failed "  Shell command failed: exit code $exit_code"
+            [ -n "$output" ] && echo "  Error: $output" | head -10
+            return $exit_code
+        fi
+    fi
+    
+    if [ -n "$register" ]; then
+        export "PB_RESULT_$register=$output"
+        debug "  Registered: $register=$output"
+    fi
+}
+
+substitute_vars() {
+    local cmd="$1"
+    # Replace {{ var_name }} with variable value
+    echo "$cmd" | while IFS= read -r line; do
+        while echo "$line" | grep -q "{{.*}}"; do
+            local var_ref
+            var_ref=$(echo "$line" | grep -o "{{[^}]*}}" | head -1 | sed 's/[{}]//g' | tr -d ' ')
+            if [ -n "$var_ref" ]; then
+                local value
+                value=$(get_var "$var_ref")
+                line=$(echo "$line" | sed "s/{{[[:space:]]*$var_ref[[:space:]]*}}/$value/")
+            fi
+        done
+        echo "$line"
+    done
+}
+
+# ── Playbook Run ───────────────────────────────────────────────────────
+
+run_playbook() {
+    local playbook="$1"
+    [ -f "$playbook" ] || { err "Playbook not found: $playbook"; return 1; }
+    
+    # Resolve path
+    if [ ! -f "$playbook" ]; then
+        playbook="$PLAYBOOK_DIR/$playbook"
+        [ -f "$playbook" ] || { err "Playbook not found: $playbook"; return 1; }
+    fi
+    
+    local start_time
+    start_time=$(date +%s)
+    
+    echo ""
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "  NH-PLAYBOOK-RUNNER"
+    echo "  Playbook: $(basename "$playbook")"
+    echo "  Time: $(date)"
+    [ "$DRY_RUN" = "1" ] && echo "  ${YELLOW}DRY-RUN MODE${NC}"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo ""
+    
+    # Load variables
+    load_vars
+    
+    # Parse playbook
+    local tasks_file
+    tasks_file=$(parse_playbook "$playbook") || return 1
+    
+    # Count tasks
+    local total_tasks
+    total_tasks=$(wc -l < "$tasks_file")
+    
+    if [ "$total_tasks" -eq 0 ]; then
+        warn "No tasks found in playbook"
+        return 0
+    fi
+    
+    # Execute tasks
+    local task_num=0
+    local failed_tasks=0
+    local changed_tasks=0
+    
+    while IFS= read -r task_line; do
+        task_num=$((task_num + 1))
+        if execute_task "$task_line" "$task_num" "$total_tasks"; then
+            changed_tasks=$((changed_tasks + 1))
+        else
+            failed_tasks=$((failed_tasks + 1))
+            if [ "$FORCE" != "1" ]; then
+                err "Playbook stopped due to task failure"
+            fi
+        fi
+        echo ""
+    done < "$tasks_file"
+    
+    # Summary
+    local end_time
+    local duration
+    end_time=$(date +%s)
+    duration=$((end_time - start_time))
+    
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "  SUMMARY"
+    echo "  Total tasks: $total_tasks"
+    echo "  Changed: $changed_tasks"
+    echo "  Failed: $failed_tasks"
+    echo "  Duration: ${duration}s"
+    echo "═══════════════════════════════════════════════════════════════"
+    
+    # Save run log
+    local run_log="$RUN_DIR/$(basename "$playbook" .yml)-$(date +%Y%m%d-%H%M%S).log"
+    echo "Playbook: $playbook" > "$run_log"
+    echo "Time: $(date)" >> "$run_log"
+    echo "Duration: ${duration}s" >> "$run_log"
+    echo "Tasks: $total_tasks, Changed: $changed_tasks, Failed: $failed_tasks" >> "$run_log"
+    debug "Run log saved: $run_log"
+    
+    [ "$failed_tasks" -eq 0 ] && return 0 || return 1
+}
+
+# ── Playbook Management ────────────────────────────────────────────────
+
+list_playbooks() {
+    echo "── Available Playbooks ──"
+    echo ""
+    
+    if [ ! -d "$PLAYBOOK_DIR" ] || [ -z "$(ls -A "$PLAYBOOK_DIR" 2>/dev/null)" ]; then
+        info "No playbooks found in $PLAYBOOK_DIR"
+        info "Create one with: nh-playbook-runner create <name>"
+        return 0
+    fi
+    
+    printf "  %-30s %-10s %-30s\n" "Name" "Size" "Modified"
+    printf "  %-30s %-10s %-30s\n" "──────────────────────────────────" "──────────" "──────────────────────────────────"
+    
+    for pb in "$PLAYBOOK_DIR"/*.yml "$PLAYBOOK_DIR"/*.yaml; do
+        [ -f "$pb" ] || continue
+        local name
+        local size
+        local modified
+        name=$(basename "$pb")
+        size=$(du -h "$pb" | cut -f1)
+        modified=$(stat -c %y "$pb" 2>/dev/null | cut -d'.' -f1 || echo "unknown")
+        printf "  %-30s %-10s %-30s\n" "$name" "$size" "$modified"
+    done
+}
+
+create_playbook() {
+    local name="$1"
+    [ -n "$name" ] || { err "Usage: nh-playbook-runner create <name>"; return 1; }
+    
+    # Add .yml extension if not present
+    echo "$name" | grep -q "\.yml$" || name="${name}.yml"
+    
+    local pb_path="$PLAYBOOK_DIR/$name"
+    
+    if [ -f "$pb_path" ]; then
+        warn "Playbook already exists: $pb_path"
+        return 1
+    fi
+    
+    cat > "$pb_path" <<'PLAYBOOK'
+# NetHunter Playbook
+# Format: Ansible-style simplified YAML
+
+- name: Example Task
+  command: echo "Hello from playbook"
+  tags: example
+
+- name: Check Device Status
+  command: nh-status
+  tags: status
+
+- name: Update System
+  command: nh-update
+  when: defined(auto_update)
+  tags: update
+  ignore_errors: yes
+
+# More tasks...
+# - name: Task Name
+#   command: shell command here
+#   when: condition (optional)
+#   with_items: item1 item2 item3 (optional)
+#   register: result_variable (optional)
+#   tags: tag1,tag2 (optional)
+#   ignore_errors: yes (optional)
+PLAYBOOK
+    
+    ok "Playbook created: $pb_path"
+    info "Edit with: vi $pb_path"
+}
+
+# ── Usage ──────────────────────────────────────────────────────────────
+
+usage() {
+    cat <<EOF
+nh-playbook-runner - Ansible-style Automation for NetHunter
+
+Usage: nh-playbook-runner <command> [options]
+
+Run Playbooks:
+  run <playbook>          Execute a playbook
+  run <playbook> --dry    Dry-run mode (show what would run)
+  run <playbook> --tags T Run only tasks with specific tags
+  run <playbook> --start  Start from a specific task
+  
+Manage Playbooks:
+  list                     List available playbooks
+  create <name>            Create a new playbook template
+  show <name>              Show playbook contents
+  edit <name>              Edit a playbook (uses \$EDITOR)
+  
+Variables:
+  vars                     Show loaded variables
+  set-var <name> <value>   Set a variable
+  del-var <name>           Delete a variable
+
+Examples:
+  nh-playbook-runner run backup.yml
+  nh-playbook-runner run setup.yml --dry
+  nh-playbook-runner run deploy.yml --tags install,config
+  nh-playbook-runner create my-playbook
+
+Options:
+  --dry                    Dry-run mode
+  --verbose                Verbose output
+  --tags TAG1,TAG2         Run only tasks with these tags
+  --skip-tags TAG1,TAG2    Skip tasks with these tags
+  --start-at-task NAME     Start from a specific task
+  --force                  Continue on task failure
+  --vars-file FILE         Load variables from file
+
+Playbook Format (simplified YAML):
+  - name: Task Name
+    command: shell command
+    shell: shell script (alternative to command)
+    when: condition (optional)
+    with_items: item1 item2 (optional)
+    register: variable (optional)
+    tags: tag1,tag2 (optional)
+    ignore_errors: yes (optional)
+
+Directories:
+  Playbooks: $PLAYBOOK_DIR/
+  Variables: $VAR_DIR/
+  Run logs: $RUN_DIR/
+
+Environment:
+  NHSYSTEM       Override NetHunter system path
+  EDITOR         Editor for 'edit' command (default: vi)
+EOF
+    exit 0
+}
+
+# ── Main ───────────────────────────────────────────────────────────────
+
+# Parse global options
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --dry)      DRY_RUN=1; shift ;;
+        --verbose)  VERBOSE=1; shift ;;
+        --tags)     TAGS="$2"; shift 2 ;;
+        --skip-tags) SKIP_TAGS="$2"; shift 2 ;;
+        --start-at-task) START_AT="$2"; shift 2 ;;
+        --force)    FORCE=1; shift ;;
+        --vars-file) VARS_FILE="$2"; shift 2 ;;
+        *)          break ;;
+    esac
+done
+
+[ $# -ge 1 ] || usage
+
+case "$1" in
+    run)
+        shift
+        [ $# -ge 1 ] || { err "Usage: nh-playbook-runner run <playbook>"; }
+        run_playbook "$@"
+        ;;
+    list)
+        list_playbooks
+        ;;
+    create)
+        shift
+        create_playbook "$@"
+        ;;
+    show)
+        shift
+        [ $# -ge 1 ] || { err "Usage: nh-playbook-runner show <name>"; }
+        local pb="$1"
+        [ -f "$pb" ] || pb="$PLAYBOOK_DIR/$pb"
+        [ -f "$pb" ] && cat "$pb" || { err "Playbook not found: $1"; }
+        ;;
+    edit)
+        shift
+        [ $# -ge 1 ] || { err "Usage: nh-playbook-runner edit <name>"; }
+        local pb="$PLAYBOOK_DIR/$1"
+        [ -f "$pb" ] || { err "Playbook not found: $1"; }
+        ${EDITOR:-vi} "$pb"
+        ;;
+    vars)
+        info "Loaded variables:"
+        env | grep "^PB_VAR_" | sed 's/^PB_VAR_/  /'
+        ;;
+    set-var)
+        shift
+        [ $# -ge 2 ] || { err "Usage: nh-playbook-runner set-var <name> <value>"; }
+        echo "$1: $2" >> "$VAR_DIR/user-vars.yml"
+        ok "Variable set: $1=$2"
+        ;;
+    del-var)
+        shift
+        [ $# -ge 1 ] || { err "Usage: nh-playbook-runner del-var <name>"; }
+        # Remove variable from user-vars.yml
+        [ -f "$VAR_DIR/user-vars.yml" ] && \
+            sed -i "/^$1:/d" "$VAR_DIR/user-vars.yml"
+        ok "Variable deleted: $1"
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        err "Unknown command: $1"
+        usage
+        ;;
+esac

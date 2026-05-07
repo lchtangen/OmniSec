@@ -1,0 +1,114 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-log-analyzer — Log analysis with pattern detection
+set -euo pipefail
+
+LOG_DIR="/data/local/nhsystem/logs"
+PATTERNS_DIR="/data/local/nhsystem/config/log-patterns"
+
+show_usage() {
+    cat <<EOF
+nh-log-analyzer - Log Analysis Tool
+
+Usage: nh-log-analyzer <command> [args]
+
+Commands:
+  scan [log]     Scan log for suspicious patterns
+  summary [log]  Show log summary statistics
+  errors [log]   Extract error messages
+  watch [log]    Monitor log in real-time
+  patterns       Manage detection patterns
+  help           Show this message
+EOF
+}
+
+init_patterns() {
+    mkdir -p "$PATTERNS_DIR"
+    if [ ! -f "$PATTERNS_DIR/suspicious.txt" ]; then
+        cat > "$PATTERNS_DIR/suspicious.txt" <<'EOF'
+# Suspicious patterns
+error
+failed
+denied
+unauthorized
+exploit
+injection
+overflow
+segfault
+permission denied
+authentication failure
+EOF
+    fi
+}
+
+cmd_scan() {
+    local log="${1:-$LOG_DIR/nh-all.log}"
+    init_patterns
+    
+    echo "══ Scanning Log: $log ═════════════════════"
+    if [ ! -f "$log" ]; then
+        echo "  Log not found: $log"
+        return 1
+    fi
+    
+    echo "── Suspicious Patterns ──"
+    grep -i -f "$PATTERNS_DIR/suspicious.txt" "$log" 2>/dev/null | head -20 || echo "  No matches found"
+}
+
+cmd_summary() {
+    local log="${1:-$LOG_DIR/nh-all.log}"
+    
+    echo "══ Log Summary: $log ═════════════════════"
+    if [ ! -f "$log" ]; then
+        echo "  Log not found: $log"
+        return 1
+    fi
+    
+    echo "  Total lines: $(wc -l < "$log")"
+    echo "  File size:   $(du -h "$log" | awk '{print $1}')"
+    echo ""
+    echo "── Top Errors ──"
+    grep -i "error" "$log" 2>/dev/null | sort | uniq -c | sort -nr | head -5 || echo "  No errors found"
+}
+
+cmd_errors() {
+    local log="${1:-$LOG_DIR/nh-all.log}"
+    
+    echo "══ Error Messages: $log ══════════════════"
+    if [ ! -f "$log" ]; then
+        echo "  Log not found: $log"
+        return 1
+    fi
+    
+    grep -i "error\|fail\|denied\|exception" "$log" 2>/dev/null | head -50 || echo "  No errors found"
+}
+
+cmd_watch() {
+    local log="${1:-$LOG_DIR/nh-all.log}"
+    
+    echo "══ Watching Log: $log (Ctrl+C to stop) ═"
+    if [ ! -f "$log" ]; then
+        echo "  Log not found: $log"
+        return 1
+    fi
+    
+    tail -f "$log" | grep --line-buffered -i -f "$PATTERNS_DIR/suspicious.txt" 2>/dev/null || true
+}
+
+cmd_patterns() {
+    echo "══ Detection Patterns ═════════════════════"
+    echo "  Pattern file: $PATTERNS_DIR/suspicious.txt"
+    echo ""
+    echo "── Current Patterns ──"
+    cat "$PATTERNS_DIR/suspicious.txt" 2>/dev/null | grep -v "^#" | grep -v "^$" || echo "  No patterns defined"
+}
+
+case "${1:-scan}" in
+    scan)        cmd_scan "${2:-}" ;;
+    summary)     cmd_summary "${2:-}" ;;
+    errors)      cmd_errors "${2:-}" ;;
+    watch)       cmd_watch "${2:-}" ;;
+    patterns)    cmd_patterns ;;
+    help|*)      show_usage ;;
+esac

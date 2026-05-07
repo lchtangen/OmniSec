@@ -1,0 +1,18 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-monitor — System monitor
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-monitor - System Monitor
+Usage: nh-monitor {cpu|mem|disk|net|all|help}
+EOF
+}
+case "${1:-all}" in
+    cpu) top -n 1 | head -10 ;;
+    mem) free -m ;;
+    disk) df -h ;;
+    net) ip -s link ;;
+    all) nh-perf status ;;
+    help|*) show_usage ;;
+esac
