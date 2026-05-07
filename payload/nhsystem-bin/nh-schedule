@@ -1,0 +1,129 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-schedule - Task scheduler for periodic jobs
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+SCHEDULE_DIR=$NHSYSTEM/etc/schedule
+SCHEDULE_DB=$SCHEDULE_DIR/tasks.conf
+
+ensure_db() {
+    mkdir -p $SCHEDULE_DIR
+    [ -f $SCHEDULE_DB ] || cat > $SCHEDULE_DB <<'DB'
+# nh-schedule task database
+# Format: interval|label|command
+# interval: hourly|daily|weekly|boot|minutes:N
+daily|nh-health-check|nh-health
+daily|nh-backup-auto|nh-backup --auto
+weekly|nh-update-check|nh-update --check
+boot|nh-services-start|nh-services start
+DB
+}
+
+list_tasks() {
+    ensure_db
+    echo "── Scheduled Tasks ──"
+    echo ""
+    grep -v '^#' $SCHEDULE_DB | while IFS='|' read -r interval label cmd; do
+        [ -z "$interval" ] && continue
+        printf "  %-12s %-20s %s\n" "$interval" "$label" "$cmd"
+    done
+    echo ""
+    echo "  $(grep -cvE '^#|^$' $SCHEDULE_DB) tasks configured"
+}
+
+add_task() {
+    local interval="$1" label="$2"
+    shift 2
+    local cmd="$*"
+    ensure_db
+    echo "${interval}|${label}|${cmd}" >> $SCHEDULE_DB
+    echo "  Task added: $label ($interval)"
+}
+
+remove_task() {
+    local label="$1"
+    ensure_db
+    local tmp="$SCHEDULE_DB.tmp"
+    grep -v "|${label}|" $SCHEDULE_DB > $tmp
+    mv $tmp $SCHEDULE_DB
+    echo "  Task removed: $label"
+}
+
+run_due() {
+    ensure_db
+    local now=$(date +%s 2>/dev/null || echo 0)
+    local last_run_file=$SCHEDULE_DIR/lastrun
+
+    grep -v '^#' $SCHEDULE_DB | while IFS='|' read -r interval label cmd; do
+        [ -z "$interval" ] && continue
+
+        local last=0
+        [ -f "$last_run_file.$label" ] && last=$(cat "$last_run_file.$label")
+
+        local should_run=false
+        case "$interval" in
+            hourly) [ $((now - last)) -ge 3600 ] && should_run=true ;;
+            daily)  [ $((now - last)) -ge 86400 ] && should_run=true ;;
+            weekly) [ $((now - last)) -ge 604800 ] && should_run=true ;;
+            boot)   [ ! -f "$last_run_file.$label" ] && should_run=true ;;
+            minutes:*)
+                local mins=${interval#minutes:}
+                [ $((now - last)) -ge $((mins * 60)) ] && should_run=true
+                ;;
+        esac
+
+        if $should_run; then
+            echo "  Running: $label"
+            eval "$cmd" 2>/dev/null && echo "$now" > "$last_run_file.$label" || \
+                echo "  Warning: $label failed"
+        fi
+    done
+}
+
+run_now() {
+    local label="$1"
+    ensure_db
+    local cmd=$(grep "|${label}|" $SCHEDULE_DB | cut -d'|' -f3-)
+    if [ -n "$cmd" ]; then
+        echo "  Running: $label"
+        eval "$cmd"
+    else
+        echo "  Task not found: $label" >&2
+        exit 1
+    fi
+}
+
+usage() {
+    cat <<EOF
+usage: nh-schedule <command> [args]
+
+Commands:
+  list                    List all scheduled tasks
+  add <interval> <label> <cmd>  Add a task
+  remove <label>          Remove a task
+  run                     Run all due tasks
+  run-now <label>         Run a specific task now
+  daemon                  Run in loop (check every 60s)
+
+Intervals: hourly, daily, weekly, boot, minutes:N
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    list) list_tasks ;;
+    add) shift; [ $# -ge 3 ] || usage; add_task "$1" "$2" "$3" ;;
+    remove) shift; [ $# -ge 1 ] || usage; remove_task "$1" ;;
+    run) run_due ;;
+    run-now) shift; [ $# -ge 1 ] || usage; run_now "$1" ;;
+    daemon)
+        while true; do
+            run_due
+            sleep 60
+        done
+        ;;
+    *) usage ;;
+esac

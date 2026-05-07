@@ -1,0 +1,50 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# Profile: Universal — device auto-detection
+# nh-device-detect — emit device properties as shell-safe key=value pairs
+set -u
+
+gprop() {
+    getprop "$1" 2>/dev/null || echo "unknown"
+}
+
+MODEL="$(gprop ro.product.model)"
+CODENAME="$(gprop ro.product.board)"
+[ "$CODENAME" = "unknown" ] && CODENAME="$(gprop ro.build.product)"
+[ "$CODENAME" = "unknown" ] && CODENAME="$(gprop ro.product.name)"
+ANDROID="$(gprop ro.build.version.release)"
+ABI="$(gprop ro.product.cpu.abi)"
+ABI2="$(gprop ro.product.cpu.abi2)"
+SDK="$(gprop ro.build.version.sdk)"
+BUILD="$(gprop ro.build.display.id)"
+FINGERPRINT="$(gprop ro.build.fingerprint)"
+KERNEL="$(uname -r 2>/dev/null || echo unknown)"
+HOSTNAME="$(getprop net.hostname 2>/dev/null || echo unknown)"
+
+echo "NH_DEVICE_MODEL='$MODEL'"
+echo "NH_DEVICE_CODENAME='$CODENAME'"
+echo "NH_ANDROID_RELEASE='$ANDROID'"
+echo "NH_ANDROID_ABI='$ABI'"
+[ -n "$ABI2" ] && echo "NH_ANDROID_ABI2='$ABI2'"
+echo "NH_ANDROID_SDK='$SDK'"
+echo "NH_BUILD_ID='$BUILD'"
+echo "NH_KERNEL='$KERNEL'"
+echo "NH_HOSTNAME='$HOSTNAME'"
+
+# Detect superuser
+for _su in /debug_ramdisk/su /data/adb/magisk/magisk64 /data/adb/magisk/magisk /sbin/su /system/xbin/su; do
+    [ -x "$_su" ] && { echo "NH_SU_PATH='$_su'"; break; }
+done
+
+# Detect root type
+NH_ROOT_TYPE="unknown"
+if [ -f /data/adb/magisk/magisk64 ] || [ -f /data/adb/magisk/magisk ]; then
+    NH_ROOT_TYPE="magisk"
+elif [ -f /sbin/su ]; then
+    NH_ROOT_TYPE="systemless"
+fi
+echo "NH_ROOT_TYPE='$NH_ROOT_TYPE'"
+
+# Network info
+echo "NH_WIFI_IFACE='$(iw dev 2>/dev/null | awk '/Interface/{print $2; exit}')'"
+echo "NH_WLAN_IFACE='$(getprop wifi.interface 2>/dev/null || echo wlan0)'"

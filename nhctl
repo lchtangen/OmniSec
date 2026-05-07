@@ -215,6 +215,211 @@ fix_all() {
     log "=== fix-all complete ==="
 }
 
+# ── New Commands ──────────────────────────────────────────────────────
+
+nh_shell() {
+    require_root
+    target="${1:-}"
+    case "$target" in
+        kali)
+            log "opening Kali shell via ADB..."
+            exec adb_cmd shell "$ROOT_SU" --mount-master -c "/data/local/nhsystem/bin/nh-enter-kali"
+            ;;
+        arch)
+            log "opening Arch shell via ADB..."
+            exec adb_cmd shell "$ROOT_SU" --mount-master -c "/system/bin/chroot /data/local/nhsystem/roots/archlinux /bin/su -l archlinux"
+            ;;
+        android|root)
+            log "opening Android root shell..."
+            exec adb_cmd shell "$ROOT_SU" --mount-master
+            ;;
+        *)
+            log "opening default (Kali) shell..."
+            exec adb_cmd shell "$ROOT_SU" --mount-master -c "/data/local/nhsystem/bin/nh-enter-kali"
+            ;;
+    esac
+}
+
+nh_exec() {
+    require_root
+    target="${1:-}"
+    shift 2>/dev/null || true
+    [ -z "$target" ] && die "usage: nhctl exec <kali|arch> <command>"
+    [ $# -eq 0 ] && die "usage: nhctl exec <kali|arch> <command>"
+    case "$target" in
+        kali)
+            adbr "/data/local/nhsystem/bin/nh-enter-kali-root -c '$*'"
+            ;;
+        arch)
+            adbr "/system/bin/chroot /data/local/nhsystem/roots/archlinux /bin/sh -c '$*'"
+            ;;
+        *)
+            die "unknown target: $target (use kali or arch)"
+            ;;
+    esac
+}
+
+nh_mount_cmd() {
+    require_root
+    target="${1:-all}"
+    log "mounting chroot: $target"
+    adbr "/data/local/nhsystem/bin/nh-mount $target"
+}
+
+nh_umount_cmd() {
+    require_root
+    target="${1:-all}"
+    log "unmounting chroot: $target"
+    adbr "/data/local/nhsystem/bin/nh-umount $target"
+}
+
+nh_logs() {
+    require_root
+    action="${1:-list}"
+    shift 2>/dev/null || true
+    case "$action" in
+        list|tail|follow|clear)
+            adbr "sh /data/local/nhsystem/bin/nh-log $action $*"
+            ;;
+        fetch)
+            local logname="${1:-}"
+            [ -z "$logname" ] && die "usage: nhctl logs fetch <logname>"
+            local localpath="$SCRIPT_DIR/audits/device-logs"
+            mkdir -p "$localpath"
+            log "fetching $logname from device..."
+            adb_cmd pull "/data/local/nhsystem/logs/$logname" "$localpath/" 2>/dev/null || \
+            adb_cmd pull "/data/local/nhsystem/logs/$logname.log" "$localpath/" 2>/dev/null || \
+            die "log not found: $logname"
+            log "saved to $localpath/$logname"
+            ;;
+        *)
+            adbr "sh /data/local/nhsystem/bin/nh-log $action $*"
+            ;;
+    esac
+}
+
+nh_wifi() {
+    require_root
+    adbr "sh /data/local/nhsystem/bin/nh-wifi"
+}
+
+nh_kex() {
+    require_root
+    action="${1:-status}"
+    adbr "sh /data/local/nhsystem/bin/nh-kex $action"
+}
+
+nh_port_forward() {
+    action="${1:-list}"
+    case "$action" in
+        list)
+            log "current ADB forwards:"
+            adb_cmd forward --list 2>/dev/null || echo "  no forwards"
+            ;;
+        add)
+            local sport="${2:-}" dport="${3:-}"
+            [ -z "$sport" ] || [ -z "$dport" ] && die "usage: nhctl port-forward add <local_port> <device_port>"
+            adb_cmd forward "tcp:$sport" "tcp:$dport"
+            log "forwarded tcp:$sport -> tcp:$dport"
+            ;;
+        remove)
+            local port="${2:-}"
+            [ -z "$port" ] && die "usage: nhctl port-forward remove <local_port>"
+            adb_cmd forward --remove "tcp:$port"
+            log "removed forward tcp:$port"
+            ;;
+        setup)
+            ./setup-adb-forwards.sh "$ADB_SERIAL"
+            ;;
+        *)
+            die "usage: nhctl port-forward {list|add|remove|setup}"
+            ;;
+    esac
+}
+
+nh_doctor() {
+    log "══ nhctl doctor ══"
+    echo ""
+
+    # Dependency check
+    echo "── Dependencies ──"
+    for dep in adb bash ssh make gcc file; do
+        if command -v "$dep" >/dev/null 2>&1; then
+            echo "  ✓ $dep: $(command -v "$dep")"
+        else
+            echo "  ✗ $dep: NOT FOUND"
+        fi
+    done
+
+    # Project structure check
+    echo ""
+    echo "── Project Structure ──"
+    for path in "src/c/nh-sudo.c" "src/device/bin/nh-lib" "nh-defaults.sh" "Makefile" "nhctl" "deploy/magisk/build.sh"; do
+        [ -f "$SCRIPT_DIR/$path" ] && echo "  ✓ $path" || echo "  ✗ $path: MISSING"
+    done
+
+    # Payload step
+    echo ""
+    echo "── Payload ──"
+    PAYLOAD_COUNT=$(find "$SCRIPT_DIR/payload" -type f 2>/dev/null | wc -l || echo 0)
+    if [ "$PAYLOAD_COUNT" -gt 0 ]; then
+        echo "  ✓ payload/: $PAYLOAD_COUNT files"
+    else
+        echo "  ⚠ payload/: empty — run: make stage"
+    fi
+
+    # ADB check
+    echo ""
+    echo "── ADB Connection ──"
+    if adb_cmd get-state >/dev/null 2>&1; then
+        echo "  ✓ device connected: $ADB_SERIAL"
+    else
+        echo "  ✗ device not connected: $ADB_SERIAL"
+        echo "    → Run: adb connect $ADB_SERIAL"
+    fi
+
+    # Git status if in a repo
+    echo ""
+    echo "── Git ──"
+    if git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+        BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)
+        STATUS=$(git -C "$SCRIPT_DIR" status --short 2>/dev/null | wc -l)
+        echo "  branch: $BRANCH"
+        [ "$STATUS" -gt 0 ] && echo "  ⚠ $STATUS uncommitted change(s)" || echo "  ✓ clean working tree"
+    else
+        echo "  ⚠ not a git repository"
+    fi
+
+    echo ""
+    log "══ doctor complete ══"
+}
+nh_detect() {
+    require_adb
+    log "detecting device info..."
+    adbr "sh /data/local/nhsystem/bin/nh-device-detect" 2>/dev/null || \
+    adbr "cat /data/local/nhsystem/bin/nh-device-detect 2>/dev/null || echo 'nh-device-detect not deployed'" | head -20
+}
+
+nh_discover() {
+    log "scanning for ADB devices..."
+    "$SCRIPT_DIR/src/scripts/discover-adb.sh" "$@"
+}
+
+nh_pair() {
+    log "pairing wireless ADB device..."
+    "$SCRIPT_DIR/src/scripts/adb-pair.sh" "$@"
+}
+
+nh_install_kali() {
+    log "installing Kali ARM64 rootfs..."
+    "$SCRIPT_DIR/src/scripts/install-kali-rootfs.sh" "$@"
+}
+
+nh_install_nethunter_app() {
+    log "installing NetHunter app..."
+    "$SCRIPT_DIR/src/scripts/install-nethunter-app.sh" "$@"
+}
+
 usage() {
     cat <<EOF
 $NH_LABEL
@@ -224,23 +429,68 @@ ADB default: $ADB_SERIAL
 
 usage: nhctl <command> [args]
 
-Commands:
+Management:
   status              Run host preflight and device nh-status
+  backup              Snapshot workspace/config state
+  update              Backup, then run device nh-update
+  audit               Run host and device audit
+  doctor              Comprehensive self-diagnostic (deps, structure, ADB, git)
+
+Device:
+  detect              Run nh-device-detect on device to get properties
+  discover [subnet]   Scan LAN for ADB devices
+  pair <ip>           Wireless ADB pairing flow (Android 15+)
+
+Chroot:
+  shell [kali|arch|android]  Open interactive shell in target chroot via ADB
+  exec <kali|arch> <cmd>     Run a command in target chroot
+  mount [all|kali|arch]      Mount chroot filesystems
+  umount [all|kali|arch]     Unmount chroot filesystems
+  install-kali [source]      Install Kali ARM64 rootfs (download/extract/post-install)
+
+SSH & Connectivity:
   forward             Setup ADB forwards for 8022/2222/5901/9050
+  port-forward {list|add|remove|setup}  Manage ADB port forwards
   connect-arch        Enter Arch, direct SSH first, Termux fallback
   arch                Enter Arch through Termux fallback immediately
   termux              SSH into Termux through ADB forward
   setup-ssh [IP]      Generate ~/.ssh/config and deploy keys
-  backup              Snapshot workspace/config state
-  deploy-tools        Deploy all v2.0 nhsystem helpers and boot service
-  deploy-sudo-wrapper Deploy sudo wrapper to all chroots (avoid FQDN/PAM hang)
-  deploy-bootkali     Deploy fixed bootkali_env/bootkali_init to NetHunter app
-  repair-arch-ssh     Backup, rewrite Arch sshd_config, restart sshd on 2222
-  repair-nhterm       Backup and restore official NetHunter app state, align kalifs to canonical Kali
-  arch-polish         Backup, then finish Arch workstation packages/profile
-  update              Backup, then run device nh-update
-  fix-all             Run complete repair suite (deploy-tools, sudo-wrapper, bootkali, repair-arch-ssh, repair-nhterm)
-  audit               Run host and device audit
+
+Services:
+  kex {start|stop|restart|status|log}  Manage Kali KEX/VNC session
+  wifi {status|scan|monitor|adapters}  Wi-Fi diagnostics and monitor mode
+  bt|bluetooth {status|scan|pair|paired}  Bluetooth management
+  sdr {status|modules|tools|test}  SDR device detection
+  kernel {build|flash}   Build and flash custom kernel
+  dashboard [serve] [port]  Generate HTML system dashboard
+  heal {arch|kali|all}     Auto-heal chroot environments
+  cross {list|install [target]}  Cross-compiler management in Arch chroot
+  toolchain <cmd>          Host cross-compilation toolchain manager
+  container <cmd>          Container/chroot management with versioning
+  kismet {start|stop|status|hop}  Kismet server + channel hopping
+  rtl {status|spectrum|adsb|noaa|aprs}  SDR radio tools
+
+Multi-Device:
+  --device <serial>  Run command against specific device (e.g. --device 10.0.0.50:52104)
+  killswitch {enable|disable|status|watchdog}  VPN kill switch management
+  logs {list|tail|follow|clear|fetch}  View or fetch device logs
+
+Install:
+  install-kali [source]       Download/extract/post-install Kali ARM64 rootfs
+  install-nethunter [opts]    Download + install NetHunter APK on device
+  vscode-tunnel               Configure VS Code Remote SSH tunnels to chroots
+
+Repair:
+  deploy-tools        Deploy all nhsystem helpers and boot service
+  deploy-sudo-wrapper Deploy sudo wrapper to all chroots
+  deploy-bootkali     Deploy fixed bootkali scripts to NetHunter app
+  repair-arch-ssh     Backup, rewrite sshd_config, restart on 2222
+  repair-nhterm       Restore NetHunter app state, align kalifs
+  arch-polish         Backup, then finish Arch workstation
+  fix-all             Run complete repair suite
+
+Help:
+  help                Show this message
 EOF
 }
 
@@ -307,6 +557,126 @@ case "$cmd" in
         ./run-audit.sh || true
         require_root
         adbr "[ -f /data/local/nhsystem/bin/nh-audit ] && sh /data/local/nhsystem/bin/nh-audit || true"
+        ;;
+    shell)
+        nh_shell "${1:-}"
+        ;;
+    exec)
+        nh_exec "$1" "$2"
+        ;;
+    mount)
+        nh_mount_cmd "${1:-all}"
+        ;;
+    umount)
+        nh_umount_cmd "${1:-all}"
+        ;;
+    logs)
+        nh_logs "$@"
+        ;;
+    wifi)
+        nh_wifi
+        ;;
+    killswitch)
+        require_root
+        action="${2:-status}"
+        adbr "sh /data/local/nhsystem/bin/nh-killswitch $action"
+        ;;
+    bt|bluetooth)
+        require_root
+        adbr "sh /data/local/nhsystem/bin/nh-bt ${2:-status}"
+        ;;
+    sdr)
+        require_root
+        adbr "sh /data/local/nhsystem/bin/nh-sdr ${2:-status}"
+        ;;
+    kernel)
+        require_adb
+        case "${2:-help}" in
+            build)
+                log "building kernel..."
+                exec "$SCRIPT_DIR/kernel/build-kernel.sh" "${3:-stable}" "${4:-}"
+                ;;
+            flash)
+                require_root
+                log "flashing kernel..."
+                adb_cmd push "$SCRIPT_DIR/kernel/device/guacamole/flash.sh" /data/local/tmp/flash-kernel.sh >/dev/null
+                adbr "sh /data/local/tmp/flash-kernel.sh"
+                ;;
+            *) log "usage: nhctl kernel {build|flash}" ;;
+        esac
+        ;;
+    dashboard)
+        require_root
+        adbr "sh /data/local/nhsystem/bin/nh-dashboard ${2:-} ${3:-}" 2>/dev/null || \
+        adbr "sh /data/local/nhsystem/bin/nh-dashboard" 2>/dev/null || \
+        die "nh-dashboard not deployed"
+        ;;
+    heal)
+        require_root
+        target="${2:-all}"
+        adbr "sh /data/local/nhsystem/bin/nh-heal $target"
+        ;;
+    cross)
+        require_root
+        action="${2:-list}"
+        adbr "sh /data/local/nhsystem/bin/nh-cross $action ${3:-}"
+        ;;
+    toolchain)
+        shift 2>/dev/null || true
+        "$SCRIPT_DIR/src/scripts/nh-toolchain.sh" "$@"
+        ;;
+    kismet)
+        require_root
+        action="${2:-status}"
+        adbr "sh /data/local/nhsystem/bin/nh-kismet $action"
+        ;;
+    rtl|sdr-radio)
+        require_root
+        action="${2:-status}"
+        adbr "sh /data/local/nhsystem/bin/nh-rtl $action"
+        ;;
+    container)
+        require_root
+        shift 2>/dev/null || true
+        adbr "sh /data/local/nhsystem/bin/nh-container $@"
+        ;;
+
+    # Multi-device: override ADB_SERIAL for any command
+    --device|-s)
+        ADB_SERIAL="$2"
+        DEVICE_ARG=(-s "$ADB_SERIAL")
+        shift 2
+        # Re-run the same command with new device arg
+        exec "$0" "$@"
+        ;;
+    kex)
+        nh_kex "$@"
+        ;;
+    port-forward|port)
+        nh_port_forward "$@"
+        ;;
+    doctor)
+        nh_doctor
+        ;;
+    detect)
+        nh_detect
+        ;;
+    discover)
+        nh_discover "$@"
+        ;;
+    pair)
+        nh_pair "$@"
+        ;;
+    install-kali)
+        shift 2>/dev/null || true
+        nh_install_kali "$@"
+        ;;
+    install-nethunter)
+        shift 2>/dev/null || true
+        nh_install_nethunter_app "$@"
+        ;;
+    vscode-tunnel|vscode)
+        "$SCRIPT_DIR/src/scripts/setup-vscode-tunnel.sh" "$@"
         ;;
     help|-h|--help)
         usage

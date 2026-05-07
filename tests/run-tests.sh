@@ -29,26 +29,22 @@ echo ""
 echo "--- syntax checks ---"
 check "nh-defaults.sh" bash -n "$ROOT_DIR/nh-defaults.sh"
 check "nhctl" bash -n "$ROOT_DIR/nhctl"
-for f in "$ROOT_DIR"/scripts/*.sh; do
+for f in "$ROOT_DIR"/src/scripts/*.sh; do
 	check "scripts/$(basename "$f")" bash -n "$f"
 done
-for f in "$ROOT_DIR"/*.sh; do
-	[ -f "$f" ] || continue
-	check "$(basename "$f")" bash -n "$f"
+for f in "$ROOT_DIR"/src/device/setup/*.sh; do
+	check "setup/$(basename "$f")" bash -n "$f"
 done
-for f in "$ROOT_DIR"/payload/*.sh; do
-	check "payload/$(basename "$f")" bash -n "$f"
-done
-for f in "$ROOT_DIR"/payload/nhsystem-bin/nh-*; do
+for f in "$ROOT_DIR"/src/device/bin/nh-*; do
 	check "nhsystem-bin/$(basename "$f")" bash -n "$f"
 done
-for f in "$ROOT_DIR"/payload/termux-home/*.zsh; do
-	check "termux/$(basename "$f")" bash -n "$f" || true
+for f in "$ROOT_DIR"/src/device/dotfiles/*.zsh; do
+	check "dotfiles/$(basename "$f")" bash -n "$f" || true
 done
 
 echo ""
 echo "--- C syntax checks ---"
-for f in "$ROOT_DIR"/payload/*.c; do
+for f in "$ROOT_DIR"/src/c/*.c; do
 	check "$(basename "$f")" cc -fsyntax-only -Wall -Wextra -pedantic "$f"
 done
 
@@ -70,15 +66,63 @@ echo ""
 echo "--- file existence checks ---"
 REQUIRED=(
 	"nhctl" "nh-defaults.sh" "README.md" "VERSION.md" "Makefile"
-	"payload/nh-sudo.c" "payload/no-close-range.c"
-	"payload/nhsystem-bin/nh-lib"
-	"payload/nhsystem-bin/nh-mount" "payload/nhsystem-bin/nh-umount"
-	"payload/nhsystem-bin/nh-enter-kali" "payload/nhsystem-bin/nh-enter-arch"
-	"payload/nhsystem-bin/nh-services" "payload/nhsystem-bin/nh-health"
-	"payload/android-clean-rebuild.sh"
-	"payload/arch-fast-install.sh"
-	"payload/kali-post.sh"
-	"payload/start-arch-boot.sh"
+	"src/c/nh-sudo.c" "src/c/no-close-range.c"
+	"src/device/bin/nh-lib"
+	"src/device/bin/nh-mount" "src/device/bin/nh-umount"
+	"src/device/bin/nh-enter-kali" "src/device/bin/nh-enter-arch"
+	"src/device/bin/nh-services" "src/device/bin/nh-health"
+	"src/device/bin/nh-wifi" "src/device/bin/nh-kex"
+	"src/device/bin/nh-log" "src/device/bin/nh-firewall"
+	"src/device/bin/nh-packages" "src/device/bin/nh-perf"
+	"src/device/setup/android-clean-rebuild.sh"
+	"src/device/setup/arch-fast-install.sh"
+	"src/device/setup/kali-post.sh"
+	"src/device/setup/start-arch-boot.sh"
+	"src/scripts/install-kali-rootfs.sh"
+	"src/scripts/install-nethunter-app.sh"
+	"src/scripts/discover-adb.sh"
+	"src/scripts/adb-pair.sh"
+	"src/scripts/build-chroot-image.sh"
+	"src/device/bin/nh-device-detect"
+	"src/device/bin/nh-killswitch"
+	"src/device/bin/nh-bt"
+	"src/device/bin/nh-sdr"
+	"src/device/bin/nh-dashboard"
+	"src/scripts/setup-vscode-tunnel.sh"
+	"src/device/bin/nh-kismet"
+	"src/device/bin/nh-cross"
+	"src/device/bin/nh-rtl"
+	"src/c/nh-diag.c"
+	"tests/test_nh_sudo.c"
+	"src/device/bin/nh-schedule" "src/device/bin/nh-alert"
+	"src/device/bin/nh-sync" "src/device/bin/nh-tunnel"
+	"src/device/bin/nh-dns" "src/device/bin/nh-container"
+	"src/device/bin/nh-key" "src/device/bin/nh-secret"
+	"src/device/bin/nh-audio" "src/device/bin/nh-display"
+	"src/scripts/nh-toolchain.sh" "src/scripts/nh-validate.sh"
+	"src/scripts/nh-qemu.sh"
+	"docs/CODING_STANDARDS.md" "docs/PRIORITY.md"
+	"docs/SECURITY.md" "docs/PERFORMANCE.md" "docs/STYLEGUIDE.md"
+	"ARCHITECTURE.md"
+	".shellcheckrc" ".pre-commit-config.yaml"
+	".github/ISSUE_TEMPLATE/bug_report.md"
+	".github/ISSUE_TEMPLATE/feature_request.md"
+	".github/ISSUE_TEMPLATE/device_port.md"
+	".github/ISSUE_TEMPLATE/module_request.md"
+	".github/PULL_REQUEST_TEMPLATE.md"
+	"kernel/README.md"
+	"kernel/configs/fragments/base.conf"
+	"kernel/configs/fragments/containers.conf"
+	"kernel/configs/fragments/security.conf"
+	"kernel/configs/fragments/nethunter.conf"
+	"kernel/configs/fragments/performance.conf"
+	"kernel/configs/fragments/battery.conf"
+	"kernel/configs/fragments/debug.conf"
+	"kernel/device/guacamole/build.sh"
+	"kernel/device/guacamole/flash.sh"
+	"kernel/toolchain/setup.sh"
+	"kernel/tests/build-system.bats"
+	"kernel/anykernel3/anykernel.sh"
 )
 for f in "${REQUIRED[@]}"; do
 	check "exists: $f" test -f "$ROOT_DIR/$f"
@@ -86,7 +130,7 @@ done
 
 echo ""
 echo "--- executable permission checks ---"
-for f in nhctl scripts/*.sh device/*.sh; do
+for f in nhctl src/scripts/*.sh device/*.sh; do
 	[ -f "$ROOT_DIR/$f" ] || continue
 	check "executable: $f" test -x "$ROOT_DIR/$f"
 done

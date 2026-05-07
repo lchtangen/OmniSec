@@ -1,0 +1,54 @@
+#!/sbin/sh
+# NetHunter NextGen Kernel — AnyKernel3 Flashable Package
+# Device: OnePlus 7 Pro (guacamole)
+
+umask 022
+OUTFD=/proc/self/fd/$2
+
+ui_print() { echo "ui_print $1" > $OUTFD; echo "ui_print" > $OUTFD; }
+
+ui_print ""
+ui_print "NetHunter NextGen Kernel v2.0.0"
+ui_print "OnePlus 7 Pro (guacamole) - SM8150"
+ui_print ""
+
+# Device check
+DEVICE=$(getprop ro.product.device 2>/dev/null)
+case $DEVICE in
+    guacamole|guacamoleb|guacamoleg)
+        ui_print "Device: $DEVICE — supported"
+        ;;
+    *)
+        ui_print "WARNING: Device '$DEVICE' may not be supported!"
+        ui_print "This kernel is built for OnePlus 7 Pro (guacamole)."
+        ;;
+esac
+
+# Extract kernel
+ui_print "Extracting kernel..."
+cd /tmp/anykernel
+unzip -o "$ZIP" Image.gz dtb.img dtbo.img 2>/dev/null || true
+
+# Flash kernel
+ui_print "Flashing kernel to boot partition..."
+dd if=Image.gz of=/dev/block/bootdevice/by-name/boot 2>/dev/null || \
+    flash_image /tmp/anykernel/Image.gz boot 2>/dev/null || {
+    ui_print "ERROR: Failed to flash kernel!"
+    exit 1
+}
+
+ui_print "Flashing DTB..."
+if [ -f dtb.img ]; then
+    dd if=dtb.img of=/dev/block/bootdevice/by-name/dtb 2>/dev/null || true
+fi
+
+ui_print "Flashing DTBO..."
+if [ -f dtbo.img ]; then
+    dd if=dtbo.img of=/dev/block/bootdevice/by-name/dtbo 2>/dev/null || true
+fi
+
+ui_print ""
+ui_print "NetHunter NextGen Kernel flashed successfully!"
+ui_print "Rebooting..."
+sync
+reboot

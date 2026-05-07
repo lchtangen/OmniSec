@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PASS=0
@@ -44,9 +44,13 @@ for f in "$ROOT_DIR"/src/c/*.c; do
 	check "$(basename "$f") C syntax" cc -fsyntax-only -Wall -Wextra "$f"
 done
 
-check "ADB connectivity" timeout 5 adb devices -l | grep -q device
-check "Device root" timeout 10 adb shell su -c id | grep -q uid=0
-check "nhsystem exists" timeout 10 adb shell su -c "test -d /data/local/nhsystem"
+# Optional: ADB/device checks (skip if no device)
+if timeout 5 adb devices -l 2>/dev/null | grep -q device; then
+	check "Device root" timeout 10 adb shell su -c id | grep -q uid=0
+	check "nhsystem exists" timeout 10 adb shell su -c "test -d /data/local/nhsystem"
+else
+	warn "SKIP: no ADB device connected (device checks skipped)"
+fi
 
 echo ""
 echo "--- results: $PASS passed, $FAIL failed ---"

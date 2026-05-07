@@ -1,3 +1,4 @@
+#!/system/bin/sh
 # NH_SETUP_VERSION: 2.0 default
 # Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
 # NetHunter Termux login hook

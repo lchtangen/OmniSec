@@ -1,0 +1,48 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-wifi - Wi-Fi adapter diagnostics and monitor mode
+set -u
+
+WIFI_IFACE=$(ip link show 2>/dev/null | grep -o 'wlan[0-9]*' | head -1)
+EXT_IFACE=$(ip link show 2>/dev/null | grep -oE 'wlx[0-9a-f]+' | head -1)
+
+echo "══ Wi-Fi Diagnostics ══"
+echo ""
+
+echo "── Interfaces ──"
+for iface in $(ip link show 2>/dev/null | grep -oE '(wlan[0-9]*|wlx[0-9a-f]+|p2p[0-9]*)' | sort -u); do
+    STATE=$(ip -br link show "$iface" 2>/dev/null | awk '{print $2}')
+    DRIVER=$(cat "/sys/class/net/$iface/device/uevent" 2>/dev/null | grep DRIVER | cut -d= -f2 || echo "unknown")
+    echo "  $iface: $STATE (driver: $DRIVER)"
+done
+
+echo ""
+echo "── Connection Status ──"
+if [ -n "$WIFI_IFACE" ]; then
+    iw dev "$WIFI_IFACE" link 2>/dev/null || iwconfig "$WIFI_IFACE" 2>/dev/null || echo "  no wireless info available"
+fi
+
+echo ""
+echo "── Scan (quick) ──"
+SCAN_IFACE="${EXT_IFACE:-$WIFI_IFACE}"
+if [ -n "$SCAN_IFACE" ] && [ -d "/sys/class/net/$SCAN_IFACE/wireless" ]; then
+    iw dev "$SCAN_IFACE" scan 2>/dev/null | grep -E 'SSID|signal|freq|Channel' | head -30 || echo "  scan failed (try with root)"
+else
+    echo "  no wireless interface found"
+fi
+
+echo ""
+echo "── Monitor Mode ──"
+for iface in $WIFI_IFACE $EXT_IFACE; do
+    [ -z "$iface" ] && continue
+    MODE=$(iw dev "$iface" info 2>/dev/null | grep -i type | awk '{print $2}')
+    echo "  $iface: mode=$MODE"
+done
+
+echo ""
+echo "── External Adapters ──"
+for iface in $EXT_IFACE; do
+    [ -z "$iface" ] && continue
+    CHIPSET=$(cat "/sys/class/net/$iface/device/uevent" 2>/dev/null | grep PRODUCT | cut -d= -f2 || echo "unknown")
+    echo "  $iface chipset: $CHIPSET"
+done

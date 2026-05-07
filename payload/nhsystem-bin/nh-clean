@@ -1,0 +1,51 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-clean - System cleaner for nhsystem
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+LOG=$NHSYSTEM/logs/clean-$(date +%Y%m%d-%H%M%S).log
+
+echo "══ NetHunter System Cleaner ══"
+echo ""
+
+CLEANED=0
+
+clean_dir() {
+    local dir="$1" pattern="$2" label="$3"
+    local count
+    count=$(find "$dir" -name "$pattern" -type f 2>/dev/null | wc -l)
+    if [ "$count" -gt 0 ]; then
+        printf "  cleaning %d %s... " "$count" "$label"
+        find "$dir" -name "$pattern" -type f -exec rm -f {} \; 2>/dev/null
+        echo "done"
+        CLEANED=$((CLEANED + count))
+    fi
+}
+
+echo "── Temporary Files ──"
+clean_dir "$NHSYSTEM/tmp" '*' 'temp files'
+clean_dir "$NHSYSTEM/logs" '*.log' 'old logs'
+clean_dir "/data/local/tmp" 'nh-*' 'staged nh files'
+
+echo ""
+echo "── Package Caches (chroot) ──"
+for chroot in archlinux kali-arm64; do
+    ROOT="$NHSYSTEM/roots/$chroot"
+    [ -d "$ROOT" ] || continue
+    if [ -d "$ROOT/var/cache/pacman/pkg" ]; then
+        echo "  cleaning pacman cache: $chroot"
+        rm -rf "$ROOT/var/cache/pacman/pkg/*" 2>/dev/null || true
+        CLEANED=$((CLEANED + 1))
+    fi
+    if [ -d "$ROOT/var/cache/apt/archives" ]; then
+        echo "  cleaning apt cache: $chroot"
+        rm -rf "$ROOT/var/cache/apt/archives/*.deb" 2>/dev/null || true
+        CLEANED=$((CLEANED + 1))
+    fi
+done
+
+echo ""
+echo "── Cleaned $CLEANED items ──"
+echo "  log: $LOG"
+exit 0

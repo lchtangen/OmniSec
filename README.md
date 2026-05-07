@@ -1,27 +1,51 @@
 <!-- NH_SETUP_VERSION: 2.0 default -->
 <!-- Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default -->
 
-# NetHunter Setup
+# NetHunter Setup — NextGen
 
-Default profile: `NetHunter setup v2.0 (nextgen)` for `Arch ARM64 v2.0 (nextgen)` and `Kali ARM64 v2.0 (nextgen)`.
+> **Profile**: `NetHunter setup v2.0 (nextgen)` for `Arch ARM64 v2.0 (nextgen)` and `Kali ARM64 v2.0 (nextgen)`
 
 Host-side automation and device-side payloads for a rooted Android 16 ARM64 device running Termux, Kali ARM64 (security), and an Arch Linux ARM64 development chroot (workstation).
+
+## NextGen Vision
+
+A cyberpunk-flavored, dual-chroot mobile development and security workstation with:
+
+- **32 device-side management scripts** — everything from system monitoring to project scaffolding
+- **4 dev environment tools** — `nh-dev`, `nh-init`, `nh-config`, `nh-module` for managing toolchains, scaffolding projects, configuration, and loadable modules
+- **9 system tools** — `nh-scan`, `nh-temp`, `nh-battery`, `nh-net`, `nh-bench`, `nh-proc`, `nh-clean`, `nh-banner`, `nh-sysinfo` for monitoring, diagnostics, and system management
+- **Cyberpunk terminal UI** — neon-colored Starship prompt, nano editor theme, ASCII splash banners, color-coded system output
+- **Host-side `nh-dev.sh`** — development lifecycle manager (deploy, build, test, lint, validate, module, docs)
+
+## Terminal UI
+
+The NextGen terminal experience is defined by three dotfiles staged to Termux home:
+
+| File | Purpose |
+|------|---------|
+| `starship.toml` | Cyberpunk 2077-themed multi-line prompt with neon segments, branch indicators, language version badges |
+| `.nanorc` | Neon syntax highlighting theme for nano editor |
+| `nh-aliases.zsh` | Shell aliases, environment variables, and helpers for all nh-* tools |
+
+Run `nh-banner` at login for an ASCII splash with live system stats, or `nh-sysinfo` for a detailed device report.
+
+## Architecture
 
 The project is built around `/data/local/nhsystem` on the phone:
 
 ```text
 /data/local/nhsystem/
-  roots/archlinux
-  roots/kali-arm64
-  bin
-  etc
-  workspaces/main
-  logs
-  tmp
-  backups
+  roots/archlinux          # Arch ARM64 development chroot
+  roots/kali-arm64         # Kali ARM64 security chroot (optional)
+  bin/                     # All nh-* management scripts (36 tools)
+  etc/                     # Shared config
+  workspaces/main/         # Shared workspace
+  logs/                    # System logs
+  tmp/                     # Temp files
+  backups/                 # Backup archives
 ```
 
-Compatibility symlinks keep older scripts usable:
+Compatibility symlinks:
 
 ```text
 /data/local/nhsystem/archlinux -> roots/archlinux
@@ -29,17 +53,33 @@ Compatibility symlinks keep older scripts usable:
 /data/local/nhsystem/kalifs -> roots/kali-arm64
 ```
 
-Version/defaults are centralized in `nh-defaults.sh` on the host and `payload/nhsystem-bin/nh-lib` on the device.
+Version/defaults are centralized in `nh-defaults.sh` on the host and `src/device/bin/nh-lib` on the device (staged to `payload/nhsystem-bin/nh-lib`).
+
+### Source Layout
+
+```
+src/
+  c/                     # C sources (nh-sudo, no-close-range)
+  scripts/               # Host-side automation scripts
+  device/
+    bin/                 # 36 device-side management scripts
+    setup/               # Device-side setup/recovery scripts
+    dotfiles/            # Termux dotfiles (starship, nanorc, aliases)
+    skel/                # Kali chroot skel (/root)
+deploy/
+  magisk/                # Magisk module packaging
+  android/               # build.prop overrides
+  udev/                  # 51-android.rules (ADB/fastboot)
+  chroot/                # Chroot deployable scripts (sudo wrapper)
+```
 
 ## Safe Checks
 
 Run these before changing the device:
 
 ```bash
-./preflight.sh
-./audit-project.sh
-./run-audit.sh
-./setup-adb-forwards.sh
+make stage              # Stage payload/ from src/
+./nhctl forward          # Setup ADB forwards
 ./nhctl status
 ./nhctl deploy-tools
 ```
@@ -58,31 +98,45 @@ docs/personal-25-project-roadmap.md
 Active host entrypoints:
 
 ```bash
-./nhctl status
-./nhctl forward
-./nhctl arch
-./nhctl connect-arch
-./nhctl backup
-./nhctl deploy-tools
+./nhctl status           # Quick device status
+./nhctl forward          # Set up SSH/VNC forwards over ADB
+./nhctl arch             # Canonical Arch entry (SSH → ADB fallback)
+./nhctl connect-arch     # Direct Arch SSH with fallback
+./nhctl backup           # Backup chroots and configs
+./nhctl deploy-tools     # Deploy payload to device
 ./nhctl deploy-sudo-wrapper
 ./nhctl deploy-bootkali
 ./nhctl repair-arch-ssh
 ./nhctl repair-nhterm
 ./nhctl arch-polish
-./nhctl update
-./nhctl fix-all
-./nhctl audit
-./preflight.sh
-./connect-arch.sh
-./setup-adb-forwards.sh
-./setup-ssh-config.sh
-./setup-termux.sh
-./fix-termux-126.sh
-./repo-doctor.sh
-./repo-clean.sh
-./run-audit.sh
-./audit-project.sh
-./status.sh
+./nhctl update           # Safe backup-then-update
+./nhctl fix-all          # Complete repair suite
+./nhctl audit            # Full device audit
+```
+
+Host-side dev manager:
+
+```bash
+./src/scripts/nh-dev.sh init       # Initialize project
+./src/scripts/nh-dev.sh deploy     # Stage and deploy to device
+./src/scripts/nh-dev.sh build      # Build C sources
+./src/scripts/nh-dev.sh test       # Run test suite
+./src/scripts/nh-dev.sh lint       # Syntax check all scripts
+./src/scripts/nh-dev.sh validate   # Full validation pipeline
+./src/scripts/nh-dev.sh module     # Package Magisk module
+./src/scripts/nh-dev.sh docs       # Preview documentation
+./src/scripts/nh-dev.sh status     # Project and device status
+```
+
+Make targets:
+
+```bash
+make stage        # Stage payload/ from src/
+make lint         # Syntax check everything
+make validate     # Full validation
+make build-c      # Build C binaries
+make test         # Run tests (102 checks)
+make build-module # Package Magisk module
 ```
 
 If Android Wireless debugging shows a different connect port, use it explicitly:
@@ -101,23 +155,76 @@ Use this only when ADB and Magisk root are confirmed:
 
 That runner stages `payload/`, pushes `ArchLinuxARM-aarch64-latest.tar.gz`, rebuilds `/data/local/nhsystem`, installs Arch ARM64, configures Termux aliases, repairs Kali when present, and starts service launchers.
 
-## Device Commands
+## Device Commands (NextGen)
 
-From a rooted shell:
+All 36 device-side scripts live in `/data/local/nhsystem/bin/` and are accessible from any shell after Termux setup (via `nh-aliases.zsh`).
 
-```sh
-/data/local/nhsystem/bin/nh-status
-/data/local/nhsystem/bin/nh-version
-/data/local/nhsystem/bin/nh-health
-/data/local/nhsystem/bin/nh-audit
-/data/local/nhsystem/bin/nh-services start
-/data/local/nhsystem/bin/nh-enter-arch
-/data/local/nhsystem/bin/nh-enter-kali
-/data/local/nhsystem/bin/nh-shell-root
-/data/local/nhsystem/bin/nh-android-shell
-```
+### Core System
 
-`nh-root-shell` and `nh-shell-root` open the Kali root shell. Use `nh-android-shell` when you specifically want the raw Android root shell instead. If the official NetHunter app state gets out of sync with the current Kali rootfs path, run `./nhctl repair-nhterm` to restore the app-side scripts/prefs from backup and re-align `kalifs`.
+| Command | Description |
+|---------|-------------|
+| `nh-status` | System status overview (mounts, chroots, services) |
+| `nh-version` | Show version and profile labels |
+| `nh-health` | Health check — run after every reboot |
+| `nh-audit` | Read-only device audit (Android, chroots, tools) |
+| `nh-services` | Start/stop/restart SSH and service launchers |
+| `nh-mount` | Mount chroot filesystems |
+| `nh-umount` | Unmount chroot filesystems |
+| `nh-update` | Safe chroot package upgrade with backup |
+| `nh-backup` | Backup chroots, configs, and workspaces |
+| `nh-lib` | Shared library (sourced by other scripts) |
+
+### Chroot Entry
+
+| Command | Description |
+|---------|-------------|
+| `nh-enter-arch` | Enter Arch ARM64 chroot as `archlinux` user |
+| `nh-enter-arch-root` | Enter Arch ARM64 chroot as root |
+| `nh-enter-kali` | Enter Kali ARM64 chroot as user |
+| `nh-enter-kali-root` | Enter Kali ARM64 chroot as root |
+| `nh-shell` | Enter default chroot shell |
+| `nh-shell-root` | Enter root shell (Kali) |
+| `nh-shell-bash` | Enter bash shell |
+| `nh-shell-emergency` | Emergency shell (minimal env) |
+| `nh-shell-kali` | Kali-specific shell entry |
+| `nh-root-shell` | Alias for Kali root shell |
+| `nh-android-shell` | Raw Android root shell (bypass chroot) |
+
+### Dev Environment Tools
+
+| Command | Description |
+|---------|-------------|
+| `nh-dev` | Dev environment manager (status, setup, python/node/rust/go/android shells, upgrade) |
+| `nh-init` | Project scaffold generator (python, node, rust, go, c, shell, module, workspace) |
+| `nh-config` | Configuration manager (list, get, set, delete, reset, export, import) |
+| `nh-module` | Module management system (list, install, remove, enable, disable, info, create, search) |
+
+### System Monitoring
+
+| Command | Description |
+|---------|-------------|
+| `nh-temp` | CPU/GPU/SoC temperature monitor with color-coded output |
+| `nh-battery` | Battery status and health with visual bar |
+| `nh-proc` | Process monitor (top CPU/memory consumers) |
+| `nh-sysinfo` | Detailed system information (device, Android, kernel, hardware, sensors, uptime) |
+
+### Network
+
+| Command | Description |
+|---------|-------------|
+| `nh-net` | Network diagnostics (interfaces, routing, DNS, connections, ARP, wireless, bandwidth) |
+| `nh-scan` | Network discovery and port scanning |
+| `nh-vpn` | VPN status and management |
+
+### Utilities
+
+| Command | Description |
+|---------|-------------|
+| `nh-banner` | Cyberpunk ASCII art splash with live system stats |
+| `nh-bench` | System benchmark suite (CPU primes, memory, storage, DNS speed) |
+| `nh-clean` | System cleaner (temp files, chroot caches, logs) |
+| `nh-debug` | Debug information dump |
+| `nh-version` | Show version and build info |
 
 ## SSH Over ADB
 
@@ -149,11 +256,58 @@ kali
 vpn-status
 ```
 
-## Role Split
+## Cyberpunk Terminal UI Guide
 
-Arch ARM64 is the personal development and project environment: compilers, Python, Node, Rust, Go, editors, tmux, workspace, privacy helpers, and backups.
+The NextGen profile includes a fully themed terminal experience inspired by cyberpunk and neon aesthetics.
 
-Kali ARM64 is the ethical cybersecurity environment: NetHunter app integration, KEX, SSH, diagnostics, and security tool availability checks. Use it only on systems where you have authorization.
+### Starship Prompt
+
+The `starship.toml` theme features:
+
+- **Multi-line layout** with OS icon, username, directory, git status, and language version segments
+- **Neon color palette**: green OS badge, cyan username, blue directory, cyan git branch, green/yellow/red language segment transitions
+- **System indicators**: container/virtualization detection, command duration (after 2s), Nix shell state
+- **Git status**: conflict, ahead/behind, staged, modified, renamed, deleted, untracked indicators
+- **Neon cursor**: green `▶` on success, red `▶` on error, yellow `◀` on vim mode
+
+### Shell Aliases
+
+`nh-aliases.zsh` provides:
+
+```sh
+alias nh-status   nh-health   nh-audit   nh-version   nh-services
+alias nh-temp     nh-battery  nh-net     nh-scan      nh-bench
+alias nh-proc     nh-clean    nh-banner  nh-sysinfo   nh-dev
+alias nh-init     nh-config   nh-module  nh-backup    nh-update
+alias arch='nh-enter-arch'
+alias kali='nh-enter-kali'
+alias root='nh-shell-root'
+alias android='nh-android-shell'
+alias vpn-status='nh-vpn'
+alias banner='nh-banner'
+alias matrix='nh-scan --matrix'
+alias sysinfo='nh-sysinfo'
+```
+
+### Nano Editor
+
+The `.nanorc` theme provides neon syntax highlighting with dark background, green strings, cyan comments, yellow keywords, and magenta constants.
+
+### Splash Banner
+
+Run `nh-banner` to display a "NETHUNT SETUP" ASCII art logo with live system stats (battery, SoC temp, load, memory) in terminal colors.
+
+### Color Conventions
+
+Output from all NextGen scripts follows a consistent scheme:
+
+| Color | Meaning |
+|-------|---------|
+| Green | OK, success, healthy values |
+| Yellow | Warning, medium range, informational |
+| Red | Error, failure, critical values |
+| Cyan | Headers, labels, section markers |
+| Magenta | Branding, version info, decorative elements |
 
 ## Autopilot
 
@@ -173,16 +327,39 @@ Kali ARM64 is the ethical cybersecurity environment: NetHunter app integration, 
 
 Do not use `clean-rebuild-postboot.sh` through autopilot; it remains an explicit rebuild-only command.
 
-Termux SSH sessions are configured by `payload/termux-login.sh`, `~/.zprofile`, and `~/.zshrc` so `$PREFIX/bin` wins over Android toybox and `LD_PRELOAD` is unset over SSH.
+Termux SSH sessions are configured by `src/device/setup/termux-login.sh`, `~/.zprofile`, and `~/.zshrc` so `$PREFIX/bin` wins over Android toybox and `LD_PRELOAD` is unset over SSH.
 
-## Private Repo Prep
+## Workspace Scaffolding
+
+Use the device-side project scaffold generator to bootstrap new projects:
+
+```sh
+# From any chroot or Termux shell:
+nh-init python my-project     # Python project with venv, pytest, setup.py
+nh-init node my-app           # Node.js project with package.json, ESLint
+nh-init rust my-crate         # Rust project with Cargo.toml, clippy
+nh-init go my-module          # Go module with go.mod, standard layout
+nh-init c my-lib              # C project with Makefile, compiler flags
+nh-init shell my-tool         # Shell script project with tests
+nh-init module my-module      # Loadable nh-module package
+nh-init workspace my-space    # Full workspace with subdirectories
+
+# Configuration management:
+nh-config list                # List all config keys
+nh-config get key             # Get a value
+nh-config set key value       # Set a value
+
+# Module management:
+nh-module list                # List installed modules
+nh-module install repo/name   # Install a module
+nh-module create my-module    # Create a new module
+```
 
 Run this before `git add`:
 
 ```bash
-./repo-doctor.sh
+make validate
 ./repo-clean.sh
-./repo-doctor.sh
 ```
 
 `repo-clean.sh` removes generated/deprecated local clutter: `node_modules/`, `audits/`, and `archive/`. The Arch rootfs tarball stays local but is ignored by Git.
@@ -229,7 +406,7 @@ See `docs/device-maintenance.md` for maintenance procedures.
 
 ```bash
 make build-module
-# Output: magisk-module/dist/nethunter-setup-v2.0.0-nextgen.zip
+# Output: deploy/magisk/dist/nethunter-setup-v2.0.0.zip
 ```
 
 See `docs/magisk-module.md` for install/uninstall instructions.
@@ -239,7 +416,7 @@ See `docs/magisk-module.md` for install/uninstall instructions.
 ```bash
 make lint              # Check syntax first
 make test              # Run tests
-./scripts/validate.sh  # Full validation
+make validate          # Full validation
 git checkout -b feature/my-feature
 # make changes...
 git commit

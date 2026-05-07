@@ -1,10 +1,7 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
-KERNEL_DIR := $(CURDIR)
-BUILD_DIR := $(CURDIR)/../build/kernel
-DIST_DIR := $(CURDIR)/../dist/kernel
-
+NH_VERSION := 2.0.0
 DEVICE := GM1911
 DEVICE_CODENAME := guacamole
 ANDROID_VERSION := 16
@@ -12,119 +9,130 @@ LINEAGE_VERSION := 23.2
 KERNEL_VERSION := 4.14.356
 
 CROSS_COMPILE ?= aarch64-linux-gnu-
-
-KERNEL_SRC ?= $(CURDIR)/src/$(DEVICE_CODENAME)
-OUT_DIR := $(BUILD_DIR)/out
-MODULES_DIR := $(BUILD_DIR)/modules
-DTB_DIR := $(BUILD_DIR)/dtbs
+BUILD_SCRIPT := ./build-kernel.sh
 
 .PHONY: all
-all: kernel modules dtbs
+all: build-nethunter
 
-.PHONY: checkout
+# ── Build Variants ─────────────────────────────────────────────────
+.PHONY: build-stable build-performance build-battery build-nethunter build-debug build-minimal
+
+build-stable:
+	$(BUILD_SCRIPT) build $(DEVICE_CODENAME) stable
+
+build-performance:
+	$(BUILD_SCRIPT) build $(DEVICE_CODENAME) performance
+
+build-battery:
+	$(BUILD_SCRIPT) build $(DEVICE_CODENAME) battery
+
+build-nethunter:
+	$(BUILD_SCRIPT) build $(DEVICE_CODENAME) nethunter
+
+build-debug:
+	$(BUILD_SCRIPT) build $(DEVICE_CODENAME) debug
+
+build-minimal:
+	$(BUILD_SCRIPT) build $(DEVICE_CODENAME) minimal
+
+# ── Matrix Builds ─────────────────────────────────────────────────
+.PHONY: matrix matrix-all
+
+matrix: build-stable build-nethunter build-performance
+	@echo "  matrix build complete"
+
+matrix-all:
+	$(BUILD_SCRIPT) all $(DEVICE_CODENAME)
+
+# ── Component Builds ──────────────────────────────────────────────
+.PHONY: kernel modules config
+
+kernel:
+	$(BUILD_SCRIPT) kernel $(DEVICE_CODENAME) $(VARIANT)
+
+modules:
+	$(BUILD_SCRIPT) modules $(DEVICE_CODENAME) $(VARIANT)
+
+config:
+	$(BUILD_SCRIPT) config $(DEVICE_CODENAME) $(VARIANT)
+
+# ── Source Management ─────────────────────────────────────────────
+.PHONY: checkout update
+
 checkout:
-	@echo "--- Cloning LineageOS kernel source ---"
-	@if [ ! -d "$(KERNEL_SRC)" ]; then \
-		mkdir -p "$(CURDIR)/src"; \
-		cd "$(CURDIR)/src"; \
-		git clone --depth=1 \
-			https://github.com/LineageOS/android_kernel_oneplus_sm8150.git \
-			$(DEVICE_CODENAME); \
-	fi
+	$(BUILD_SCRIPT) build $(DEVICE_CODENAME) stable 2>&1 | head -5
 
-.PHONY: defconfig
-defconfig: checkout
-	@echo "--- Applying defconfig ---"
-	mkdir -p "$(OUT_DIR)"
-	cp "$(CURDIR)/configs/$(DEVICE_CODENAME)_defconfig" "$(KERNEL_SRC)/arch/arm64/configs/"
-	$(MAKE) -C "$(KERNEL_SRC)" \
-		O="$(OUT_DIR)" \
-		ARCH=arm64 \
-		CROSS_COMPILE="$(CROSS_COMPILE)" \
-		$(DEVICE_CODENAME)_defconfig
+update:
+	$(BUILD_SCRIPT) distclean $(DEVICE_CODENAME)
+	$(BUILD_SCRIPT) build $(DEVICE_CODENAME) stable
 
-.PHONY: kernel
-kernel: defconfig
-	@echo "--- Building kernel ---"
-	$(MAKE) -C "$(KERNEL_SRC)" \
-		O="$(OUT_DIR)" \
-		ARCH=arm64 \
-		CROSS_COMPILE="$(CROSS_COMPILE)" \
-		-j$$(nproc) \
-		Image.gz dtbs
-
-.PHONY: modules
-modules: kernel
-	@echo "--- Building modules ---"
-	$(MAKE) -C "$(KERNEL_SRC)" \
-		O="$(OUT_DIR)" \
-		ARCH=arm64 \
-		CROSS_COMPILE="$(CROSS_COMPILE)" \
-		-j$$(nproc) \
-		modules
-	$(MAKE) -C "$(KERNEL_SRC)" \
-		O="$(OUT_DIR)" \
-		ARCH=arm64 \
-		CROSS_COMPILE="$(CROSS_COMPILE)" \
-		INSTALL_MOD_PATH="$(MODULES_DIR)" \
-		modules_install
-
-.PHONY: dtbs
-dtbs: kernel
-	@echo "--- Building DTBs ---"
-	mkdir -p "$(DTB_DIR)"
-	cp "$(OUT_DIR)/arch/arm64/boot/dts/qcom/"*.dtb "$(DTB_DIR)/" 2>/dev/null || true
-
-.PHONY: anykernel3
-anykernel3: kernel modules dtbs
-	@echo "--- Packaging AnyKernel3 zip ---"
-	mkdir -p "$(DIST_DIR)"
-	if [ -d "$(KERNEL_SRC)/anykernel" ]; then \
-		cd "$(KERNEL_SRC)/anykernel"; \
-		cp "$(OUT_DIR)/arch/arm64/boot/Image.gz" .; \
-		cp -r "$(DTB_DIR)/"* . 2>/dev/null || true; \
-		zip -r "$(DIST_DIR)/kernel-$(DEVICE_CODENAME)-$(KERNEL_VERSION).zip" .; \
-	fi
-
-.PHONY: boot-image
-boot-image: kernel
-	@echo "--- Building boot image ---"
-	@if command -v mkbootimg &>/dev/null; then \
-		mkbootimg \
-			--kernel "$(OUT_DIR)/arch/arm64/boot/Image.gz" \
-			--dtb "$(OUT_DIR)/arch/arm64/boot/dts/qcom/sm8150.dtb" \
-			--base 0x80000000 \
-			--pagesize 4096 \
-			--ramdisk_offset 0x01000000 \
-			--tags_offset 0x00000100 \
-			--os_version "$(ANDROID_VERSION).0.0" \
-			--os_patch_level 2026-05 \
-			-o "$(DIST_DIR)/boot-$(DEVICE_CODENAME)-$(KERNEL_VERSION).img"; \
-		echo "  boot image: $(DIST_DIR)/boot-$(DEVICE_CODENAME)-$(KERNEL_VERSION).img"; \
-	else \
-		echo "  mkbootimg not found, skipping boot image"; \
-	fi
-
-.PHONY: clean
-clean:
-	rm -rf "$(BUILD_DIR)"
-
-.PHONY: distclean
-distclean: clean
-	rm -rf "$(CURDIR)/src"
-
+# ── Toolchain ─────────────────────────────────────────────────────
 .PHONY: toolchain
-toolchain:
-	@echo "--- Checking toolchain ---"
-	@if command -v $(CROSS_COMPILE)gcc &>/dev/null; then \
-		echo "  toolchain: $(CROSS_COMPILE)gcc"; \
-		$(CROSS_COMPILE)gcc --version | head -1; \
-	else \
-		echo "  toolchain not found. Install: sudo apt install gcc-aarch64-linux-gnu"; \
-		exit 1; \
-	fi
 
+toolchain:
+	$(BUILD_SCRIPT) toolchain
+
+# ── Packaging ─────────────────────────────────────────────────────
+.PHONY: package dist
+
+package:
+	@echo "  packages are created automatically during build"
+	@ls -la dist/
+
+dist: matrix-all
+	@echo "  distribution: dist/"
+
+# ── CI/CD ─────────────────────────────────────────────────────────
+.PHONY: ci
+
+ci:
+	$(BUILD_SCRIPT) ci $(DEVICE_CODENAME)
+
+# ── Testing ───────────────────────────────────────────────────────
+.PHONY: test
+
+test:
+	$(BUILD_SCRIPT) test
+
+# ── Cleanup ───────────────────────────────────────────────────────
+.PHONY: clean distclean
+
+clean:
+	$(BUILD_SCRIPT) clean $(DEVICE_CODENAME)
+
+distclean:
+	$(BUILD_SCRIPT) distclean $(DEVICE_CODENAME)
+
+# ── Help ──────────────────────────────────────────────────────────
 .PHONY: help
+
 help:
-	@grep -E '^[a-zA-Z_-]+:.*#' $(MAKEFILE_LIST) | sort | \
-		awk 'BEGIN {FS=":.*?# "}; {printf "  make %-15s %s\n", $$1, $$2}'
+	@echo "NetHunter NextGen Kernel Build System v$(NH_VERSION)"
+	@echo ""
+	@echo "Targets:"
+	@echo "  make build-stable       Build stable (daily driver) variant"
+	@echo "  make build-nethunter    Build nethunter (full security) variant"
+	@echo "  make build-performance  Build performance-tuned variant"
+	@echo "  make build-battery       Build battery-optimized variant"
+	@echo "  make build-debug        Build debug/development variant"
+	@echo "  make build-minimal      Build minimal variant"
+	@echo ""
+	@echo "  make matrix             Build stable + nethunter + performance"
+	@echo "  make matrix-all         Build ALL variants"
+	@echo "  make ci                 CI/CD pipeline build"
+	@echo ""
+	@echo "  make kernel  VARIANT=nethunter  Build kernel image only"
+	@echo "  make modules VARIANT=nethunter  Build modules only"
+	@echo "  make config  VARIANT=nethunter  Generate config only"
+	@echo ""
+	@echo "  make checkout           Clone kernel source"
+	@echo "  make update             Refresh source and rebuild"
+	@echo "  make toolchain          Set up NDK toolchain"
+	@echo "  make test               Run build system tests"
+	@echo "  make clean              Clean build output"
+	@echo "  make distclean          Clean everything"
+	@echo "  make help               Show this message"
+	@echo ""
+	@echo "Device: $(DEVICE_CODENAME) ($(DEVICE))"
+	@echo "Kernel: $(KERNEL_VERSION) / Android: $(ANDROID_VERSION)"
+	@echo "Lineage: $(LINEAGE_VERSION) / NH: $(NH_VERSION)"

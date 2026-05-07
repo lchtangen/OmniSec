@@ -1,0 +1,47 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-perf - System performance monitor
+set -u
+
+DURATION="${1:-3}"
+
+echo "══ Performance Monitor ══"
+echo ""
+
+echo "── CPU ──"
+echo "  load: $(cat /proc/loadavg 2>/dev/null)"
+echo "  cores: $(grep -c processor /proc/cpuinfo 2>/dev/null || echo "?")"
+echo "  governor: $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "?")"
+echo "  freq: $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || echo "?") kHz"
+
+echo ""
+echo "── Top CPU Consumers (${DURATION}s sample) ──"
+top -b -n 1 -d "$DURATION" 2>/dev/null | head -15 || \
+ps -eo pid,pcpu,comm --sort=-pcpu 2>/dev/null | head -15 || \
+ps aux 2>/dev/null | sort -k3 -rn | head -15 || \
+echo "  process info not available"
+
+echo ""
+echo "── Memory ──"
+cat /proc/meminfo 2>/dev/null | grep -E '^(MemTotal|MemFree|MemAvailable|SwapTotal|SwapFree)' | sed 's/^/  /'
+ZRAM=$(swapon -s 2>/dev/null | grep zram | awk '{print $2, $3, $4}' | head -1 || true)
+[ -n "$ZRAM" ] && echo "  zram: $ZRAM"
+
+echo ""
+echo "── Disk I/O (top processes) ──"
+iotop -b -n 1 -o 2>/dev/null | head -10 || \
+echo "  iotop not available (try: nh-health for disk space)"
+
+echo ""
+echo "── Thermal ──"
+for z in /sys/class/thermal/thermal_zone*/temp; do
+    [ -f "$z" ] || continue
+    TEMP=$(cat "$z" 2>/dev/null)
+    NAME=$(cat "${z%/temp}/type" 2>/dev/null || echo "?")
+    TEMP_C=$(( TEMP / 1000 ))
+    if [ "$TEMP_C" -gt 60 ]; then
+        echo "  \033[33m$NAME: ${TEMP_C}°C\033[0m"
+    else
+        echo "  $NAME: ${TEMP_C}°C"
+    fi
+done

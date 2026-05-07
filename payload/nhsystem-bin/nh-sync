@@ -1,0 +1,116 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-sync - File synchronization with profile support
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+SYNC_DIR=$NHSYSTEM/etc/sync
+SYNC_DB=$SYNC_DIR/profiles.conf
+
+SYNC_BIN=
+for candidate in rsync termux-rsync; do
+    if command -v $candidate >/dev/null 2>&1; then
+        SYNC_BIN=$candidate
+        break
+    fi
+done
+
+ensure_db() {
+    mkdir -p $SYNC_DIR
+    [ -f $SYNC_DB ] || cat > $SYNC_DB <<'DB'
+# nh-sync profiles
+# Format: label|source|destination|options
+# options can include: --delete, --compress, --archive
+workspace|/data/local/nhsystem/workspaces/main/|/data/local/nhsystem/backups/workspace/|--archive --compress
+configs|/data/local/nhsystem/etc/|/data/local/nhsystem/backups/configs/|--archive --delete
+DB
+}
+
+list_profiles() {
+    ensure_db
+    echo "── Sync Profiles ──"
+    grep -v '^#' $SYNC_DB | while IFS='|' read -r label src dst opts; do
+        [ -z "$label" ] && continue
+        echo ""
+        echo "  Profile: $label"
+        echo "    From: $src"
+        echo "    To:   $dst"
+        echo "    Opts: ${opts:--archive}"
+    done
+    echo ""
+    echo "  $(grep -cvE '^#|^$' $SYNC_DB) profiles configured"
+}
+
+run_sync() {
+    [ -n "$SYNC_BIN" ] || { echo "  ERROR: rsync not found" >&2; exit 1; }
+    ensure_db
+    grep -v '^#' $SYNC_DB | while IFS='|' read -r label src dst opts; do
+        [ -z "$label" ] || [ -z "$src" ] || [ -z "$dst" ] && continue
+        opts=${opts:---archive --compress}
+        echo "  Syncing: $label"
+        echo "    $src → $dst"
+        mkdir -p "$dst"
+        $SYNC_BIN $opts "$src" "$dst" 2>/dev/null && \
+            echo "    ✓ Complete" || \
+            echo "    ✗ Failed"
+    done
+}
+
+run_profile() {
+    local label="$1"
+    [ -n "$SYNC_BIN" ] || { echo "  ERROR: rsync not found" >&2; exit 1; }
+    ensure_db
+    local entry=$(grep "^${label}|" $SYNC_DB)
+    if [ -z "$entry" ]; then
+        echo "  Profile not found: $label" >&2
+        exit 1
+    fi
+    local src=$(echo "$entry" | cut -d'|' -f2)
+    local dst=$(echo "$entry" | cut -d'|' -f3)
+    local opts=$(echo "$entry" | cut -d'|' -f4)
+    opts=${opts:---archive --compress}
+    echo "  Syncing: $label"
+    mkdir -p "$dst"
+    $SYNC_BIN $opts "$src" "$dst"
+}
+
+add_profile() {
+    local label="$1" src="$2" dst="$3"
+    local opts="${4:---archive --compress}"
+    ensure_db
+    echo "${label}|${src}|${dst}|${opts}" >> $SYNC_DB
+    echo "  Profile added: $label"
+}
+
+usage() {
+    cat <<EOF
+usage: nh-sync <command> [args]
+
+Commands:
+  list                    List sync profiles
+  run                     Run all sync profiles
+  run <profile>           Run a specific profile
+  add <label> <src> <dst> [opts]  Add a sync profile
+
+Requires: rsync (install: pkg install rsync)
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    list) list_profiles ;;
+    run)
+        if [ $# -ge 2 ]; then
+            run_profile "$2"
+        else
+            run_sync
+        fi
+        ;;
+    add)
+        shift; [ $# -ge 3 ] || usage
+        add_profile "$1" "$2" "$3" "${4:-}"
+        ;;
+    *) usage ;;
+esac

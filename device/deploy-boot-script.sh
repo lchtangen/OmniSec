@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BOOT_SCRIPT="$ROOT_DIR/payload/start-arch-boot.sh"
+BOOT_SCRIPT="$ROOT_DIR/src/device/setup/start-arch-boot.sh"
 SERVICE_D="/data/adb/service.d/99-nethunter-boot.sh"
 
 say() { printf "\033[32m  %s\033[0m\n" "$*"; }

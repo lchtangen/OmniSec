@@ -14,4 +14,4 @@ Current default profile: `2.0`
 - Kali SSH default: `kali@10.0.0.113:22`
 - Termux SSH default: `u0_a171@10.0.0.113:8022`
 
-The shell source of truth is [nh-defaults.sh](/home/tangen/nethunter-setup/nh-defaults.sh). Device-side scripts read equivalent labels from [nh-lib](/home/tangen/nethunter-setup/payload/nhsystem-bin/nh-lib).
+The shell source of truth is [nh-defaults.sh](/home/tangen/nethunter-setup/nh-defaults.sh). Device-side scripts read equivalent labels from [nh-lib](/home/tangen/nethunter-setup/src/device/bin/nh-lib).

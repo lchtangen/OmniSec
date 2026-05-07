@@ -32,7 +32,7 @@ setup() {
 }
 
 @test "all nhsystem scripts have correct shebang" {
-	run bash -c "head -1 $ROOT_DIR/payload/nhsystem-bin/nh-lib"
+	run bash -c "head -1 $ROOT_DIR/src/device/bin/nh-lib"
 	[ "$status" -eq 0 ]
 	[[ "$output" == "#!/system/bin/sh" ]]
 }
@@ -49,17 +49,17 @@ setup() {
 }
 
 @test "C sources compile" {
-	run bash -c "cc -fsyntax-only -Wall -Wextra -pedantic $ROOT_DIR/payload/nh-sudo.c"
+	run bash -c "cc -fsyntax-only -Wall -Wextra -pedantic $ROOT_DIR/src/c/nh-sudo.c"
 	[ "$status" -eq 0 ]
 }
 
 @test "no-close-range.c compiles" {
-	run bash -c "cc -fsyntax-only -Wall -Wextra -pedantic $ROOT_DIR/payload/no-close-range.c"
+	run bash -c "cc -fsyntax-only -Wall -Wextra -pedantic $ROOT_DIR/src/c/no-close-range.c"
 	[ "$status" -eq 0 ]
 }
 
-@test "payload scripts are executable" {
-	run bash -c "find $ROOT_DIR/payload -maxdepth 1 -name '*.sh' -not -perm -u+x | wc -l"
+@test "setup scripts are executable" {
+	run bash -c "find $ROOT_DIR/src/device/setup -maxdepth 1 -name '*.sh' -not -perm -u+x | wc -l"
 	[ "$status" -eq 0 ]
 	[ "$output" -eq 0 ]
 }
@@ -94,9 +94,9 @@ setup() {
 }
 
 @test "Magisk module files exist" {
-	test -f "$ROOT_DIR/magisk-module/module.prop"
-	test -f "$ROOT_DIR/magisk-module/customize.sh"
-	test -f "$ROOT_DIR/magisk-module/build.sh"
+	test -f "$ROOT_DIR/deploy/magisk/module.prop"
+	test -f "$ROOT_DIR/deploy/magisk/customize.sh"
+	test -f "$ROOT_DIR/deploy/magisk/build.sh"
 }
 
 @test "kernel build files exist" {
@@ -117,6 +117,8 @@ setup() {
 	test -f "$ROOT_DIR/docs/device-maintenance.md"
 	test -f "$ROOT_DIR/docs/magisk-module.md"
 	test -f "$ROOT_DIR/docs/development-workflow.md"
+	test -f "$ROOT_DIR/docs/api-reference.md"
+	test -f "$ROOT_DIR/docs/troubleshooting.md"
 }
 
 @test "LICENSE file exists" {
@@ -128,5 +130,5 @@ setup() {
 }
 
 @test "build.prop template exists" {
-	test -f "$ROOT_DIR/templates/build.prop"
+	test -f "$ROOT_DIR/deploy/android/build.prop"
 }

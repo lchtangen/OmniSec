@@ -1,0 +1,25 @@
+# NH_SETUP_VERSION: 2.0
+# Cyberpunk themed nano editor config
+set softwrap
+set smooth
+set constantshow
+set linenumbers
+set minibar
+set mouse
+set autoindent
+set tabsize 4
+set tabstospaces
+set trimblanks
+set backupdir /data/local/nhsystem/tmp
+
+# Cyberpunk color scheme - dark background, neon accents
+set titlecolor brightwhite,black
+set statuscolor brightgreen,black
+set selectedcolor brightwhite,blue
+set numbercolor cyan,black
+set keycolor brightcyan,black
+set functioncolor brightmagenta,black
+set errorcolor brightwhite,red
+set spotlightcolor brightyellow,black
+set stripecolor ,235
+set scrollbar color

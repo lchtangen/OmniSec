@@ -1,0 +1,50 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-battery - Battery status and health monitor
+set -u
+
+BAT=/sys/class/power_supply/battery
+
+echo "══ Battery Status ══"
+echo ""
+
+STATUS=$(cat $BAT/status 2>/dev/null)
+CAPACITY=$(cat $BAT/capacity 2>/dev/null)
+HEALTH=$(cat $BAT/health 2>/dev/null)
+TEMP=$(cat $BAT/temp 2>/dev/null)
+VOLTAGE=$(cat $BAT/voltage_now 2>/dev/null)
+CURRENT=$(cat $BAT/current_now 2>/dev/null)
+CHARGE_FULL=$(cat $BAT/charge_full 2>/dev/null)
+CHARGE_NOW=$(cat $BAT/charge_now 2>/dev/null)
+TECHNOLOGY=$(cat $BAT/technology 2>/dev/null)
+
+[ -n "$STATUS" ] && echo "  Status:     $STATUS"
+[ -n "$CAPACITY" ] && printf "  Charge:     %d%%\n" "$CAPACITY"
+[ -n "$HEALTH" ] && echo "  Health:     $HEALTH"
+[ -n "$TEMP" ] && printf "  Temp:       %d°C\n" "$((TEMP / 10))"
+[ -n "$VOLTAGE" ] && printf "  Voltage:    %dmV\n" "$((VOLTAGE / 1000))"
+[ -n "$CURRENT" ] && printf "  Current:    %dmA\n" "$((CURRENT / 1000))"
+[ -n "$TECHNOLOGY" ] && echo "  Type:       $TECHNOLOGY"
+
+if [ -n "$CHARGE_FULL" ] && [ -n "$CHARGE_NOW" ] && [ "$CHARGE_FULL" -gt 0 ]; then
+    PCT=$((CHARGE_NOW * 100 / CHARGE_FULL))
+    printf "  Wear:       %d%% capacity remaining\n" "$PCT"
+    printf "  Wear loss:  %d%%\n" "$((100 - PCT))"
+fi
+
+# Battery bar visualization
+if [ -n "$CAPACITY" ]; then
+    BAR_LEN=20
+    FILL=$((CAPACITY * BAR_LEN / 100))
+    EMPTY=$((BAR_LEN - FILL))
+    case "$STATUS" in
+        Charging) COLOR=33 ;;  # yellow
+        Discharging) COLOR=32 ;;  # green
+        *) COLOR=36 ;;  # cyan
+    esac
+    printf "\n  [\033[%dm" "$COLOR"
+    i=0; while [ "$i" -lt "$FILL" ]; do printf "█"; i=$((i+1)); done
+    printf "\033[0m"
+    i=0; while [ "$i" -lt "$EMPTY" ]; do printf "░"; i=$((i+1)); done
+    printf "] %d%%\n" "$CAPACITY"
+fi

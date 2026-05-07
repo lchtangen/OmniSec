@@ -7,6 +7,7 @@ MAKEFLAGS += --no-builtin-rules
 NH_VERSION := 2.0.0
 NH_PROFILE := default
 ARCH := aarch64
+CFLAGS ?= -O2
 ANDROID_API := 36
 ANDROID_VERSION := 16
 LINEAGE_VERSION := 23.2
@@ -33,22 +34,22 @@ build: build-c build-module
 .PHONY: stage
 stage: stage-payload
 stage-payload: build-c
-	@echo "--- Staging payload/ from src/ ---"
-	rm -rf $(PAYLOAD_DIR)
 	mkdir -p $(PAYLOAD_DIR)/nhsystem-bin
 	mkdir -p $(PAYLOAD_DIR)/termux-home
 	mkdir -p $(PAYLOAD_DIR)/kali-skel
+	mkdir -p $(PAYLOAD_DIR)/chroot-bin
 	cp -a $(SRC_DIR)/device/bin/* $(PAYLOAD_DIR)/nhsystem-bin/
-	cp -a $(SRC_DIR)/device/setup/*.sh $(PAYLOAD_DIR)/
-	cp -a $(SRC_DIR)/device/dotfiles/* $(PAYLOAD_DIR)/termux-home/
+	cp -a $(SRC_DIR)/device/setup/* $(PAYLOAD_DIR)/
+	find $(SRC_DIR)/device/dotfiles -maxdepth 1 -type f -exec cp -a {} $(PAYLOAD_DIR)/termux-home/ \;
 	cp -a $(SRC_DIR)/device/skel/* $(PAYLOAD_DIR)/kali-skel/
 	cp $(SRC_DIR)/c/nh-sudo.c $(PAYLOAD_DIR)/
 	cp $(SRC_DIR)/c/no-close-range.c $(PAYLOAD_DIR)/
+	cp -a $(DEPLOY_DIR)/chroot/* $(PAYLOAD_DIR)/chroot-bin/ 2>/dev/null || true
 	chmod +x $(PAYLOAD_DIR)/*.sh $(PAYLOAD_DIR)/nhsystem-bin/nh-* 2>/dev/null || true
 	@echo "  staged: $$(find $(PAYLOAD_DIR) -type f | wc -l) files"
 
 .PHONY: build-c
-build-c: $(BUILD_DIR)/nh-sudo $(BUILD_DIR)/no-close-range.so
+build-c: $(BUILD_DIR)/nh-sudo $(BUILD_DIR)/no-close-range.so $(BUILD_DIR)/nh-diag
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -60,6 +61,10 @@ $(BUILD_DIR)/nh-sudo: $(SRC_DIR)/c/nh-sudo.c | $(BUILD_DIR)
 $(BUILD_DIR)/no-close-range.so: $(SRC_DIR)/c/no-close-range.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -shared -fPIC -o $@ $< -nostartfiles
 	@echo "  built: no-close-range.so ($@)"
+
+$(BUILD_DIR)/nh-diag: $(SRC_DIR)/c/nh-diag.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $@ $< -static -s
+	@echo "  built: nh-diag ($@)"
 
 .PHONY: build-module
 build-module: stage-payload
@@ -76,6 +81,7 @@ lint-sh:
 	@find $(SRC_DIR) -name 'nh-*' -not -name '*.c' -exec bash -n {} \;
 	@bash -n $(ROOT_DIR)/nhctl
 	@find $(ROOT_DIR)/device -name '*.sh' -exec bash -n {} \;
+	@find $(ROOT_DIR)/deploy -name '*.sh' -exec bash -n {} \;
 	@find $(ROOT_DIR)/tests -name '*.sh' -exec bash -n {} \;
 	@echo "  shell syntax: OK"
 
@@ -108,13 +114,18 @@ test-sh:
 	fi
 
 .PHONY: test-c
-test-c:
+test-c: build-c
 	@echo "--- C tests ---"
-	@echo "  (no unit tests for C sources yet)"
+	@$(CC) $(CFLAGS) -Wall -Wextra -pedantic -o $(BUILD_DIR)/test_nh_sudo $(TEST_DIR)/test_nh_sudo.c 2>&1 | grep -v "note:" || true
+	@if [ -f $(BUILD_DIR)/test_nh_sudo ]; then \
+		$(BUILD_DIR)/test_nh_sudo; \
+	else \
+		echo "  C test binary not built — skipping"; \
+	fi
 
 .PHONY: validate
 validate: lint test
-	@$(SRC_DIR)/scripts/validate.sh
+	@$(ROOT_DIR)/scripts/validate.sh
 
 .PHONY: deploy
 deploy: stage
@@ -142,8 +153,8 @@ docker-run: docker
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILD_DIR) $(DIST_DIR) $(PAYLOAD_DIR)
-	@echo "  cleaned: build/, dist/, payload/"
+	rm -rf $(BUILD_DIR) $(DIST_DIR) $(PAYLOAD_DIR) $(DEPLOY_DIR)/magisk/dist
+	@echo "  cleaned: build/, dist/, payload/, deploy/magisk/dist/"
 
 .PHONY: distclean
 distclean: clean

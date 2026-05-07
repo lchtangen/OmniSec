@@ -30,18 +30,18 @@ nethunter-setup-v2.0.0.zip
 make build-c
 make build-module
 
-# Output: magisk-module/dist/nethunter-setup-v2.0.0.zip
+# Output: deploy/magisk/dist/nethunter-setup-v2.0.0.zip
 ```
 
 Or manually:
 ```bash
-bash magisk-module/build.sh
+bash deploy/magisk/build.sh
 ```
 
 ## Install
 
 1. Build the module
-2. Push to device: `adb push magisk-module/dist/*.zip /sdcard/`
+2. Push to device: `adb push deploy/magisk/dist/*.zip /sdcard/`
 3. Open Magisk app → Modules → Install from storage
 4. Reboot
 

@@ -23,20 +23,20 @@ All scripts must account for these constraints.
 - Use ADB for device communication
 - Every "risky" operation must call `run_backup()` first
 
-### Device-side scripts (`payload/`)
+### Device-side scripts (`src/device/setup/`)
 - Shebang: `#!/system/bin/sh`
 - Options: `set -euo pipefail` (where supported by mksh)
-- Source `nhsystem-bin/nh-lib` for helpers
+- Source `../bin/nh-lib` for helpers (or at deploy path `nhsystem-bin/nh-lib`)
 - Only use commands available in Android's minimal shell
 - No assumptions about `$PATH` — use full paths
 
-### nhsystem-bin scripts (`payload/nhsystem-bin/`)
+### nhsystem-bin scripts (`src/device/bin/`)
 - Shebang: `#!/system/bin/sh`
 - Source `nh-lib` for shared functions
 - Keep functions reusable and composable
 - One logical operation per script
 
-### C source code (`payload/`)
+### C source code (`src/c/`)
 - Must compile with `gcc -Wall -Wextra -pedantic`
 - Static linking for binaries, PIC for shared libraries
 - Target AArch64 (aarch64-linux-gnu)
@@ -72,7 +72,7 @@ area: brief description
 Optional body explaining motivation and approach.
 ```
 
-Areas: `nhctl`, `payload`, `nhsystem-bin`, `kernel`, `device`, `docs`, `build`, `ci`, `magisk`
+Areas: `nhctl`, `src/device/setup`, `src/device/bin`, `kernel`, `device`, `docs`, `build`, `ci`, `magisk`
 
 ## Testing
 
@@ -84,7 +84,7 @@ make lint        # Syntax checks only
 
 Before submitting any change, run:
 ```bash
-./scripts/validate.sh
+make validate
 ```
 
 ## Pull Request Checklist

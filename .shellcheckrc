@@ -1,0 +1,29 @@
+# NetHunter NextGen ShellCheck Configuration
+# PRIORITY: P1
+
+# Enable all checks
+enable=all
+
+# Source level
+shell=bash
+
+# Severity: error and warning (not style or info)
+severity=warning
+
+# External sources (sourced files)
+external-sources=true
+
+# Source paths
+source-path=src/
+source-path=src/device/bin/
+source-path=src/device/setup/
+source-path=src/scripts/
+
+# Exclude specific checks
+disable=SC1090  # Can't follow non-constant source
+disable=SC1091  # Not following (external)
+disable=SC3043  # local keyword in POSIX sh (device scripts use #!/system/bin/sh)
+disable=SC2312  # Consider invoking this command separately (false positives with say/die)
+
+# Custom assertions
+assert=return

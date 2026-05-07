@@ -1,0 +1,114 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-config - Configuration manager for nhsystem
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+CONFIG=$NHSYSTEM/etc/nh-config.conf
+
+usage() {
+    echo "usage: nh-config <command> [key] [value]"
+    echo ""
+    echo "Commands:"
+    echo "  list               List all config values"
+    echo "  get <key>          Get config value"
+    echo "  set <key> <value>  Set config value"
+    echo "  delete <key>       Delete config key"
+    echo "  reset              Reset to defaults"
+    echo "  export             Export config as script"
+    echo "  import <file>      Import config from file"
+    exit 1
+}
+
+ensure_config() {
+    [ -f "$CONFIG" ] || touch "$CONFIG"
+}
+
+[ $# -ge 1 ] || usage
+CMD="$1"; shift
+
+case "$CMD" in
+    list)
+        ensure_config
+        echo "══ nhsystem Config ══"
+        echo ""
+        if [ -s "$CONFIG" ]; then
+            while IFS='=' read -r key value; do
+                [ -z "$key" ] && continue
+                printf "  %-30s = %s\n" "$key" "$value"
+            done < "$CONFIG"
+        else
+            echo "  (empty - defaults in use)"
+        fi
+        echo ""
+        echo "Built-in defaults:"
+        echo "  NHSYSTEM                   = /data/local/nhsystem"
+        echo "  NHWORKSPACE                = /data/local/nhsystem/workspaces/main"
+        echo "  NH_ROOTS                   = /data/local/nhsystem/roots"
+        echo "  NH_DEFAULT_CHROOT          = archlinux"
+        echo "  NH_ARCH_SSH_PORT           = 2222"
+        echo "  NH_KALI_SSH_PORT           = 22"
+        echo "  NH_AUTO_MOUNT              = true"
+        echo "  NH_AUTO_SERVICES           = true"
+        echo "  NH_LOG_LEVEL               = info"
+        echo "  NH_THEME                   = cyberpunk"
+        ;;
+    get)
+        [ $# -ge 1 ] || usage
+        ensure_config
+        KEY="$1"
+        VAL=$(grep "^$KEY=" "$CONFIG" 2>/dev/null | cut -d= -f2-)
+        if [ -n "$VAL" ]; then
+            echo "$VAL"
+        else
+            echo "key '$KEY' not set"
+            return 1
+        fi
+        ;;
+    set)
+        [ $# -ge 2 ] || usage
+        KEY="$1"; shift
+        VALUE="$*"
+        ensure_config
+        if grep -q "^$KEY=" "$CONFIG" 2>/dev/null; then
+            sed -i "s|^$KEY=.*|$KEY=$VALUE|" "$CONFIG"
+        else
+            echo "$KEY=$VALUE" >> "$CONFIG"
+        fi
+        echo "  set: $KEY = $VALUE"
+        ;;
+    delete)
+        [ $# -ge 1 ] || usage
+        ensure_config
+        sed -i "/^$1=/d" "$CONFIG" 2>/dev/null && echo "  deleted: $1" || echo "  key not found: $1"
+        ;;
+    reset)
+        rm -f "$CONFIG"
+        echo "  config reset to defaults"
+        ;;
+    export)
+        ensure_config
+        echo "# nhsystem config export"
+        echo "# $(date)"
+        cat "$CONFIG"
+        echo ""
+        echo "# Defaults:"
+        echo "NHSYSTEM=/data/local/nhsystem"
+        echo "NHWORKSPACE=\$NHSYSTEM/workspaces/main"
+        echo "NH_ROOTS=\$NHSYSTEM/roots"
+        echo "NH_DEFAULT_CHROOT=archlinux"
+        ;;
+    import)
+        [ $# -ge 1 ] || usage
+        FILE="$1"
+        [ -f "$FILE" ] || { echo "file not found: $FILE"; exit 1; }
+        while IFS='=' read -r key value; do
+            [ -z "$key" ] || [ "$key" = "${key#\#}" ] || continue
+            echo "$key=$value" >> "$CONFIG"
+        done < "$FILE"
+        echo "  imported: $FILE"
+        ;;
+    *)
+        usage
+        ;;
+esac

@@ -1,0 +1,105 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-alert - Notification and alert system
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+ALERT_LOG=$NHSYSTEM/logs/alerts.log
+CONFIG_DIR=$NHSYSTEM/etc
+
+ensure_config() {
+    mkdir -p $CONFIG_DIR
+    [ -f $CONFIG_DIR/alert.conf ] || cat > $CONFIG_DIR/alert.conf <<'CFG'
+# nh-alert configuration
+# Available transports: termux, log, notify
+transports=termux,log
+# Maximum alerts per hour
+rate_limit=10
+CFG
+}
+
+send_termux() {
+    local level="$1" msg="$2"
+    if command -v termux-notification >/dev/null 2>&1; then
+        termux-notification \
+            --title "NetHunter: $level" \
+            --content "$msg" \
+            --priority high \
+            --led-color ff0000 \
+            --vibrate "200,500,200" 2>/dev/null || true
+    fi
+}
+
+send_log() {
+    local level="$1" msg="$2"
+    local ts=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "unknown")
+    echo "[$ts] [$level] $msg" >> $ALERT_LOG
+}
+
+rate_limit_pass() {
+    local level="$1"
+    ensure_config
+    local limit=$(grep ^rate_limit $CONFIG_DIR/alert.conf | cut -d= -f2)
+    limit=${limit:-10}
+    local count=$(grep "\[$level\]" $ALERT_LOG 2>/dev/null | tail -$limit | wc -l)
+    [ "$count" -lt "$limit" ]
+}
+
+alert() {
+    local level="${1:-INFO}" msg="$2"
+    ensure_config
+    rate_limit_pass "$level" || return 0
+    local transports=$(grep ^transports $CONFIG_DIR/alert.conf | cut -d= -f2)
+    [ -z "$transports" ] && transports="termux,log"
+    local IFS=','
+    for t in $transports; do
+        case "$t" in
+            termux) send_termux "$level" "$msg" ;;
+            log) send_log "$level" "$msg" ;;
+        esac
+    done
+}
+
+show_log() {
+    local level="${1:-}"
+    if [ -f $ALERT_LOG ]; then
+        echo "── Alert Log ──"
+        echo ""
+        if [ -n "$level" ]; then
+            grep "\[$level\]" $ALERT_LOG | tail -20
+        else
+            tail -30 $ALERT_LOG
+        fi
+    else
+        echo "  No alerts logged"
+    fi
+}
+
+clear_log() {
+    : > $ALERT_LOG
+    echo "  Alert log cleared"
+}
+
+usage() {
+    cat <<EOF
+usage: nh-alert <command> [args]
+
+Commands:
+  info <message>      Send an info alert
+  warn <message>      Send a warning alert
+  error <message>     Send an error alert
+  critical <message>  Send a critical alert
+  log [level]         Show alert log (filter by level)
+  clear               Clear alert log
+EOF
+    exit 1
+}
+
+[ $# -ge 2 ] || usage
+case "$1" in
+    info|warn|error|critical) alert "$1" "$2" ;;
+    log) show_log "${2:-}" ;;
+    clear) clear_log ;;
+    *) usage ;;
+esac

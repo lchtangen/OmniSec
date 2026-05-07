@@ -88,7 +88,7 @@
         {
             "label": "Deploy: Arch Fast Install (in chroot)",
             "type": "shell",
-            "command": "adb push payload/arch-fast-install.sh /data/local/nhsystem/roots/archlinux/root/arch-fast-install.sh && adb shell /debug_ramdisk/su -c '/data/local/nhsystem/bin/nh-mount arch && /system/bin/chroot /data/local/nhsystem/roots/archlinux /bin/bash /root/arch-fast-install.sh'",
+            "command": "make stage && adb push payload/arch-fast-install.sh /data/local/nhsystem/roots/archlinux/root/arch-fast-install.sh && adb shell /debug_ramdisk/su -c '/data/local/nhsystem/bin/nh-mount arch && /system/bin/chroot /data/local/nhsystem/roots/archlinux /bin/bash /root/arch-fast-install.sh'",
             "presentation": {
                 "reveal": "always",
                 "panel": "dedicated",
@@ -99,7 +99,7 @@
         {
             "label": "Deploy: Arch Specialization (in chroot)",
             "type": "shell",
-            "command": "adb push payload/arch-specialization.sh /data/local/nhsystem/roots/archlinux/root/arch-specialization.sh && adb shell /debug_ramdisk/su -c '/system/bin/chroot /data/local/nhsystem/roots/archlinux /bin/bash /root/arch-specialization.sh'",
+            "command": "make stage && adb push payload/arch-specialization.sh /data/local/nhsystem/roots/archlinux/root/arch-specialization.sh && adb shell /debug_ramdisk/su -c '/system/bin/chroot /data/local/nhsystem/roots/archlinux /bin/bash /root/arch-specialization.sh'",
             "presentation": {
                 "reveal": "always",
                 "panel": "dedicated",

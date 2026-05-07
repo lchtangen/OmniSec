@@ -9,6 +9,7 @@ NHBIN=/data/local/nhsystem/bin
 NHROOTS=/data/local/nhsystem/roots
 LOG=/data/local/nhsystem/boot-arch.log
 WATCHDOG_PID=/data/local/nhsystem/.boot-watchdog
+NH_ADB_PORT="${NH_ADB_PORT:-52104}"
 
 exec >>"$LOG" 2>&1
 echo "--- $(date) NetHunter setup v$NH_SETUP_VERSION ($NH_SETUP_PROFILE) boot start ---"
@@ -22,10 +23,10 @@ sleep 5
 # SELinux permissive
 setenforce 0 && echo "SELinux: permissive" || echo "SELinux: failed"
 
-# Ensure ADB listens on fixed port 52104
-setprop service.adb.tcp.port 52104
+# Ensure ADB listens on configurable port
+setprop service.adb.tcp.port "$NH_ADB_PORT"
 stop adbd; start adbd
-echo "adbd: restarted on port 52104"
+echo "adbd: restarted on port $NH_ADB_PORT"
 
 # Copy no-close-range.so between chroots
 ARCH_SO="$NHROOTS/archlinux/usr/local/lib/nh-no-close-range.so"

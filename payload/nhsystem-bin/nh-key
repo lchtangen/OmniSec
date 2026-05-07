@@ -1,0 +1,112 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-key - SSH and GPG key management
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+KEY_DIR=$NHSYSTEM/etc/keys
+SSH_DIR=$HOME/.ssh
+
+ensure_dirs() {
+    mkdir -p $KEY_DIR $SSH_DIR
+    chmod 700 $SSH_DIR 2>/dev/null || true
+}
+
+list_keys() {
+    ensure_dirs
+    echo "── SSH Keys ──"
+    for key in $SSH_DIR/id_*; do
+        [ -f "$key" ] || continue
+        local pub="${key}.pub"
+        local fingerprint=""
+        if [ -f "$pub" ]; then
+            fingerprint=$(ssh-keygen -lf "$pub" 2>/dev/null | awk '{print $2}')
+        fi
+        printf "  %-20s %s\n" "$(basename "$key")" "${fingerprint:-no pub}"
+    done
+    echo ""
+    echo "── GPG Keys ──"
+    if command -v gpg >/dev/null 2>&1; then
+        gpg --list-keys --keyid-format SHORT 2>/dev/null | grep -E '^   |pub|uid' | head -20
+    else
+        echo "  gpg not available"
+    fi
+}
+
+generate_ssh() {
+    local type="${1:-ed25519}"
+    local comment="${2:-nethunter-$(hostname 2>/dev/null || echo device)}"
+    ensure_dirs
+    local key_file="$SSH_DIR/id_${type}"
+    if [ -f "$key_file" ]; then
+        echo "  Key already exists: $key_file" >&2
+        exit 1
+    fi
+    echo "  Generating $type SSH key..."
+    ssh-keygen -t "$type" -C "$comment" -f "$key_file" -N "" 2>/dev/null
+    echo "  Key generated: $key_file"
+    echo "  Public key: ${key_file}.pub"
+    cat "${key_file}.pub"
+}
+
+import_ssh() {
+    local path="$1"
+    if [ ! -f "$path" ]; then
+        echo "  File not found: $path" >&2
+        exit 1
+    fi
+    ensure_dirs
+    cp "$path" "$SSH_DIR/"
+    if [ -f "${path}.pub" ]; then
+        cp "${path}.pub" "$SSH_DIR/"
+    fi
+    chmod 600 $SSH_DIR/id_* 2>/dev/null || true
+    echo "  Imported: $path"
+}
+
+export_key() {
+    local name="${1:-nethunter-key}"
+    local archive="$KEY_DIR/${name}.tar.gz"
+    ensure_dirs
+    tar czf "$archive" -C "$SSH_DIR" . 2>/dev/null
+    if command -v gpg >/dev/null 2>&1; then
+        gpg --export --armor > "$KEY_DIR/gpg-public.asc" 2>/dev/null || true
+        gpg --export-secret-keys --armor > "$KEY_DIR/gpg-private.asc" 2>/dev/null || true
+        tar czf "$archive" -C "$SSH_DIR" . -C "$KEY_DIR" gpg-*.asc 2>/dev/null || true
+    fi
+    echo "  Exported: $archive"
+}
+
+backup_keys() {
+    local backup="$NHSYSTEM/backups/keys-$(date +%Y%m%d).tar.gz"
+    ensure_dirs
+    mkdir -p $NHSYSTEM/backups
+    tar czf "$backup" "$SSH_DIR" "$HOME/.gnupg" 2>/dev/null || \
+        tar czf "$backup" "$SSH_DIR" 2>/dev/null
+    echo "  Backed up: $backup ($(du -h "$backup" | cut -f1))"
+}
+
+usage() {
+    cat <<EOF
+usage: nh-key <command> [args]
+
+Commands:
+  list                    List SSH and GPG keys
+  generate [type] [comment]  Generate SSH key (default: ed25519)
+  import <path>           Import SSH key from file
+  export [name]           Export keys to archive
+  backup                  Backup all keys to nhsystem
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    list) list_keys ;;
+    generate) shift; generate_ssh "$1" "$2" ;;
+    import) shift; [ $# -ge 1 ] || usage; import_ssh "$1" ;;
+    export) shift; export_key "$1" ;;
+    backup) backup_keys ;;
+    *) usage ;;
+esac

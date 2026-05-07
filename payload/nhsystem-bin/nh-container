@@ -1,0 +1,125 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-container - Container/chroot management
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+
+list_containers() {
+    echo "── Containers ──"
+    local count=0
+    for root in $NHSYSTEM/roots/*/; do
+        [ -d "$root" ] || continue
+        local name=$(basename "$root")
+        local pid=""
+        if [ -f "$NHSYSTEM/var/run/${name}.pid" ]; then
+            pid=$(cat "$NHSYSTEM/var/run/${name}.pid")
+            if kill -0 $pid 2>/dev/null; then
+                echo "  ✓ $name (PID: $pid, running)"
+            else
+                echo "  ○ $name (stopped)"
+            fi
+        else
+            echo "  ○ $name (stopped)"
+        fi
+        count=$((count + 1))
+    done
+    [ $count -eq 0 ] && echo "  No containers found"
+    echo ""
+    # Show available disk
+    df -h $NHSYSTEM 2>/dev/null | tail -1 | awk '{printf "  Storage: %s used / %s total (%s free)\n", $3, $2, $4}'
+}
+
+create_container() {
+    local name="$1" distro="${2:-ubuntu}"
+    local root="$NHSYSTEM/roots/$name"
+    if [ -d "$root" ]; then
+        echo "  Container already exists: $name" >&2
+        exit 1
+    fi
+    echo "  Creating container: $name ($distro)"
+    mkdir -p "$root"
+    case "$distro" in
+        ubuntu)
+            echo "  Use: debootstrap --arch=arm64 focal $root"
+            echo "  Or manually: mkdir -p $root/{bin,dev,etc,home,lib,proc,root,sbin,sys,usr,var}"
+            mkdir -p "$root"/{bin,dev,etc,home,lib,proc,root,sbin,sys,usr,var,tmp}
+            chmod 1777 "$root/tmp"
+            echo "  Container skeleton created. Run debootstrap to populate."
+            ;;
+        arch)
+            echo "  Use existing Arch ARM64 setup at $NHSYSTEM/roots/archlinux"
+            echo "  Clone: nh-container clone archlinux $name"
+            ;;
+        *)
+            mkdir -p "$root"/{bin,dev,etc,home,lib,proc,root,sbin,sys,usr,var,tmp}
+            chmod 1777 "$root/tmp"
+            echo "  Container skeleton created for: $distro"
+            ;;
+    esac
+}
+
+clone_container() {
+    local source="$1" dest="$2"
+    local src_root="$NHSYSTEM/roots/$source"
+    local dst_root="$NHSYSTEM/roots/$dest"
+    if [ ! -d "$src_root" ]; then
+        echo "  Source not found: $source" >&2
+        exit 1
+    fi
+    if [ -d "$dst_root" ]; then
+        echo "  Destination already exists: $dest" >&2
+        exit 1
+    fi
+    echo "  Cloning $source → $dest..."
+    mkdir -p "$(dirname "$dst_root")"
+    cp -a "$src_root" "$dst_root"
+    echo "  Clone complete: $dest ($(du -sh "$dst_root" | cut -f1))"
+}
+
+destroy_container() {
+    local name="$1"
+    local root="$NHSYSTEM/roots/$name"
+    if [ ! -d "$root" ]; then
+        echo "  Container not found: $name" >&2
+        exit 1
+    fi
+    if [ "$name" = "archlinux" ] || [ "$name" = "kali-arm64" ]; then
+        echo "  Cannot destroy primary chroots: $name" >&2
+        exit 1
+    fi
+    echo "  WARNING: This will delete $root"
+    echo "  Type 'yes' to confirm:"
+    read -r confirm
+    if [ "$confirm" = "yes" ]; then
+        rm -rf "$root"
+        echo "  Container destroyed: $name"
+    else
+        echo "  Cancelled"
+    fi
+}
+
+usage() {
+    cat <<EOF
+usage: nh-container <command> [args]
+
+Commands:
+  list                    List all containers
+  create <name> [distro]  Create a new container (ubuntu/arch/alpine)
+  clone <source> <dest>   Clone an existing container
+  destroy <name>          Destroy a container
+
+Distros: ubuntu, arch, alpine, debian (requires debootstrap)
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    list) list_containers ;;
+    create) shift; [ $# -ge 1 ] || usage; create_container "$1" "${2:-ubuntu}" ;;
+    clone) shift; [ $# -ge 2 ] || usage; clone_container "$1" "$2" ;;
+    destroy) shift; [ $# -ge 1 ] || usage; destroy_container "$1" ;;
+    *) usage ;;
+esac

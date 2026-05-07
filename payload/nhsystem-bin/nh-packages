@@ -1,0 +1,84 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-packages - Package listing across chroots
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+AR="$(arch_root)"
+KR="$(kali_root)"
+
+list_arch() {
+    [ -d "$AR" ] || { echo "Arch rootfs not found"; return 1; }
+    mount_root "$AR" 2>/dev/null || true
+    echo "── $ARCH_LABEL ($AR) ──"
+    TOTAL=$(chroot_exec "$AR" /bin/sh -c 'pacman -Q 2>/dev/null | wc -l' 2>/dev/null || echo "?")
+    echo "  total packages: $TOTAL"
+    EXPLICIT=$(chroot_exec "$AR" /bin/sh -c 'pacman -Qe 2>/dev/null | wc -l' 2>/dev/null || echo "?")
+    echo "  explicitly installed: $EXPLICIT"
+    echo ""
+    if [ $# -gt 0 ]; then
+        chroot_exec "$AR" /bin/sh -c "pacman -Qs '$*' 2>/dev/null" || echo "  no matches"
+    fi
+}
+
+list_kali() {
+    [ -d "$KR" ] || { echo "Kali rootfs not found"; return 1; }
+    mount_root "$KR" 2>/dev/null || true
+    echo "── $KALI_LABEL ($KR) ──"
+    TOTAL=$(chroot_exec "$KR" /bin/sh -c 'dpkg -l 2>/dev/null | grep "^ii" | wc -l' 2>/dev/null || echo "?")
+    echo "  total packages: $TOTAL"
+    echo ""
+    if [ $# -gt 0 ]; then
+        chroot_exec "$KR" /bin/sh -c "dpkg -l '${*}' 2>/dev/null | grep '^ii'" || echo "  no matches"
+    fi
+}
+
+list_updates_arch() {
+    [ -d "$AR" ] || { echo "Arch rootfs not found"; return 1; }
+    mount_root "$AR" 2>/dev/null || true
+    echo "── $ARCH_LABEL updates ──"
+    UPDATES=$(chroot_exec "$AR" /bin/sh -c 'pacman -Qu 2>/dev/null' 2>/dev/null || true)
+    if [ -z "$UPDATES" ]; then
+        echo "  system up to date"
+    else
+        echo "$UPDATES"
+        echo "$(echo "$UPDATES" | wc -l) updates available"
+    fi
+}
+
+count_all() {
+    echo "── Package Counts ──"
+    if [ -d "$AR" ]; then
+        mount_root "$AR" 2>/dev/null || true
+        A=$(chroot_exec "$AR" /bin/sh -c 'pacman -Q 2>/dev/null | wc -l' 2>/dev/null || echo "?")
+        echo "  Arch:   $A packages"
+    fi
+    if [ -d "$KR" ]; then
+        mount_root "$KR" 2>/dev/null || true
+        K=$(chroot_exec "$KR" /bin/sh -c 'dpkg -l 2>/dev/null | grep "^ii" | wc -l' 2>/dev/null || echo "?")
+        echo "  Kali:   $K packages"
+    fi
+    T=$(chroot_exec "$AR" /bin/sh -c 'pacman -Q 2>/dev/null | wc -l' 2>/dev/null || echo 0)
+    echo "  Total:  $T"
+}
+
+case "${1:-count}" in
+    arch)
+        shift
+        list_arch "$@"
+        ;;
+    kali)
+        shift
+        list_kali "$@"
+        ;;
+    updates)
+        list_updates_arch
+        ;;
+    count)
+        count_all
+        ;;
+    *)
+        echo "usage: nh-packages {arch [search]|kali [search]|updates|count}" >&2
+        exit 2
+        ;;
+esac

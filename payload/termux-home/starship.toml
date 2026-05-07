@@ -1,0 +1,160 @@
+# NH_SETUP_VERSION: 2.0
+# Cyberpunk 2077 / Neon Genesis themed Starship prompt
+# ███╗   ██╗███████╗████████╗██╗  ██╗██╗   ██╗███╗   ██╗████████╗
+# ████╗  ██║██╔════╝╚══██╔══╝██║  ██║██║   ██║████╗  ██║╚══██╔══╝
+# ██╔██╗ ██║█████╗     ██║   ███████║██║   ██║██╔██╗ ██║   ██║
+# ██║╚██╗██║██╔══╝     ██║   ██╔══██║██║   ██║██║╚██╗██║   ██║
+# ██║ ╚████║███████╗   ██║   ██║  ██║╚██████╔╝██║ ╚████║   ██║
+# ╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝
+
+# ── Schema ─────────────────────────────────────────────────────────
+schema = "v1"
+
+# ── Format: Multi-line cyberpunk layout ────────────────────────────
+format = """
+\
+[╭─](bold white)\
+$os\
+$username\
+[](bg:blue fg:bold blue)\
+$directory\
+[](fg:blue bg:cyan)\
+$git_branch\
+$git_status\
+[](fg:cyan bg:green)\
+$node\
+$python\
+$rust\
+$golang\
+[](fg:green bg:yellow)\
+$docker\
+[](fg:yellow bg:red)\
+$terraform\
+[](fg:red bg:bright-black)\
+$container\
+[ ](fg:bright-black)\
+\
+$fill\
+\
+$nix_shell\
+$cmd_duration\
+$line_break\
+$character"""
+
+# ── Character: Neon cursor ─────────────────────────────────────────
+[character]
+success_symbol = "[▶](bold green)"
+error_symbol = "[▶](bold red)"
+vicmd_symbol = "[◀](bold yellow)"
+
+# ── OS Icon ────────────────────────────────────────────────────────
+[os]
+disabled = false
+style = "bg:bold black fg:green"
+format = "[ $symbol ]($style)"
+
+[os.symbols]
+Android = "🤖"
+Linux = "🐧"
+Macos = "🍎"
+Windows = "⊞"
+NixOS = "❄"
+
+# ── Username: Neon cyan ────────────────────────────────────────────
+[username]
+show_always = true
+style_user = "bg:bold-black fg:cyan"
+style_root = "bg:bold-black fg:red"
+format = "[ $user ]($style)"
+disabled = false
+
+# ── Directory: Deep blue ───────────────────────────────────────────
+[directory]
+read_only = " 🔒"
+truncation_length = 4
+truncation_symbol = "…/"
+style = "bg:blue fg:bold-white"
+format = "[ $path ]($style)"
+home_symbol = "⌂"
+use_os_path_sep = true
+
+# ── Git Branch: Cyan on dark ───────────────────────────────────────
+[git_branch]
+style = "bg:cyan fg:black"
+format = "[ $symbol$branch ]($style)"
+symbol = "⎇ "
+truncation_length = 12
+
+[git_status]
+style = "bg:cyan fg:black"
+format = "[$all_status$ahead_behind ]($style)"
+conflicted = "⚡"
+ahead = "⇡\${count}"
+behind = "⇣\${count}"
+diverged = "⇕\${count}"
+staged = "⊕\${count}"
+modified = "✎\${count}"
+renamed = "→\${count}"
+deleted = "✕\${count}"
+untracked = "…\${count}"
+
+# ── Languages: Neon glow indicators ────────────────────────────────
+[node]
+style = "bg:green fg:black"
+format = "[ $symbol$version ]($style)"
+symbol = "⬡ "
+disabled = false
+detect_files = ["package.json", ".node-version"]
+detect_folders = ["node_modules"]
+
+[python]
+style = "bg:green fg:black"
+format = "[ $symbol$version ]($style)($virtualenv)"
+symbol = " "
+pyenv_version_name = true
+pyenv_prefix = "ⓔ "
+
+[rust]
+style = "bg:green fg:black"
+format = "[ $symbol$version ]($style)"
+symbol = "⚙ "
+
+[golang]
+style = "bg:green fg:black"
+format = "[ $symbol$version ]($style)"
+symbol = "⌘ "
+
+# ── Container/Virtualization ───────────────────────────────────────
+[container]
+style = "bg:bright-black fg:white"
+format = "[ $symbol \\[$name\\] ]($style)"
+symbol = "⬡"
+
+# ── Duration ───────────────────────────────────────────────────────
+[cmd_duration]
+style = "fg:yellow"
+format = "[ ⏱ $duration ]($style)"
+min_time = 2000
+show_milliseconds = false
+
+# ── Line Break ─────────────────────────────────────────────────────
+[line_break]
+disabled = false
+
+# ── Fill ───────────────────────────────────────────────────────────
+[fill]
+style = "bold black"
+
+# ── Nix Shell ──────────────────────────────────────────────────────
+[nix_shell]
+style = "bg:blue fg:white"
+format = "[ $symbol$state ]($style)"
+symbol = "❄ "
+
+# ── Battery/System Status (disabled by default on chroot) ──────────
+[battery]
+disabled = true
+
+# ── Time ───────────────────────────────────────────────────────────
+[time]
+disabled = true
