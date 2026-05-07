@@ -1,0 +1,24 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "workspace: tree",
+      "type": "shell",
+      "command": "ws-tree",
+      "problemMatcher": []
+    },
+    {
+      "label": "codex: version",
+      "type": "shell",
+      "command": "codex --version",
+      "problemMatcher": []
+    },
+    {
+      "label": "arch: info",
+      "type": "shell",
+      "command": "arch-info 2>/dev/null || uname -a",
+      "problemMatcher": []
+    }
+  ]
+}
+

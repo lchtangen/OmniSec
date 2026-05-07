@@ -1,0 +1,249 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+
+        // ── Device Health ────────────────────────────────────────────────────
+        {
+            "label": "Status: Device Health Check",
+            "type": "shell",
+            "command": "./status.sh",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+
+        // ── Active Operations ────────────────────────────────────────────────
+        {
+            "label": "ADB: Setup Local Forwards",
+            "type": "shell",
+            "command": "./nhctl forward",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Arch: Connect Canonical",
+            "type": "shell",
+            "command": "./nhctl arch",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Arch: Repair SSH",
+            "type": "shell",
+            "command": "./nhctl repair-arch-ssh",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Arch: Polish Workstation",
+            "type": "shell",
+            "command": "./nhctl arch-polish",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "SSH Config: Generate NetHunter Hosts",
+            "type": "shell",
+            "command": "./nhctl setup-ssh",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+
+        // ── Deploy ───────────────────────────────────────────────────────────
+        {
+            "label": "Deploy: Push v2.0 Helpers to Device",
+            "type": "shell",
+            "command": "./nhctl deploy-tools",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Deploy: Arch Fast Install (in chroot)",
+            "type": "shell",
+            "command": "adb push payload/arch-fast-install.sh /data/local/nhsystem/roots/archlinux/root/arch-fast-install.sh && adb shell /debug_ramdisk/su -c '/data/local/nhsystem/bin/nh-mount arch && /system/bin/chroot /data/local/nhsystem/roots/archlinux /bin/bash /root/arch-fast-install.sh'",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Deploy: Arch Specialization (in chroot)",
+            "type": "shell",
+            "command": "adb push payload/arch-specialization.sh /data/local/nhsystem/roots/archlinux/root/arch-specialization.sh && adb shell /debug_ramdisk/su -c '/system/bin/chroot /data/local/nhsystem/roots/archlinux /bin/bash /root/arch-specialization.sh'",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Deploy: Full Rebuild (canonical)",
+            "type": "shell",
+            "command": "./clean-rebuild-postboot.sh",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+
+        // ── ADB Shells ───────────────────────────────────────────────────────
+        {
+            "label": "ADB: Root Shell",
+            "type": "shell",
+            "command": "adb shell /debug_ramdisk/su -c 'cd /data/local/nhsystem && exec zsh || exec bash'",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ADB: Reconnect Default Wireless Target",
+            "type": "shell",
+            "command": "./preflight.sh",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ADB: Chroot into Arch ARM64",
+            "type": "shell",
+            "command": "adb shell /debug_ramdisk/su -c '/data/local/nhsystem/bin/nh-mount arch 2>/dev/null; /system/bin/chroot /data/local/nhsystem/roots/archlinux /usr/bin/env -i HOME=/root USER=root LOGNAME=root TERM=xterm-256color LANG=C.UTF-8 LC_ALL=C.UTF-8 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /bin/zsh || /bin/bash'",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ADB: Chroot into Kali ARM64",
+            "type": "shell",
+            "command": "adb shell /debug_ramdisk/su -c '/data/local/nhsystem/bin/nh-mount kali 2>/dev/null; /system/bin/chroot /data/local/nhsystem/roots/kali-arm64 /usr/bin/env -i HOME=/root USER=root LOGNAME=root TERM=xterm-256color LANG=C.UTF-8 LC_ALL=C.UTF-8 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /bin/bash'",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+
+        // ── SSH Connections ──────────────────────────────────────────────────
+        {
+            "label": "SSH: Arch Chroot via ADB forward (:2222)",
+            "type": "shell",
+            "command": "ssh -p 2222 archlinux@127.0.0.1",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "SSH: Arch Chroot root via ADB forward (:2222)",
+            "type": "shell",
+            "command": "ssh -p 2222 root@127.0.0.1",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "SSH: Kali Chroot (root@:22)",
+            "type": "shell",
+            "command": "ssh nh-kali",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "SSH: Android / Termux via ADB forward (:8022)",
+            "type": "shell",
+            "command": "ssh -p 8022 u0_a171@127.0.0.1",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+
+        // ── Diagnostics ──────────────────────────────────────────────────────
+        {
+            "label": "Diag: Repo Doctor",
+            "type": "shell",
+            "command": "./repo-doctor.sh",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": ["$shellcheck"]
+        },
+        {
+            "label": "Diag: ADB devices",
+            "type": "shell",
+            "command": "adb devices -l",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Diag: nhctl status",
+            "type": "shell",
+            "command": "./nhctl status",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}

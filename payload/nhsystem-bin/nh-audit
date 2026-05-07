@@ -1,0 +1,108 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# nh-audit - device-side read-only audit for Android + NetHunter + Arch ARM64
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+ok()   { printf "  OK  %s\n" "$*"; }
+miss() { printf "  --  %s\n" "$*"; }
+warn() { printf "  !!  %s\n" "$*"; }
+
+have_path() {
+    [ -e "$1" ] && ok "$1" || miss "$1"
+}
+
+have_cmd_chroot() {
+    root="$1"
+    cmd="$2"
+    label="$3"
+    if chroot_exec "$root" /bin/sh -lc "command -v '$cmd' >/dev/null 2>&1" 2>/dev/null; then
+        ok "$label: $cmd"
+    else
+        miss "$label: $cmd"
+    fi
+}
+
+echo ""
+echo "== $NH_LABEL Device Audit =="
+echo "== $ARCH_LABEL / $KALI_LABEL =="
+echo "time    : $(date)"
+echo "android : $(getprop ro.product.model 2>/dev/null) / Android $(getprop ro.build.version.release 2>/dev/null) / $(getprop ro.product.cpu.abi 2>/dev/null)"
+echo "root    : $(id 2>/dev/null)"
+
+echo ""
+echo "-- Filesystem layout --"
+for p in \
+    "$NHSYSTEM" \
+    "$NHROOTS" \
+    "$NHROOTS/archlinux" \
+    "$NHROOTS/kali-arm64" \
+    "$NHSYSTEM/bin" \
+    "$NHSYSTEM/etc" \
+    "$NHWORK" \
+    "$NHSYSTEM/logs" \
+    "$NHSYSTEM/backups" \
+    /data/data/com.termux/files/home; do
+    have_path "$p"
+done
+
+echo ""
+echo "-- Launchers --"
+for b in nh-lib nh-version nh-mount nh-umount nh-status nh-health nh-debug nh-audit nh-services nh-update nh-backup nh-vpn nh-enter-arch nh-enter-arch-root nh-enter-kali nh-enter-kali-root; do
+    [ -x "$NHSYSTEM/bin/$b" ] && ok "$b" || miss "$b"
+done
+
+echo ""
+echo "-- Mounts --"
+mount | grep -E 'nhsystem|archlinux|kali-arm64' || miss "no active chroot mounts"
+
+echo ""
+echo "-- Service ports --"
+PORTS="$(ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true)"
+echo "$PORTS" | grep -q ':22 '   && ok "Kali sshd :22"    || miss "Kali sshd :22"
+echo "$PORTS" | grep -q ':2222 ' && ok "Arch sshd :2222"  || miss "Arch sshd :2222"
+echo "$PORTS" | grep -q ':8022 ' && ok "Termux sshd :8022" || miss "Termux sshd :8022"
+echo "$PORTS" | grep -q ':5901 ' && ok "KEX/VNC :5901"    || miss "KEX/VNC :5901"
+echo "$PORTS" | grep -q ':9050 ' && ok "Tor SOCKS :9050"   || miss "Tor SOCKS :9050"
+
+AR="$(arch_root)"
+echo ""
+echo "-- $ARCH_LABEL dev environment --"
+if [ -d "$AR" ]; then
+    mount_root "$AR" 2>/dev/null || warn "could not mount Arch rootfs"
+    chroot_exec "$AR" /bin/sh -lc 'printf "  packages: "; pacman -Q 2>/dev/null | wc -l' 2>/dev/null || true
+    for cmd in pacman sudo zsh sshd git nvim python node npm clang cmake ninja rustc cargo go rg fd fzf jq tmux starship; do
+        have_cmd_chroot "$AR" "$cmd" "arch"
+    done
+    for cmd in wg wg-quick tor torsocks proxychains4 nmap tcpdump radare2 gdb; do
+        have_cmd_chroot "$AR" "$cmd" "arch security/dev"
+    done
+else
+    miss "Arch rootfs not found: $AR"
+fi
+
+KR="$(kali_root)"
+echo ""
+echo "-- $KALI_LABEL cybersecurity environment --"
+if [ -d "$KR" ]; then
+    mount_root "$KR" 2>/dev/null || warn "could not mount Kali rootfs"
+    chroot_exec "$KR" /bin/sh -lc 'printf "  packages: "; dpkg-query -W 2>/dev/null | wc -l' 2>/dev/null || true
+    for cmd in sudo su zsh sshd vncserver startxfce4 dbus-launch nmap tcpdump tshark sqlmap msfconsole; do
+        have_cmd_chroot "$KR" "$cmd" "kali"
+    done
+else
+    miss "Kali rootfs not found: $KR"
+fi
+
+echo ""
+echo "-- Storage --"
+df -h /data /sdcard 2>/dev/null || df -h
+
+echo ""
+echo "-- Suggested next checks --"
+echo "  nh-health        # pass/fail health report"
+echo "  nh-debug         # deeper diagnostic report"
+echo "  nh-services      # start SSH services when paths are ready"
+echo "  nh-backup        # snapshot shared workspace"
+echo ""

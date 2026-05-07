@@ -1,0 +1,24 @@
+{
+  "terminal.integrated.defaultProfile.linux": "zsh",
+  "terminal.integrated.cwd": "/home/archlinux/workspace",
+  "files.exclude": {
+    "**/.git": false,
+    "**/node_modules": true,
+    "**/.cache": true
+  },
+  "search.exclude": {
+    "03-build/**": true,
+    "07-artifacts/**": true,
+    "09-backups/**": true,
+    "tmp/**": true,
+    "**/node_modules/**": true
+  },
+  "files.watcherExclude": {
+    "03-build/**": true,
+    "07-artifacts/**": true,
+    "09-backups/**": true,
+    "tmp/**": true,
+    "**/node_modules/**": true
+  }
+}
+

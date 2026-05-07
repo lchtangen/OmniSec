@@ -1,0 +1,17 @@
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+
+* text=auto eol=lf
+
+*.sh text eol=lf
+nh-* text eol=lf
+nhctl text eol=lf
+*.zsh text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.c text eol=lf
+
+*.tar.gz binary
+*.tgz binary
+*.xz binary
+*.img binary

@@ -1,0 +1,122 @@
+# Build System
+
+## Overview
+
+The build system uses GNU Make for orchestration with shell scripts for
+specialized tasks. There is no traditional "compile" step for most of the
+project (the payload is shell scripts), but C sources need building and
+artifacts need packaging.
+
+## Quick Start
+
+```bash
+make lint          # Syntax check everything
+make build-c       # Build C binaries
+make build-module  # Build Magisk module zip
+make test          # Run tests
+make validate      # lint + test + validate
+make docker        # Build dev container
+make clean         # Remove build artifacts
+```
+
+## Directory Layout
+
+```
+build/              # Build artifacts (C binaries, intermediate files)
+dist/               # Distributable packages (tarballs, zips)
+scripts/            # Build/validation helper scripts
+  build-c.sh        #   C source builder
+  validate.sh       #   Full validation suite
+  check-deps.sh     #   Dependency checker
+  update-version.sh #   Version bumper
+payload/            # Source files deployed to device
+  nh-sudo.c         #   Setuid sudo helper
+  no-close-range.c  #   close_range() stub LD_PRELOAD
+  nhsystem-bin/     #   Device-side management scripts
+  *.sh              #   Setup/recovery scripts
+magisk-module/      # Magisk flashable module packaging
+kernel/             # Kernel build infrastructure
+  Makefile          #   Kernel build targets
+  build-kernel.sh   #   Kernel build script
+  configs/          #   Defconfig overlays
+  patches/          #   Kernel patches
+  toolchain/        #   Toolchain documentation
+device/             # Device management scripts
+  backup-partitions.sh
+  flash-kernel.sh
+  deploy-boot-script.sh
+tests/              # Automated test suite
+  run-tests.sh      #   Shell-based test runner
+  test_scripts.bats #   BATS tests (if bats installed)
+  helpers.bash      #   Test helper functions
+```
+
+## C Build Targets
+
+```bash
+# Build all C sources
+make build-c
+
+# Individual targets
+make build/nh-sudo          # Static setuid binary
+make build/no-close-range.so # Shared library stub
+```
+
+Cross-compilation for ARM64:
+```bash
+make build-c CC=aarch64-linux-gnu-gcc
+```
+
+## Magisk Module
+
+```bash
+# Build the flashable zip
+make build-module
+
+# Output: magisk-module/dist/nethunter-setup-v2.0.0.zip
+```
+
+The module includes:
+- nhsystem-bin scripts (installed to module path)
+- no-close-range.so (optional, installed to /system/lib64/)
+- nh-sudo (optional, installed to /system/bin/)
+- Boot service script (service.sh)
+
+## Validation Pipeline
+
+```bash
+make validate
+# 1. Shell syntax check (bash -n on all .sh and nh-* files)
+# 2. C syntax check (cc -fsyntax-only)
+# 3. JSON validation (package.json, tasks.json)
+# 4. ShellCheck (if installed)
+# 5. BATS tests (if bats installed, fallback to run-tests.sh)
+# 6. ADB connectivity check
+# 7. Device root check
+# 8. nhsystem existence check
+```
+
+## Docker
+
+```bash
+make docker       # Build: nethunter-setup:2.0.0
+make docker-run   # Build and run with USB/SSH mounts
+```
+
+The Docker container includes ADB, build tools, and all dependencies
+needed to develop and deploy from any Linux machine.
+
+## Version Management
+
+```bash
+./scripts/update-version.sh
+# Prompts for version number and build number
+# Updates VERSION.md and nh-defaults.sh
+```
+
+## CI/CD
+
+GitHub Actions workflows in `.github/workflows/`:
+- `ci.yml` - Runs on push/PR: lint, build C, validate structure
+- `release.yml` - Runs on tag push: builds binaries, Magisk module,
+  creates GitHub release with tarball

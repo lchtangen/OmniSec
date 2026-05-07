@@ -1,0 +1,22 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# NetHunter — Bash shell (Kali chroot, kali user, bash)
+. /data/local/nhsystem/bin/nh-lib
+
+root="$(kali_root)"
+mount_root "$root" || { echo "[nh] ERROR: kali mount failed"; exec /system/bin/sh; }
+
+exec chroot_exec "$root" \
+    /usr/bin/env -i \
+        HOME=/home/kali USER=kali LOGNAME=kali \
+        TERM="${TERM:-xterm-256color}" \
+        LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+        SHELL=/usr/bin/bash \
+        PS1='kali@nethunter:\w\$ ' \
+        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    /usr/bin/setpriv \
+        --reuid=100000 --regid=100000 \
+        --groups=100000,27,3003,9997 \
+        --inh-caps=-all \
+    /bin/sh -lc 'cd /home/kali 2>/dev/null || cd /; exec /usr/bin/bash --norc --noprofile'

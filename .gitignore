@@ -1,0 +1,51 @@
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+
+# Dependencies
+node_modules/
+
+# Build artifacts
+build/
+dist/
+
+# Generated audit/output logs
+audits/
+*.log
+*.tmp
+*.bak
+*.nhbak
+
+# Large local rootfs artifacts. Keep locally, do not push to GitHub.
+ArchLinuxARM-aarch64-latest.tar.gz
+*.tar
+*.tar.gz
+*.tgz
+*.xz
+*.img
+
+# Partition backups
+backups/partitions/
+
+# Local/editor/private state
+.claude/settings.local.json
+.env
+.env.*
+*.key
+*.pem
+id_ed25519*
+known_hosts
+
+# Duplicate/restructuring directories
+src/
+deploy/
+workspace/
+
+# Binary artifacts
+*.deb
+*.zip
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*~
+*.swp

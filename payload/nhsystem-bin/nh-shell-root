@@ -1,0 +1,12 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# NetHunter — Root shell (Kali chroot, root, zsh)
+. /data/local/nhsystem/bin/nh-lib
+
+root="$(kali_root)"
+mount_root "$root" || { echo "[nh] ERROR: kali mount failed"; exec "$MAGISK_SU" -c /system/bin/sh; }
+
+# chroot_exec provides base env (HOME=/root, USER=root, SHELL=/usr/bin/zsh, PATH=...)
+exec chroot_exec "$root" \
+    /bin/sh -lc 'cd "$HOME" 2>/dev/null || cd /; exec "$SHELL" -l'

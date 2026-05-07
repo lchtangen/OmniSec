@@ -1,0 +1,13 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+echo "$NH_LABEL"
+echo "$ARCH_LABEL"
+echo "$KALI_LABEL"
+echo "NHSYSTEM=$NHSYSTEM"
+echo "ARCH_ROOT=$(arch_root)"
+echo "KALI_ROOT=$(kali_root)"
+echo "SSH_PORTS=arch:$ARCH_SSH_PORT kali:$KALI_SSH_PORT termux:$TERMUX_SSH_PORT"

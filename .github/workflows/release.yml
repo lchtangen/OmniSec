@@ -1,0 +1,54 @@
+name: Build release artifacts
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build C binaries
+        run: |
+          mkdir -p dist/bin
+          gcc -Wall -Wextra -Os -o dist/bin/nh-sudo payload/nh-sudo.c -static -s
+          gcc -Wall -Wextra -shared -fPIC -o dist/bin/no-close-range.so payload/no-close-range.c -nostartfiles
+
+      - name: Build Magisk module
+        run: |
+          if [ -f magisk-module/build.sh ]; then
+            bash magisk-module/build.sh
+          fi
+
+      - name: Package release tarball
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p release
+          tar czf "release/nethunter-setup-${VERSION}.tar.gz" \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='audits' \
+            --exclude='build' \
+            --exclude='.github' \
+            -C "$(pwd)" .
+          ls -lh release/
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/nethunter-setup-*.tar.gz
+            dist/**/*
+          generate_release_notes: true

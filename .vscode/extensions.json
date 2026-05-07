@@ -1,0 +1,12 @@
+{
+    "recommendations": [
+        "timonwong.shellcheck",
+        "mads-hartmann.bash-ide-vscode",
+        "foxundermoon.shell-format",
+        "ms-vscode-remote.remote-ssh",
+        "ms-vscode.hexeditor",
+        "github.copilot",
+        "github.copilot-chat"
+    ],
+    "unwantedRecommendations": []
+}

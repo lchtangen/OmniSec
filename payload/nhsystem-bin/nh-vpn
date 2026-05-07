@@ -1,0 +1,39 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# nh-vpn — manage WireGuard VPN inside the Arch chroot
+# Usage: nh-vpn [up|down|status|setup]
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+root="$(arch_root)"
+[ -d "$root" ] || { echo "arch rootfs not found: $root" >&2; exit 1; }
+
+mount_root "$root" || exit 1
+
+case "${1:-status}" in
+    up)
+        echo "[nh-vpn] bringing wg0 up"
+        chroot_exec "$root" /usr/bin/wg-quick up wg0
+        ;;
+    down)
+        echo "[nh-vpn] bringing wg0 down"
+        chroot_exec "$root" /usr/bin/wg-quick down wg0 2>/dev/null || true
+        ;;
+    status)
+        echo "[nh-vpn] WireGuard status"
+        chroot_exec "$root" /usr/bin/wg show 2>/dev/null || echo "  wg0 not active"
+        ;;
+    setup)
+        echo "[nh-vpn] running WireGuard setup helper"
+        [ -f "$root/root/arch-wireguard-setup.sh" ] || {
+            cp /data/local/tmp/nh-clean-payload/arch-wireguard-setup.sh \
+               "$root/root/arch-wireguard-setup.sh" 2>/dev/null || true
+        }
+        chroot_exec "$root" /bin/bash /root/arch-wireguard-setup.sh
+        ;;
+    *)
+        echo "usage: nh-vpn [up|down|status|setup]" >&2
+        exit 2
+        ;;
+esac

@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+root="${1:-/workspace}"
+
+printf '%s\n' "$root"
+find "$root" -maxdepth 2 -mindepth 1 -type d | sort | sed "s#^$root#  #"
+

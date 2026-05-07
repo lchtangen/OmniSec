@@ -1,0 +1,318 @@
+#!/bin/bash
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# nhctl - host-side NetHunter/Arch operations controller
+
+set -euo pipefail
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+. "$SCRIPT_DIR/nh-defaults.sh"
+
+DEVICE_ARG=(-s "$ADB_SERIAL")
+
+cmd="${1:-help}"
+[ "$#" -gt 0 ] && shift || true
+
+log() { echo "[nhctl] $*"; }
+die() { echo "error: $*" >&2; exit 1; }
+
+adb_cmd() {
+    adb "${DEVICE_ARG[@]}" "$@"
+}
+
+ensure_adb() {
+    adb_cmd get-state >/dev/null 2>&1 && return 0
+    log "ADB unavailable; trying wireless reconnect: $ADB_SERIAL"
+    adb connect "$ADB_SERIAL" >/dev/null 2>&1 || true
+    adb_cmd get-state >/dev/null 2>&1
+}
+
+adbr() {
+    adb_cmd shell "$ROOT_SU" --mount-master -c "$*"
+}
+
+require_adb() {
+    ensure_adb || die "ADB device not connected at $ADB_SERIAL"
+}
+
+require_root() {
+    require_adb
+    adbr "id" 2>/dev/null | grep -q 'uid=0' || die "Magisk root is not available via $ROOT_SU"
+}
+
+run_backup() {
+    require_root
+    log "running backup before risky operation"
+    if adbr "[ -f /data/local/nhsystem/bin/nh-backup ] && echo yes" | grep -q yes; then
+        adbr "sh /data/local/nhsystem/bin/nh-backup workspace"
+    else
+        log "nh-backup missing on device; creating minimal timestamped workspace backup"
+        adbr 'TS="$(date +%Y%m%d-%H%M%S)"; mkdir -p /data/local/nhsystem/backups; cp -a /data/local/nhsystem/workspaces/main /data/local/nhsystem/backups/workspace-manual-$TS'
+    fi
+}
+
+detect_termux_user() {
+    local uid user
+    uid="$(adbr "ls -nd /data/data/com.termux/files/home 2>/dev/null | awk '{print \$3}'" 2>/dev/null | tr -d '\r\n ' || true)"
+    if [ -n "$uid" ]; then
+        user="$(adbr "id -un $uid 2>/dev/null" 2>/dev/null | tr -d '\r\n ' || true)"
+        [ -n "$user" ] && { printf '%s\n' "$user"; return 0; }
+    fi
+    printf '%s\n' "u0_a171"
+}
+
+deploy_tools() {
+    require_root
+    log "deploying $NH_LABEL helper tools"
+    adb_cmd push "$SCRIPT_DIR/payload/nhsystem-bin/." /data/local/tmp/nhsystem-bin/ >/dev/null
+    adb_cmd push "$SCRIPT_DIR/payload/no-close-range.c" /data/local/tmp/no-close-range.c >/dev/null
+    adb_cmd push "$SCRIPT_DIR/payload/start-arch-boot.sh" /data/local/tmp/start-arch-boot.sh >/dev/null
+    adbr "mkdir -p /data/local/nhsystem/bin; cp /data/local/tmp/nhsystem-bin/* /data/local/nhsystem/bin/; chmod 755 /data/local/nhsystem/bin/nh-* /data/local/nhsystem/bin/nh-lib 2>/dev/null || true"
+    adbr "cp /data/local/tmp/no-close-range.c /data/local/nhsystem/roots/archlinux/root/no-close-range.c 2>/dev/null || true"
+    adbr "mkdir -p /data/adb/service.d; cp /data/local/tmp/start-arch-boot.sh /data/adb/service.d/99-nethunter-boot.sh; chmod 755 /data/adb/service.d/99-nethunter-boot.sh 2>/dev/null || true"
+}
+
+repair_arch_ssh() {
+    require_root
+    run_backup
+    log "repairing Arch sshd configuration and restarting listener"
+    local tmp_script
+    tmp_script="$(mktemp "${TMPDIR:-/tmp}/nh-repair-arch-ssh.XXXXXX")"
+    cat > "$tmp_script" <<'REPAIR'
+#!/system/bin/sh
+set -u
+AR=/data/local/nhsystem/roots/archlinux
+LOG=/data/local/nhsystem/logs/repair-arch-ssh-$(date +%Y%m%d-%H%M%S).log
+mkdir -p /data/local/nhsystem/logs
+{
+    echo "[repair-arch-ssh] start $(date)"
+    [ -d "$AR/etc" ] || { echo "missing Arch rootfs: $AR"; exit 1; }
+
+    if [ -f /data/local/nhsystem/bin/nh-mount ]; then
+        sh /data/local/nhsystem/bin/nh-mount arch || true
+    fi
+
+    mkdir -p "$AR/run/sshd" "$AR/root/.ssh" "$AR/home/archlinux/.ssh"
+    chmod 700 "$AR/root/.ssh" "$AR/home/archlinux/.ssh" 2>/dev/null || true
+    cp /data/local/tmp/no-close-range.c "$AR/root/no-close-range.c" 2>/dev/null || true
+
+    cp -a "$AR/etc/nsswitch.conf" "$AR/etc/nsswitch.conf.nhbak" 2>/dev/null || true
+    cat > "$AR/etc/nsswitch.conf" <<'EOF'
+passwd: files
+group: files
+shadow: files
+gshadow: files
+
+hosts: files dns
+networks: files
+
+protocols: files
+services: files
+ethers: files
+rpc: files
+EOF
+
+    cat > "$AR/etc/ssh/sshd_config" <<'EOF'
+Port 2222
+ListenAddress 0.0.0.0
+ListenAddress ::
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+PermitRootLogin yes
+PasswordAuthentication yes
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+UsePAM no
+UseDNS no
+X11Forwarding no
+PrintMotd no
+PidFile /run/sshd-2222.pid
+LoginGraceTime 20
+MaxStartups 10:30:60
+Subsystem sftp /usr/lib/ssh/sftp-server
+EOF
+
+    /system/bin/chroot "$AR" /usr/bin/ssh-keygen -A || true
+    if [ -f "$AR/root/no-close-range.c" ]; then
+        /system/bin/chroot "$AR" /usr/bin/env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            /usr/bin/cc -shared -fPIC -O2 -o /usr/local/lib/nh-no-close-range.so /root/no-close-range.c 2>/dev/null || true
+    fi
+    pkill -f "sshd.*2222" 2>/dev/null || true
+    pkill -f "sshd-session.*2222" 2>/dev/null || true
+    pkill -f "sshd-auth.*2222" 2>/dev/null || true
+    rm -f "$AR/run/sshd-2222.pid" "$AR/tmp/sshd-2222.log"
+    sleep 1
+    /system/bin/chroot "$AR" /usr/bin/env LD_PRELOAD=/usr/local/lib/nh-no-close-range.so \
+        /usr/bin/sshd -f /etc/ssh/sshd_config -E /tmp/sshd-2222.log || true
+    ss -tlnp 2>/dev/null | grep ":2222" || true
+    echo "[repair-arch-ssh] log: $LOG"
+} 2>&1 | tee -a "$LOG"
+REPAIR
+
+    adb_cmd push "$tmp_script" /data/local/tmp/nh-repair-arch-ssh.sh >/dev/null
+    adb_cmd push "$SCRIPT_DIR/payload/no-close-range.c" /data/local/tmp/no-close-range.c >/dev/null
+    rm -f "$tmp_script"
+    adbr "sh /data/local/tmp/nh-repair-arch-ssh.sh"
+}
+
+repair_nethunter_terminal() {
+    require_root
+    run_backup
+    log "restoring official NetHunter app state and aligning Kali path"
+    adb_cmd push "$SCRIPT_DIR/payload/repair-nethunter-terminal.sh" /data/local/tmp/repair-nethunter-terminal.sh >/dev/null
+    adbr "sh /data/local/tmp/repair-nethunter-terminal.sh"
+}
+
+deploy_sudo_wrapper_cmd() {
+    require_root
+    run_backup
+    log "deploying sudo wrapper to chroots"
+    adb_cmd push "$SCRIPT_DIR/payload/chroot-bin/sudo" /data/local/tmp/sudo-wrapper >/dev/null
+    for chroot in archlinux kali-arm64; do
+        local root="/data/local/nhsystem/roots/$chroot"
+        adbr "[ -d \"$root\" ] || root=\"/data/local/nhsystem/$chroot\""
+        adbr "if [ -d \"$root\" ]; then
+            SUDO_BIN=\"\$root/usr/bin/sudo\"
+            SUDO_ORIG=\"\$root/usr/bin/sudo.orig\"
+            if [ -f \"\$SUDO_BIN\" ] && [ ! -f \"\$SUDO_ORIG\" ] && [ ! -L \"\$SUDO_BIN\" ]; then
+                if file \"\$SUDO_BIN\" 2>/dev/null | grep -q ELF; then
+                    cp \"\$SUDO_BIN\" \"\$SUDO_ORIG\" 2>/dev/null
+                fi
+            fi
+            cp /data/local/tmp/sudo-wrapper \"\$SUDO_BIN\"
+            chmod 755 \"\$SUDO_BIN\"
+            echo \"sudo wrapper deployed to \$chroot\"
+        fi" 2>/dev/null || true
+    done
+    log "sudo wrapper deployed to all chroots"
+}
+
+deploy_bootkali_fixes() {
+    require_root
+    log "deploying bootkali_env/bootkali_init fixes to NetHunter app"
+    adb_cmd push "$SCRIPT_DIR/payload/bootkali_env" /data/local/tmp/bootkali_env >/dev/null
+    adb_cmd push "$SCRIPT_DIR/payload/bootkali_init" /data/local/tmp/bootkali_init >/dev/null
+    adbr "NHTERM=/data/data/com.offsec.nethunter/files
+    if [ -d \"\$NHTERM\" ]; then
+        cp /data/local/tmp/bootkali_env \"\$NHTERM/bootkali_env\"
+        cp /data/local/tmp/bootkali_init \"\$NHTERM/bootkali_init\"
+        chmod 755 \"\$NHTERM/bootkali_env\" \"\$NHTERM/bootkali_init\"
+        restorecon \"\$NHTERM/bootkali_env\" \"\$NHTERM/bootkali_init\" 2>/dev/null || true
+        echo \"bootkali fixes deployed\"
+    else
+        echo \"NetHunter app not installed; skipping bootkali fixes\"
+    fi"
+}
+
+fix_all() {
+    log "=== fix-all: complete repair suite ==="
+    require_root
+    deploy_tools
+    deploy_sudo_wrapper_cmd
+    deploy_bootkali_fixes
+    repair_arch_ssh
+    repair_nethunter_terminal
+    log "=== fix-all complete ==="
+}
+
+usage() {
+    cat <<EOF
+$NH_LABEL
+Arch default: $ARCH_LABEL
+Kali default: $KALI_LABEL
+ADB default: $ADB_SERIAL
+
+usage: nhctl <command> [args]
+
+Commands:
+  status              Run host preflight and device nh-status
+  forward             Setup ADB forwards for 8022/2222/5901/9050
+  connect-arch        Enter Arch, direct SSH first, Termux fallback
+  arch                Enter Arch through Termux fallback immediately
+  termux              SSH into Termux through ADB forward
+  setup-ssh [IP]      Generate ~/.ssh/config and deploy keys
+  backup              Snapshot workspace/config state
+  deploy-tools        Deploy all v2.0 nhsystem helpers and boot service
+  deploy-sudo-wrapper Deploy sudo wrapper to all chroots (avoid FQDN/PAM hang)
+  deploy-bootkali     Deploy fixed bootkali_env/bootkali_init to NetHunter app
+  repair-arch-ssh     Backup, rewrite Arch sshd_config, restart sshd on 2222
+  repair-nhterm       Backup and restore official NetHunter app state, align kalifs to canonical Kali
+  arch-polish         Backup, then finish Arch workstation packages/profile
+  update              Backup, then run device nh-update
+  fix-all             Run complete repair suite (deploy-tools, sudo-wrapper, bootkali, repair-arch-ssh, repair-nhterm)
+  audit               Run host and device audit
+EOF
+}
+
+case "$cmd" in
+    status)
+        ./preflight.sh "${1:-$ADB_SERIAL}" || true
+        require_root
+        adbr "/data/local/nhsystem/bin/nh-status"
+        ;;
+    forward)
+        ./setup-adb-forwards.sh "$ADB_SERIAL"
+        ;;
+    connect-arch|enter-arch)
+        ./connect-arch.sh
+        ;;
+    arch)
+        CONNECT_ARCH_FORCE_TERMUX=1 ./connect-arch.sh
+        ;;
+    termux)
+        require_adb
+        ./setup-adb-forwards.sh "$ADB_SERIAL" >/dev/null
+        TERMUX_USER="${TERMUX_USER:-$(detect_termux_user)}"
+        exec ssh -t -p 8022 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${TERMUX_USER}@127.0.0.1"
+        ;;
+    setup-ssh)
+        ./setup-ssh-config.sh "${1:-$DEVICE_IP}"
+        ;;
+    backup)
+        run_backup
+        ;;
+    deploy-tools)
+        deploy_tools
+        ;;
+    deploy-sudo-wrapper)
+        deploy_sudo_wrapper_cmd
+        ;;
+    deploy-bootkali)
+        deploy_bootkali_fixes
+        ;;
+    repair-arch-ssh)
+        repair_arch_ssh
+        ;;
+    repair-nhterm|repair-nethunter-terminal)
+        repair_nethunter_terminal
+        ;;
+    arch-polish)
+        require_root
+        run_backup
+        log "running Arch workstation polish"
+        adb_cmd push "$SCRIPT_DIR/payload/arch-polish.sh" /data/local/tmp/arch-polish.sh >/dev/null
+        adbr "/data/local/nhsystem/bin/nh-mount arch 2>/dev/null || sh /data/local/nhsystem/bin/nh-mount arch 2>/dev/null || true"
+        adbr "cp /data/local/tmp/arch-polish.sh /data/local/nhsystem/roots/archlinux/root/arch-polish.sh"
+        adbr "/system/bin/chroot /data/local/nhsystem/roots/archlinux /bin/bash /root/arch-polish.sh"
+        ;;
+    update)
+        run_backup
+        adbr "sh /data/local/nhsystem/bin/nh-update"
+        ;;
+    fix-all)
+        fix_all
+        ;;
+    audit)
+        ./audit-project.sh
+        ./run-audit.sh || true
+        require_root
+        adbr "[ -f /data/local/nhsystem/bin/nh-audit ] && sh /data/local/nhsystem/bin/nh-audit || true"
+        ;;
+    help|-h|--help)
+        usage
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac

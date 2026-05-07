@@ -1,0 +1,43 @@
+#!/bin/sh
+# sudo replacement for Android chroot — avoids FQDN/PAM hangups
+# Deployed to /usr/bin/sudo inside chroots (original saved as sudo.orig)
+# NH_SETUP_VERSION: 2.0 nextgen
+set -u
+
+case "${1:-}" in
+    -V|--version)
+        exec /usr/bin/sudo.orig -V
+        ;;
+esac
+
+CMD=""
+SKIP=0
+for arg in "$@"; do
+    if [ $SKIP -eq 1 ]; then
+        SKIP=0
+        continue
+    fi
+    case "$arg" in
+        -E|-e|-H|-P|-S|-n|-v|-k|-K|-r|-T|-g|-p|-t|-U|-u|--)
+            SKIP=1
+            ;;
+        su|-l|--login)
+            ;;
+        -c)
+            SKIP=1
+            ;;
+        *)
+            if [ -z "$CMD" ]; then
+                CMD="$arg"
+            else
+                CMD="$CMD $arg"
+            fi
+            ;;
+    esac
+done
+
+if [ -n "$CMD" ]; then
+    exec /bin/su -l root -c "$CMD"
+else
+    exec /bin/su -l root
+fi

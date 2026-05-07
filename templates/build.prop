@@ -1,0 +1,83 @@
+#
+# build.prop overlay for OnePlus 7 Pro (GM1911)
+# LineageOS 23.2 / Android 16
+#
+# Place in /data/local/tmp/build.prop and apply with:
+#   adb root
+#   adb remount
+#   adb push build.prop /system/
+#   adb reboot
+#
+# Or use Magisk system.prop module.
+
+# Performance
+ro.sys.fw.bg_apps_limit=64
+ro.sys.fw.bg_apps_limit_low=48
+ro.sys.fw.bg_apps_limit_critical=32
+ro.vendor.perf.scroll_opt=true
+ro.vendor.perf.voice_call_volume=true
+debug.performance.tuning=1
+debug.composition.type=gpu
+video.accelerate.hw=1
+
+# Network tweaks
+net.tcp.buffersize.default=4096,87380,256960,4096,16384,256960
+net.tcp.buffersize.wifi=524288,1048576,2097152,524288,1048576,2097152
+net.tcp.buffersize.lte=524288,1048576,2097152,524288,1048576,2097152
+net.ipv4.tcp_rmem=4096,87380,256960
+net.ipv4.tcp_wmem=4096,16384,256960
+net.dns1=1.1.1.1
+net.dns2=1.0.0.1
+
+# ADB over WiFi
+service.adb.tcp.port=52104
+persist.adb.tcp.port=52104
+persist.adb.wifi.enable=1
+
+# SELinux (permissive for chroot)
+ro.build.selinux=1
+persist.sys.selinux.enforcing=0
+ro.boot.selinux=permissive
+
+# USB configuration
+persist.sys.usb.config=mtp,adb
+ro.sys.usb.default.config=mtp,adb
+
+# Dalvik/ART
+dalvik.vm.heapsize=512m
+dalvik.vm.heaptargetutilization=0.75
+dalvik.vm.heapminfree=2m
+dalvik.vm.heapmaxfree=8m
+dalvik.vm.verify-bytecode=false
+
+# Display
+ro.sf.lcd_density=420
+persist.sys.force_highendgfx=1
+debug.hwui.render_dirty_regions=false
+
+# Audio
+persist.audio.fluence.voicecall=true
+persist.audio.fluence.voicerec=true
+persist.audio.fluence.speaker=true
+
+# Battery
+persist.sys.shutdown.mode=hibernate
+ro.config.hw_quickpoweron=true
+
+# WiFi
+persist.wpa_supplicant.debug=false
+wifi.supplicant_scan_interval=180
+
+# Bluetooth
+persist.bluetooth.enable_inbandringing=true
+persist.service.btui.default_btadapter=1
+
+# Camera
+persist.camera.HAL3.enabled=1
+camera.hal3.enabled=1
+
+# Misc
+ro.build.version.security_patch=2026-05-05
+ro.opa.eligible_device=true
+persist.sys.dun.override=0
+persist.sys.timezone=Europe/Berlin

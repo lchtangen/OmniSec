@@ -1,0 +1,12 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+root="$(kali_root)"
+mount_root "$root" || exit 1
+if [ -x "$root/usr/bin/zsh" ]; then
+    exec chroot_exec "$root" /usr/bin/zsh -l
+fi
+exec chroot_exec "$root" /bin/bash --login

@@ -1,0 +1,108 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# nh-health — comprehensive system health check
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+ok()   { printf "  \033[32m✓\033[0m %s\n" "$*"; }
+fail() { printf "  \033[31m✗\033[0m %s\n" "$*"; }
+warn() { printf "  \033[33m⚠\033[0m %s\n" "$*"; }
+info() { printf "  \033[34m→\033[0m %s\n" "$*"; }
+
+ISSUES=0
+err() { fail "$*"; ISSUES=$((ISSUES+1)); }
+
+echo ""
+echo "══ $NH_LABEL Health Check ════════════════════════════"
+echo "  $ARCH_LABEL / $KALI_LABEL"
+echo "  $(date)"
+echo ""
+
+# ── Disk Space ────────────────────────────────────────────────────────────────
+echo "── Disk ───────────────────────────────────────────────"
+DATA_FREE=$(df /data 2>/dev/null | awk 'NR==2 {print $4}')
+DATA_FREE_GB=$(( ${DATA_FREE:-0} / 1024 / 1024 ))
+if [ "${DATA_FREE_GB:-0}" -ge 2 ]; then
+    ok "/data: ${DATA_FREE_GB}GB free"
+else
+    err "/data: only ${DATA_FREE_GB}GB free — consider cleanup"
+fi
+df -h /data 2>/dev/null | awk 'NR==2 {printf "    %s used of %s\n", $3, $2}'
+
+echo ""
+echo "── nhsystem Paths ────────────────────────────────────"
+for p in "$NHSYSTEM" "$NHROOTS" "$NHWORK" \
+          "$NHROOTS/archlinux" "$NHROOTS/archlinux/usr" \
+          "$NHSYSTEM/bin/nh-enter-arch"; do
+    [ -e "$p" ] && ok "$p" || err "MISSING: $p"
+done
+
+echo ""
+echo "── Chroot Mounts ─────────────────────────────────────"
+AR="$(arch_root)"
+KR="$(kali_root)"
+for mp in proc sys dev workspace; do
+    if [ -d "$AR" ]; then
+        is_mounted "$AR/$mp" && ok "arch:/$mp" || warn "arch:/$mp not mounted"
+    fi
+done
+if [ -d "$KR" ]; then
+    for mp in proc sys dev workspace; do
+        is_mounted "$KR/$mp" && ok "kali:/$mp" || info "kali:/$mp not mounted"
+    done
+fi
+
+echo ""
+echo "── Service Ports ─────────────────────────────────────"
+PORTS=$(ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true)
+echo "$PORTS" | grep -q ':22 '   && ok "Kali sshd :22 OPEN"    || warn "Kali sshd :22 not running"
+echo "$PORTS" | grep -q ':2222 ' && ok "Arch sshd :2222 OPEN"  || warn "Arch sshd :2222 not running"
+echo "$PORTS" | grep -q ':8022 ' && ok "Termux sshd :8022 OPEN" || info "Termux sshd :8022 not running"
+
+echo ""
+echo "── $ARCH_LABEL Chroot ────────────────────────────────"
+if [ -d "$AR" ]; then
+    mount_root "$AR" 2>/dev/null || true
+    PKG_COUNT=$(chroot_exec "$AR" /bin/sh -c 'pacman -Q 2>/dev/null | wc -l' 2>/dev/null || echo "?")
+    ok "Arch rootfs: $AR ($PKG_COUNT packages)"
+
+    LAST_UPDATE=$(chroot_exec "$AR" /bin/sh -c \
+        'stat -c "%y" /var/lib/pacman/local 2>/dev/null | cut -d. -f1' 2>/dev/null || echo "unknown")
+    info "Last pacman update: $LAST_UPDATE"
+
+    # WireGuard
+    WG_STATE=$(chroot_exec "$AR" /bin/sh -c \
+        'wg show wg0 2>/dev/null | head -1 || echo "not active"' 2>/dev/null || echo "unknown")
+    info "WireGuard: $WG_STATE"
+
+    # Tor
+    TOR_PID=$(pgrep -x tor 2>/dev/null | head -1 || echo "")
+    [ -n "$TOR_PID" ] && ok "Tor: running (pid $TOR_PID)" || info "Tor: not running"
+else
+    err "Arch rootfs not found: $AR"
+fi
+
+echo ""
+echo "── Backup Status ─────────────────────────────────────"
+LATEST_SNAP=$(ls -d "$NHSYSTEM/backups/workspace-"* 2>/dev/null | sort | tail -1 || echo "")
+if [ -n "$LATEST_SNAP" ]; then
+    SNAP_DATE=$(basename "$LATEST_SNAP" | sed 's/workspace-//')
+    ok "Latest backup: $SNAP_DATE"
+    SNAP_SIZE=$(du -sh "$LATEST_SNAP" 2>/dev/null | awk '{print $1}')
+    info "Backup size: $SNAP_SIZE"
+else
+    warn "No backups found — run: nh-backup"
+fi
+
+echo ""
+echo "── Termux ────────────────────────────────────────────"
+[ -d /data/data/com.termux/files/home ] && ok "Termux installed" || info "Termux not installed"
+
+echo ""
+if [ "$ISSUES" -eq 0 ]; then
+    ok "All checks passed"
+else
+    echo "  \033[31m✗ $ISSUES issue(s) found — review above\033[0m"
+fi
+echo "══════════════════════════════════════════════════════"

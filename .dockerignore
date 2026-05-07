@@ -1,0 +1,14 @@
+.git
+.gitignore
+.gitattributes
+.gitconfig
+node_modules
+audits
+archive
+build
+dist
+*.tar.gz
+*.deb
+*.img
+*.iso
+*.zip

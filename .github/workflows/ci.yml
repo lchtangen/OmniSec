@@ -1,0 +1,113 @@
+name: nethunter-setup CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'templates/**'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint and syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+
+      - name: Shell syntax check (bash -n)
+        run: |
+          echo "--- nh-defaults.sh ---" && bash -n nh-defaults.sh
+          echo "--- nhctl ---" && bash -n nhctl
+          for f in payload/*.sh; do echo "--- $f ---" && bash -n "$f"; done
+          for f in payload/nhsystem-bin/nh-*; do echo "--- $f ---" && bash -n "$f"; done
+          for f in *.sh; do [ -f "$f" ] && echo "--- $f ---" && bash -n "$f"; done
+
+      - name: C syntax check
+        run: |
+          for f in payload/*.c; do
+            echo "--- $f ---"
+            cc -fsyntax-only -Wall -Wextra -pedantic "$f"
+          done
+
+      - name: ShellCheck
+        run: |
+          shellcheck -s sh -S warning nhctl nh-defaults.sh payload/*.sh 2>/dev/null || true
+          shellcheck -s sh -S warning payload/nhsystem-bin/nh-* 2>/dev/null || true
+
+      - name: Check executable permissions
+        run: |
+          ERR=0
+          for f in nhctl *.sh scripts/*.sh; do
+            [ -x "$f" ] || { echo "NOT EXECUTABLE: $f"; ((ERR++)); }
+          done
+          exit $ERR
+
+  build:
+    name: Build C sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build nh-sudo (static)
+        run: |
+          mkdir -p build
+          gcc -Wall -Wextra -Os -o build/nh-sudo payload/nh-sudo.c -static -s
+          file build/nh-sudo
+
+      - name: Build no-close-range.so
+        run: |
+          gcc -Wall -Wextra -shared -fPIC -o build/no-close-range.so payload/no-close-range.c -nostartfiles
+          file build/no-close-range.so
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: c-binaries
+          path: build/
+
+  validate:
+    name: Validate project structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required files exist
+        run: |
+          REQUIRED=(
+            nhctl nh-defaults.sh README.md VERSION.md Makefile
+            payload/nh-sudo.c payload/no-close-range.c
+            payload/nhsystem-bin/nh-lib
+            payload/nhsystem-bin/nh-enter-kali payload/nhsystem-bin/nh-enter-arch
+            payload/nhsystem-bin/nh-mount payload/nhsystem-bin/nh-umount
+            payload/nhsystem-bin/nh-services payload/nhsystem-bin/nh-health
+            payload/android-clean-rebuild.sh payload/arch-fast-install.sh
+            payload/kali-post.sh payload/start-arch-boot.sh
+          )
+          ERR=0
+          for f in "${REQUIRED[@]}"; do
+            [ -f "$f" ] || { echo "MISSING: $f"; ((ERR++)); }
+          done
+          exit $ERR
+
+      - name: Check executable permissions
+        run: |
+          chmod +x nhctl scripts/*.sh 2>/dev/null || true
+
+      - name: JSON validation
+        run: |
+          python3 -m json.tool package.json > /dev/null
+          python3 -m json.tool .vscode/tasks.json > /dev/null
+          python3 -m json.tool .vscode/extensions.json > /dev/null

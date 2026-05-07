@@ -1,0 +1,10 @@
+id=nethunter-setup
+name=NetHunter Setup v2.0
+version=2.0.0
+versionCode=200
+author=nethunter-setup
+description=Arch ARM64 + Kali ARM64 dual-chroot environment for OnePlus 7 Pro (GM1911) on LineageOS 23.2 / Android 16. Provides nhsystem management, boot services, SSH tunnels, and workspace automation.
+minMagisk=27000
+maxMagisk=29000
+requireNativeApi=28
+supportBootMode=0

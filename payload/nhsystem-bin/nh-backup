@@ -1,0 +1,82 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# nh-backup — workspace snapshot backup
+# Usage: nh-backup [workspace|list|restore <date>]
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+BACKUP_DIR="$NHSYSTEM/backups"
+WORKSPACE="$NHWORK"
+TODAY="$(date +%Y%m%d)"
+SNAPSHOT="$BACKUP_DIR/workspace-$TODAY"
+KEEP_DAYS=7
+
+case "${1:-workspace}" in
+    workspace)
+        echo "[nh-backup] backing up $WORKSPACE → $SNAPSHOT"
+        mkdir -p "$BACKUP_DIR"
+
+        if [ -d "$SNAPSHOT" ]; then
+            echo "[nh-backup] snapshot for today already exists: $SNAPSHOT"
+        else
+            # Use hardlinks from yesterday's snapshot if available for delta efficiency
+            PREV=$(ls -d "$BACKUP_DIR"/workspace-* 2>/dev/null | sort | tail -1)
+            if [ -n "$PREV" ] && [ "$PREV" != "$SNAPSHOT" ]; then
+                cp -al "$PREV" "$SNAPSHOT" 2>/dev/null || mkdir -p "$SNAPSHOT"
+            else
+                mkdir -p "$SNAPSHOT"
+            fi
+            rsync -a --delete "$WORKSPACE/" "$SNAPSHOT/" 2>/dev/null || {
+                echo "[nh-backup] rsync not available — using cp"
+                cp -a "$WORKSPACE/." "$SNAPSHOT/"
+            }
+            echo "[nh-backup] snapshot complete: $SNAPSHOT"
+        fi
+
+        # Prune old snapshots — keep last KEEP_DAYS
+        # head -n -N (all-but-last-N) is GNU-only; Android toybox head may not support it.
+        # Use POSIX-portable arithmetic: count total, print (total - KEEP_DAYS) oldest.
+        SNAP_LIST=$(ls -d "$BACKUP_DIR"/workspace-* 2>/dev/null | sort)
+        SNAP_COUNT=$(printf '%s\n' "$SNAP_LIST" | grep -c . 2>/dev/null || echo 0)
+        PRUNE_COUNT=$(( SNAP_COUNT - KEEP_DAYS ))
+        if [ "$PRUNE_COUNT" -gt 0 ]; then
+            printf '%s\n' "$SNAP_LIST" | head -n "$PRUNE_COUNT" | while read -r OLD; do
+                echo "[nh-backup] pruning old snapshot: $OLD"
+                rm -rf "$OLD"
+            done
+        fi
+
+        # restic encrypted backup if configured
+        if command -v restic >/dev/null 2>&1 && [ -n "${RESTIC_REPOSITORY:-}" ]; then
+            echo "[nh-backup] running restic backup"
+            restic backup "$WORKSPACE" 2>/dev/null && \
+                restic forget --keep-daily 7 --prune 2>/dev/null || \
+                echo "[nh-backup] restic backup failed (check RESTIC_REPOSITORY and RESTIC_PASSWORD)"
+        fi
+        ;;
+
+    list)
+        echo "[nh-backup] available snapshots:"
+        ls -1d "$BACKUP_DIR"/workspace-* 2>/dev/null | sort -r | \
+            while read -r S; do
+                SIZE=$(du -sh "$S" 2>/dev/null | awk '{print $1}')
+                echo "  $S  ($SIZE)"
+            done
+        ;;
+
+    restore)
+        DATE="${2:-}"
+        [ -n "$DATE" ] || { echo "usage: nh-backup restore YYYYMMDD" >&2; exit 2; }
+        SRC="$BACKUP_DIR/workspace-$DATE"
+        [ -d "$SRC" ] || { echo "snapshot not found: $SRC" >&2; exit 1; }
+        echo "[nh-backup] restoring $SRC → $WORKSPACE"
+        rsync -a --delete "$SRC/" "$WORKSPACE/" 2>/dev/null || cp -a "$SRC/." "$WORKSPACE/"
+        echo "[nh-backup] restore complete"
+        ;;
+
+    *)
+        echo "usage: nh-backup [workspace|list|restore YYYYMMDD]" >&2
+        exit 2
+        ;;
+esac

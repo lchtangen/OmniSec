@@ -1,0 +1,113 @@
+{
+    // ── Shell scripting ──────────────────────────────────────────────────────
+    "shellcheck.enable": true,
+    "shellcheck.run": "onSave",
+    "shellcheck.executablePath": "/usr/bin/shellcheck",
+    "shellcheck.exclude": ["SC1091"],
+    "bashIde.shellcheckPath": "/usr/bin/shellcheck",
+
+    "editor.defaultFormatter": "mads-hartmann.bash-ide-vscode",
+    "[shellscript]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.formatOnSave": false,
+        "editor.rulers": [100]
+    },
+
+    // ── C (nh-sudo.c) ────────────────────────────────────────────────────────
+    "[c]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.formatOnSave": true,
+        "editor.rulers": [80]
+    },
+
+    // ── File associations ────────────────────────────────────────────────────
+    "files.associations": {
+        "*.sh": "shellscript",
+        "nh-*": "shellscript",
+        "nh-lib": "shellscript",
+        "arch-*": "shellscript",
+        "kali-*": "shellscript",
+        "deploy-*": "shellscript",
+        "*.conf": "ini",
+        "sshd_config": "ini",
+        "*.md": "markdown",
+        "*.c": "c",
+        "PKGBUILD": "shellscript"
+    },
+
+    // ── Search / explorer exclusions ─────────────────────────────────────────
+    "files.exclude": {
+        "**/*.tar.gz": true,
+        "**/node_modules": true,
+        "**/.git": true
+    },
+    "search.exclude": {
+        "**/*.tar.gz": true,
+        "**/node_modules": true,
+        "**/package-lock.json": true
+    },
+    "files.watcherExclude": {
+        "**/*.tar.gz": true,
+        "**/node_modules/**": true
+    },
+
+    // ── Terminal ─────────────────────────────────────────────────────────────
+    "terminal.integrated.profiles.linux": {
+        "zsh": {
+            "path": "/usr/bin/zsh",
+            "args": []
+        },
+        "Arch Chroot (SSH)": {
+            "path": "/usr/bin/ssh",
+            "args": ["-p", "2222", "archlinux@127.0.0.1"],
+            "icon": "terminal-linux"
+        },
+        "Kali Chroot (SSH)": {
+            "path": "/usr/bin/ssh",
+            "args": ["nh-kali"],
+            "icon": "terminal-linux"
+        },
+        "Android / Termux (SSH)": {
+            "path": "/usr/bin/ssh",
+            "args": ["-p", "8022", "u0_a171@127.0.0.1"],
+            "icon": "device-mobile"
+        },
+        "ADB Root Shell": {
+            "path": "/usr/bin/adb",
+            "args": ["shell", "/debug_ramdisk/su", "-c", "zsh || bash"],
+            "icon": "debug-console"
+        }
+    },
+    "terminal.integrated.defaultProfile.linux": "zsh",
+    "terminal.integrated.scrollback": 10000,
+
+    // ── Remote SSH targets (visible in Remote Explorer) ──────────────────────
+    "remote.SSH.configFile": "~/.ssh/config",
+    "remote.SSH.remotePlatform": {
+        "nh-arch": "linux",
+        "nh-kali": "linux",
+        "nh-android": "linux"
+    },
+
+    // ── Task runner ──────────────────────────────────────────────────────────
+    "task.allowAutomaticTasks": "on",
+
+    // ── Editor ───────────────────────────────────────────────────────────────
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.renderWhitespace": "trailing",
+    "editor.wordWrap": "off",
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+
+    // ── Copilot (project scope) ───────────────────────────────────────────────
+    "github.copilot.enable": {
+        "*": true,
+        "shellscript": true,
+        "c": true,
+        "markdown": true,
+        "plaintext": false
+    }
+}

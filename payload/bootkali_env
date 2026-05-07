@@ -1,0 +1,29 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# Profile: Kali ARM64 v2.0 nextgen
+# Fixed version — uses direct path resolution instead of `which` to
+# avoid Magisk su dialog via Binder IPC (which hangs from ADB shell).
+set -u
+
+BB="/system/bin/busybox_nh"
+
+if [ ! -x "$BB" ]; then
+    BB="busybox_nh"
+fi
+
+f_bb() {
+    "$BB" "$@"
+}
+
+f_chk_and_set_kalifs_path() {
+    if [ -z "${KALIFS_PATH:-}" ]; then
+        if [ -d /data/local/nhsystem/roots/kali-arm64 ]; then
+            KALIFS_PATH=/data/local/nhsystem/roots/kali-arm64
+        elif [ -d /data/local/nhsystem/kali-arm64 ]; then
+            KALIFS_PATH=/data/local/nhsystem/kali-arm64
+        elif [ -d /data/local/nhsystem/kalifs ]; then
+            KALIFS_PATH=/data/local/nhsystem/kalifs
+        fi
+    fi
+    export KALIFS_PATH
+}

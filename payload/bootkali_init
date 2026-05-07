@@ -1,0 +1,54 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# Profile: Kali ARM64 v2.0 nextgen
+# Fixed version — wraps the chroot uname test in `timeout 5` to
+# prevent hangs when Binder is unavailable (ADB shell context).
+set -u
+
+BB="/system/bin/busybox_nh"
+MNT="${KALIFS_PATH:-/data/local/nhsystem/roots/kali-arm64}"
+LOG="/data/local/nhsystem/logs/bootkali_init.log"
+RET=0
+
+mkdir -p /data/local/nhsystem/logs
+
+echo "[bootkali_init] $(date) starting" >> "$LOG"
+
+f_chk_chroot() {
+    if [ ! -d "$MNT" ]; then
+        echo "[bootkali_init] ERROR: chroot not found at $MNT" >> "$LOG"
+        return 1
+    fi
+    if [ ! -x "$MNT/bin/uname" ]; then
+        echo "[bootkali_init] ERROR: /bin/uname missing in $MNT" >> "$LOG"
+        return 1
+    fi
+    local result
+    result="$(timeout 5 "$BB" chroot "$MNT" /bin/uname -a 2>/dev/null)" || true
+    if [ -z "$result" ]; then
+        echo "[bootkali_init] WARNING: chroot uname timed out or failed" >> "$LOG"
+        return 1
+    fi
+    echo "[bootkali_init] chroot OK: $result" >> "$LOG"
+    return 0
+}
+
+f_chk_and_set_kalifs_path() {
+    if [ -z "${KALIFS_PATH:-}" ]; then
+        if [ -d /data/local/nhsystem/roots/kali-arm64 ]; then
+            KALIFS_PATH=/data/local/nhsystem/roots/kali-arm64
+        elif [ -d /data/local/nhsystem/kali-arm64 ]; then
+            KALIFS_PATH=/data/local/nhsystem/kali-arm64
+        elif [ -d /data/local/nhsystem/kalifs ]; then
+            KALIFS_PATH=/data/local/nhsystem/kalifs
+        fi
+    fi
+    MNT="$KALIFS_PATH"
+    export KALIFS_PATH
+}
+
+f_chk_and_set_kalifs_path
+f_chk_chroot || RET=$?
+
+echo "[bootkali_init] $(date) exit=$RET" >> "$LOG"
+exit $RET

@@ -1,0 +1,120 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+TERMUX_USR="/data/data/com.termux/files/usr"
+# stat -c '%U' returns username but Toybox on Android 16 may not support %-format;
+# fall back to UID number which also works with su.
+TERMUX_USER="$(stat -c '%U' /data/data/com.termux/files/home 2>/dev/null || \
+    ls -nd /data/data/com.termux/files/home 2>/dev/null | awk '{print $3}' || \
+    echo u0_a175)"
+
+start_termux_sshd() {
+    [ -x "$TERMUX_USR/bin/sshd" ] || return 0
+    ss -tlnp 2>/dev/null | grep -q ':8022 ' && return 0
+    su "$TERMUX_USER" -c "$TERMUX_USR/bin/sshd" 2>/dev/null || true
+}
+
+start_kali_sshd() {
+    root="$(kali_root)"
+    [ -x "$root/usr/sbin/sshd" ] || return 0
+    mount_root "$root" || return 1
+    ss -tlnp 2>/dev/null | grep -q ':22 ' && return 0
+    chroot_exec "$root" /usr/sbin/sshd 2>/dev/null || true
+}
+
+start_arch_sshd() {
+    root="$(arch_root)"
+    [ -x "$root/usr/sbin/sshd" ] || [ -x "$root/usr/bin/sshd" ] || return 0
+    mount_root "$root" || return 1
+    mkdir -p "$root/run/sshd" "$root/root/.ssh" "$root/home/archlinux/.ssh"
+    chmod 700 "$root/root/.ssh" "$root/home/archlinux/.ssh" 2>/dev/null || true
+
+    # Arch's default NSS stack can call systemd/resolve modules that hang in an
+    # Android chroot before sshd sends its banner. Keep the chroot lookup path
+    # local and deterministic.
+    # NOTE: sshd_config and nsswitch.conf blocks are duplicated intentionally
+    # across arch-fast-install.sh, nh-services, and nhctl repair_arch_ssh().
+    # This is deliberate: the startup path re-writes them on every boot because
+    # Android's tmpfs mounts are ephemeral across reboots.
+    cat > "$root/etc/nsswitch.conf" <<'EOF'
+passwd: files
+group: files
+shadow: files
+gshadow: files
+
+hosts: files dns
+networks: files
+
+protocols: files
+services: files
+ethers: files
+rpc: files
+EOF
+
+    cat > "$root/etc/ssh/sshd_config" <<'EOF'
+Port 2222
+ListenAddress 0.0.0.0
+ListenAddress ::
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+PermitRootLogin yes
+PasswordAuthentication yes
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+UsePAM no
+UseDNS no
+X11Forwarding no
+PrintMotd no
+PidFile /run/sshd-2222.pid
+LoginGraceTime 20
+MaxStartups 10:30:60
+Subsystem sftp /usr/lib/ssh/sftp-server
+EOF
+
+    chroot_exec "$root" /usr/bin/ssh-keygen -A 2>/dev/null || true
+    if [ -f "$root/root/no-close-range.c" ] && [ ! -f "$root/usr/local/lib/nh-no-close-range.so" ]; then
+        chroot_exec "$root" /usr/bin/cc -shared -fPIC -O2 \
+            -o /usr/local/lib/nh-no-close-range.so /root/no-close-range.c 2>/dev/null || true
+    fi
+    ss -tlnp 2>/dev/null | grep -q ':2222 ' && return 0
+    SSHD="$([ -x "$root/usr/bin/sshd" ] && echo /usr/bin/sshd || echo /usr/sbin/sshd)"
+    rm -f "$root/run/sshd-2222.pid"
+    chroot_exec "$root" /usr/bin/env LD_PRELOAD=/usr/local/lib/nh-no-close-range.so \
+        "$SSHD" -f /etc/ssh/sshd_config -E /tmp/sshd-2222.log 2>/dev/null || true
+}
+
+start_arch_tor() {
+    root="$(arch_root)"
+    [ -f "$root/etc/tor/torrc" ] || return 0
+    [ -x "$root/usr/bin/tor" ]   || return 0
+    mount_root "$root" || return 1
+    pgrep -x tor >/dev/null 2>&1 && return 0
+    chroot_exec "$root" /usr/bin/tor -f /etc/tor/torrc --RunAsDaemon 1 2>/dev/null || true
+}
+
+start_arch_wireguard() {
+    root="$(arch_root)"
+    [ -f "$root/etc/wireguard/wg0.conf" ] || return 0
+    [ -x "$root/usr/bin/wg-quick" ]       || return 0
+    mount_root "$root" || return 1
+    chroot_exec "$root" /usr/bin/wg show wg0 >/dev/null 2>&1 && return 0
+    chroot_exec "$root" /usr/bin/wg-quick up wg0 2>/dev/null || true
+}
+
+case "${1:-start}" in
+    start)
+        start_termux_sshd
+        start_kali_sshd
+        start_arch_sshd
+        start_arch_wireguard
+        start_arch_tor
+        ss -tlnp 2>/dev/null | grep -E ':22 |:8022 |:2222 ' || true
+        ;;
+    *)
+        echo "usage: nh-services start" >&2
+        exit 2
+        ;;
+esac

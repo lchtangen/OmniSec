@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+export SHELL=/usr/bin/zsh
+export XDG_CURRENT_DESKTOP=XFCE
+export XDG_SESSION_DESKTOP=xfce
+export DESKTOP_SESSION=xfce
+
+[ -r "$HOME/.Xresources" ] && xrdb "$HOME/.Xresources"
+if command -v dbus-launch >/dev/null 2>&1; then
+    exec dbus-launch --exit-with-session startxfce4
+fi
+exec startxfce4

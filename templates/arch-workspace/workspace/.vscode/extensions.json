@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "ms-vscode.remote-server",
+    "ms-python.python",
+    "rust-lang.rust-analyzer",
+    "golang.go",
+    "ms-vscode.cpptools",
+    "redhat.vscode-yaml",
+    "tamasfe.even-better-toml"
+  ]
+}
+

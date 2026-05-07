@@ -1,0 +1,19 @@
+{
+  "name": "nethunter-setup",
+  "version": "2.0.0",
+  "description": "NetHunter setup v2.0 default profile for Arch ARM64 and Kali ARM64. OnePlus 7 Pro (GM1911) / Android 16 / LineageOS 23.2.",
+  "private": true,
+  "scripts": {
+    "lint": "make lint",
+    "test": "make test",
+    "build": "make build",
+    "validate": "make validate",
+    "clean": "make clean",
+    "deploy": "make deploy",
+    "docker": "make docker",
+    "version": "make version"
+  },
+  "dependencies": {
+    "@openai/codex": "^0.128.0"
+  }
+}

@@ -1,0 +1,20 @@
+# Personal global Git ignore
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*.bak
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+secrets.*
+captures/
+*.pcap
+*.pcapng
+

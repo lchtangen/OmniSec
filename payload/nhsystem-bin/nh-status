@@ -1,0 +1,38 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+echo "$NH_LABEL status"
+echo "$ARCH_LABEL"
+echo "$KALI_LABEL"
+echo "Android: $(getprop ro.product.model 2>/dev/null) $(getprop ro.build.version.release 2>/dev/null) $(getprop ro.product.cpu.abi 2>/dev/null)"
+echo "Root: $(id 2>/dev/null)"
+echo
+echo "Paths:"
+for p in "$NHSYSTEM" "$NHROOTS/kali-arm64" "$NHROOTS/archlinux" "$NHWORK" /data/data/com.termux/files; do
+    [ -e "$p" ] && echo "  OK  $p" || echo "  --  $p"
+done
+echo
+echo "Mounts:"
+mount | grep -E 'nhsystem|kali-arm64|archlinux' || echo "  no chroot mounts"
+echo
+echo "Ports:"
+ss -tlnp 2>/dev/null | grep -E ':22 |:8022 |:2222 |:5901 ' || echo "  no expected service ports"
+echo
+echo "$KALI_LABEL:"
+KR="$(kali_root)"
+if [ -d "$KR" ]; then
+    echo "  rootfs: $KR"
+    echo "  root passwd: $(grep '^root:' "$KR/etc/passwd" 2>/dev/null)"
+    echo "  kali passwd: $(grep '^kali:' "$KR/etc/passwd" 2>/dev/null)"
+    ls -l "$KR/usr/bin/sudo" "$KR/bin/su" 2>/dev/null
+fi
+echo
+echo "$ARCH_LABEL:"
+AR="$(arch_root)"
+if [ -d "$AR" ]; then
+    echo "  rootfs: $AR"
+    grep -E '^(root|archlinux):' "$AR/etc/passwd" 2>/dev/null || true
+fi

@@ -1,0 +1,43 @@
+#!/bin/sh
+set -eu
+
+name="${1:-}"
+category="${2:-active}"
+
+if [ -z "$name" ]; then
+  echo "usage: new-project <name> [active|incubator]" >&2
+  exit 2
+fi
+
+case "$category" in
+  active|incubator) ;;
+  *) echo "category must be active or incubator" >&2; exit 2 ;;
+esac
+
+dir="/workspace/01-projects/$category/$name"
+mkdir -p "$dir/scripts" "$dir/src" "$dir/artifacts"
+
+if [ ! -f "$dir/README.md" ]; then
+  {
+    echo "# $name"
+    echo
+    echo "Goal:"
+    echo
+    echo "Status:"
+    echo
+    echo "Next:"
+  } > "$dir/README.md"
+fi
+
+if [ ! -f "$dir/notes.md" ]; then
+  {
+    echo "# $name Notes"
+    echo
+    date '+%Y-%m-%d'
+    echo
+    echo "- Created project scaffold."
+  } > "$dir/notes.md"
+fi
+
+echo "$dir"
+
