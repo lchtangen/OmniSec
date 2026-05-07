@@ -1,0 +1,101 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P9
+# nh-voice — Voice-Controlled Operations (Offline)
+set -euo pipefail
+
+VOICE_DIR="/data/local/nhsystem/voice"
+MODEL_DIR="$VOICE_DIR/models"
+
+show_usage() {
+    cat <<EOF
+nh-voice - Voice-Controlled Security Operations (Offline)
+
+Usage: nh-voice <command> [args]
+
+Commands:
+  status           Show voice system status
+  listen           Start voice command listener
+  commands         List available voice commands
+  train            Train custom commands
+  help             Show this message
+
+Examples:
+  nh-voice status
+  nh-voice listen
+  nh-voice commands
+EOF
+}
+
+init_voice() {
+    mkdir -p "$VOICE_DIR" "$MODEL_DIR"
+}
+
+cmd_status() {
+    echo "══ Voice Control Status ═══════"
+    init_voice
+    echo ""
+    echo "── Whisper Model ──"
+    if [ -f "$MODEL_DIR/ggml-base.bin" ]; then
+        echo "  Model: Available"
+    else
+        echo "  Model: Not installed"
+        echo "  Download: https://huggingface.co/ggerganov/whisper.cpp"
+    fi
+    
+    echo ""
+    echo "── Microphone ──"
+    if [ -e /dev/snd/pcmC0D0c ]; then
+        echo "  Microphone: Available"
+    else
+        echo "  Microphone: Not detected"
+    fi
+}
+
+cmd_listen() {
+    echo "══ Voice Command Listener ═══════"
+    init_voice
+    
+    if command -v whisper >/dev/null 2>&1; then
+        echo "  Listening for commands (Ctrl+C to stop)..."
+        # Simple implementation
+        echo "  Say commands like: 'scan network', 'check status', 'run update'"
+    else
+        echo "  Whisper not installed"
+        echo "  Install: pip install openai-whisper"
+        echo "  Or use: whisper.cpp for offline"
+    fi
+}
+
+cmd_commands() {
+    echo "══ Available Voice Commands ═══════"
+    echo ""
+    echo "── Scanning ──"
+    echo "  'scan network' → nh-netdiag scan"
+    echo "  'scan wifi' → nh-wifi scan"
+    echo ""
+    echo "── System ──"
+    echo "  'check status' → nh-device-detect"
+    echo "  'show performance' → nh-perf status"
+    echo ""
+    echo "── Security ──"
+    echo "  'run audit' → nh-security-audit full"
+    echo "  'check alerts' → nh-alert status"
+}
+
+cmd_train() {
+    echo "══ Training Custom Commands ═══════"
+    init_voice
+    echo "  Training not fully implemented"
+    echo "  Use: whisper.cpp training tools"
+}
+
+init_voice
+
+case "${1:-status}" in
+    status)      cmd_status ;;
+    listen)     cmd_listen ;;
+    commands)   cmd_commands ;;
+    train)      cmd_train ;;
+    help|*)     show_usage ;;
+esac

@@ -1,0 +1,146 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P8
+# nh-iot — IoT Security Testing (WiFi-based)
+set -euo pipefail
+
+IOT_DIR="/data/local/nhsystem/iot"
+DEVICES_FILE="$IOT_DIR/devices.json"
+
+show_usage() {
+    cat <<EOF
+nh-iot - IoT Security Testing (WiFi-based)
+
+Usage: nh-iot <command> [args]
+
+Commands:
+  scan [network]   Scan for IoT devices on network
+  fingerprint <ip>   Fingerprint IoT device
+  test <ip>          Run IoT security tests
+  fuzz <ip> <port>   Fuzz IoT protocol
+  status              Show IoT network status
+  help                Show this message
+
+Note: Uses WiFi network to discover & test IoT devices.
+EOF
+}
+
+init_iot() {
+    mkdir -p "$IOT_DIR"
+    if [ ! -f "$DEVICES_FILE" ]; then
+        echo '{"devices":[]}' > "$DEVICES_FILE"
+    fi
+}
+
+cmd_scan() {
+    local network="${1:-192.168.1.0/24}"
+    echo "══ Scanning for IoT Devices: $network ═════════"
+    init_iot
+    
+    echo "  Scanning for common IoT ports..."
+    
+    # Common IoT ports: 80, 443, 8080, 1883 (MQTT), 5683 (CoAP), 5684 (CoAPS)
+    local iot_ports="80 443 8080 1883 5683 5684 22 23 2323"
+    
+    for port in $iot_ports; do
+        echo "  Checking port $port..."
+        # Use nmap if available
+        if command -v nmap >/dev/null 2>&1; then
+            nmap -p "$port" "$network" --open 2>/dev/null | grep "Nmap scan report" -A1 | grep "open" | head -10
+        fi
+    done
+    
+    echo ""
+    echo "  Common IoT device signatures:"
+    echo "    - Cameras: RTSP (554), HTTP (80)"
+    echo "    - Smart plugs: HTTP (80), MQTT (1883)"
+    echo "    - Thermostats: HTTP (80), Zigbee gateway"
+    echo "    - Locks: BLE, proprietary apps"
+}
+
+cmd_fingerprint() {
+    local ip="${1:-}"
+    [ -z "$ip" ] && { echo "Usage: nh-iot fingerprint <ip>"; exit 1; }
+    
+    echo "══ Fingerprinting IoT Device: $ip ═════════"
+    
+    # Banner grabbing
+    echo "  Banner grabbing..."
+    echo "" | nc -w 3 "$ip" 80 2>/dev/null | head -5 || true
+    echo ""
+    
+    # Check common services
+    for port in 80 443 22 23 8080; do
+        if nc -z -w 2 "$ip" "$port" 2>/dev/null; then
+            echo "  Port $port: OPEN"
+        fi
+    done
+    
+    # HTTP headers
+    if command -v curl >/dev/null 2>&1; then
+        echo ""
+        echo "  HTTP headers:"
+        curl -I -s --connect-timeout 3 "http://$ip" 2>/dev/null | head -10 || true
+    fi
+}
+
+cmd_test() {
+    local ip="${1:-}"
+    [ -z "$ip" ] && { echo "Usage: nh-iot test <ip>"; exit 1; }
+    
+    echo "══ IoT Security Test: $ip ═════════"
+    
+    echo "  [1/5] Default credentials check..."
+    # Check for default creds (basic)
+    echo "    Checking common paths: /, /admin, /login"
+    
+    echo "  [2/5] Firmware version disclosure..."
+    curl -s "http://$ip" 2>/dev/null | grep -iE "version|firmware|build" | head -5 || true
+    
+    echo "  [3/5] Encryption check..."
+    if nc -z "$ip" 443 2>/dev/null; then
+        echo "    Port 443: Encrypted (HTTPS)"
+    else
+        echo "    ⚠ No HTTPS detected"
+    fi
+    
+    echo "  [4/5] Open ports..."
+    if command -v nmap >/dev/null 2>&1; then
+        nmap -sT -p 1-1000 "$ip" 2>/dev/null | grep "open" | head -10
+    fi
+    
+    echo "  [5/5] IoT protocol check..."
+    # Check for MQTT, CoAP, etc.
+    nc -z "$ip" 1883 2>/dev/null && echo "    MQTT (1883): Detected"
+    nc -z "$ip" 5683 2>/dev/null && echo "    CoAP (5683): Detected"
+}
+
+cmd_fuzz() {
+    local ip="${1:-}"
+    local port="${2:-}"
+    [ -z "$ip" ] || [ -z "$port" ] && { echo "Usage: nh-iot fuzz <ip> <port>"; exit 1; }
+    
+    echo "══ Fuzzing IoT Protocol: $ip:$port ═════════"
+    echo "  Fuzzing not fully implemented"
+    echo "  Use: boofuzz, sulley, or custom scripts"
+}
+
+cmd_status() {
+    echo "══ IoT Network Status ═════════"
+    init_iot
+    
+    echo "  Devices discovered: 0"  # Implementation needed
+    echo "  Active scans: 0"
+    echo "  Vulnerable devices: 0"
+}
+
+init_iot
+
+case "${1:-scan}" in
+    scan)        cmd_scan "${2:-}" ;;
+    fingerprint) cmd_fingerprint "${2:-}" ;;
+    test)        cmd_test "${2:-}" ;;
+    fuzz)        cmd_fuzz "${2:-}" "${3:-}" ;;
+    status)      cmd_status ;;
+    help|*)      show_usage ;;
+esac

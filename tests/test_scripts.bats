@@ -528,7 +528,7 @@ setup() {
 	[ "$status" -eq 0 ]
 }
 
-@test "nh-web-console syntax check" {
-	run python3 -m py_compile "$ROOT_DIR/src/device/bin/nh-web-console"
+@test "nh-web-console.py syntax check" {
+	run python3 -m py_compile "$ROOT_DIR/src/device/bin/nh-web-console.py"
 	[ "$status" -eq 0 ]
 }
