@@ -53,4 +53,10 @@ done
 # Start services (sshd, tor, wireguard)
 "$NHBIN/nh-services" start && echo "services: started" || echo "services: failed"
 
+# Start KEX if autostart enabled
+"$NHBIN/nh-kex" boot 2>/dev/null && echo "kex: autostart checked" || true
+
+# Run scheduled tasks
+"$NHBIN/nh-schedule" run 2>/dev/null && echo "schedule: tasks checked" || true
+
 echo "--- boot done ---"

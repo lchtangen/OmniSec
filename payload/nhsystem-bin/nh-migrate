@@ -1,0 +1,170 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-migrate - Device migration and sync tools
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+NHWORK=$NHSYSTEM/workspaces/main
+MIGRATE_DIR=$NHSYSTEM/workspaces/main/migration
+
+ensure_dirs() { mkdir -p "$MIGRATE_DIR"; }
+
+export_config() {
+    local name="${1:-nethunter-config-$(date +%Y%m%d)}"
+    ensure_dirs
+    local outfile="$MIGRATE_DIR/$name.tar.gz"
+
+    echo "── Export Configuration ──"
+    echo ""
+
+    mkdir -p "$MIGRATE_DIR/export"
+
+    # SSH keys
+    [ -d "$NHSYSTEM/roots/archlinux/root/.ssh" ] && cp -a "$NHSYSTEM/roots/archlinux/root/.ssh" "$MIGRATE_DIR/export/"
+    [ -d "$NHSYSTEM/roots/archlinux/home/archlinux/.ssh" ] && cp -a "$NHSYSTEM/roots/archlinux/home/archlinux/.ssh" "$MIGRATE_DIR/export/"
+
+    # Configs
+    [ -d "$NHSYSTEM/etc" ] && cp -a "$NHSYSTEM/etc" "$MIGRATE_DIR/export/"
+    [ -d "$NHWORK/config" ] && cp -a "$NHWORK/config" "$MIGRATE_DIR/export/"
+
+    # SSH host keys (for consistent host identity)
+    if [ -d "$NHSYSTEM/roots/archlinux/etc/ssh" ]; then
+        cp "$NHSYSTEM/roots/archlinux/etc/ssh/ssh_host_"* "$MIGRATE_DIR/export/" 2>/dev/null || true
+    fi
+
+    # Canary tokens
+    [ -d "$NHWORK/canaries" ] && cp -a "$NHWORK/canaries/.registry" "$MIGRATE_DIR/export/" 2>/dev/null || true
+
+    # Create archive
+    cd "$MIGRATE_DIR/export"
+    tar czf "$outfile" . 2>/dev/null
+    cd /tmp
+
+    local size=$(ls -lh "$outfile" 2>/dev/null | awk '{print $5}')
+    local count=$(find "$MIGRATE_DIR/export" -type f 2>/dev/null | wc -l)
+
+    rm -rf "$MIGRATE_DIR/export"
+
+    echo "  Config exported: $outfile"
+    echo "  Files: $count, Size: $size"
+    echo ""
+    echo "  To import on new device: nh-migrate import <file>"
+}
+
+import_config() {
+    local file="${1:-}"
+    [ -z "$file" ] && { echo "Usage: nh-migrate import <file.tar.gz>"; exit 1; }
+    [ -f "$file" ] || { echo "File not found: $file"; exit 1; }
+
+    ensure_dirs
+    echo "── Import Configuration ──"
+    echo "  Source: $file"
+    printf "  This will overwrite existing configs. Continue? [y/N]: "
+    read -r ans
+    case "$ans" in y|Y) ;; *) echo "  Cancelled"; return ;; esac
+
+    mkdir -p "$MIGRATE_DIR/import"
+    tar xzf "$file" -C "$MIGRATE_DIR/import"
+
+    # Restore SSH keys
+    if [ -d "$MIGRATE_DIR/import/.ssh" ]; then
+        cp -a "$MIGRATE_DIR/import/.ssh" "$NHSYSTEM/roots/archlinux/root/" 2>/dev/null
+        chmod 700 "$NHSYSTEM/roots/archlinux/root/.ssh" 2>/dev/null
+        chmod 600 "$NHSYSTEM/roots/archlinux/root/.ssh/authorized_keys" 2>/dev/null
+        echo "  SSH keys restored"
+    fi
+
+    # Restore SSH host keys
+    for f in "$MIGRATE_DIR/import/ssh_host_"*; do
+        [ -f "$f" ] && cp "$f" "$NHSYSTEM/roots/archlinux/etc/ssh/" 2>/dev/null && echo "  Host key restored: $(basename $f)"
+    done
+
+    # Restore config
+    if [ -d "$MIGRATE_DIR/import/etc" ]; then
+        cp -a "$MIGRATE_DIR/import/etc"/* "$NHSYSTEM/etc/" 2>/dev/null
+        echo "  Configs restored"
+    fi
+
+    rm -rf "$MIGRATE_DIR/import"
+    echo "  Import complete"
+}
+
+sync_workspace() {
+    local remote="${1:-}"
+    [ -z "$remote" ] && { echo "Usage: nh-migrate sync <user@host:/path>"; exit 1; }
+
+    echo "── Sync Workspace ──"
+    echo "  Target: $remote"
+    echo ""
+
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -avz --progress "$NHWORK/" "$remote/" 2>&1 | tail -5
+        echo "  Sync complete via rsync"
+    elif command -v scp >/dev/null 2>&1; then
+        local tmp="/tmp/workspace-sync-$(date +%s).tar.gz"
+        tar czf "$tmp" -C "$NHWORK" . 2>/dev/null
+        scp "$tmp" "$remote/" 2>/dev/null && echo "  Workspace synced via scp"
+        rm -f "$tmp"
+    else
+        echo "  rsync/scp not available"
+        return 1
+    fi
+}
+
+check_compat() {
+    echo "── Migration Compatibility Check ──"
+    echo ""
+
+    local local_arch=$(uname -m 2>/dev/null || echo "?")
+    local local_android=$(getprop ro.build.version.release 2>/dev/null || echo "?")
+    local local_magisk=""
+    [ -x /data/adb/magisk/magisk64 ] && local_magisk="yes" || local_magisk="no"
+
+    echo "  Local device:"
+    echo "    Arch:    $local_arch"
+    echo "    Android: $local_android"
+    echo "    Magisk:  $local_magisk"
+    echo ""
+
+    echo "  Requirements:"
+    echo "    Both devices must be ARM64"
+    echo "    Both must have Magisk"
+    echo "    Both must have nhsystem at /data/local/nhsystem"
+    echo ""
+
+    if [ "$local_arch" = "aarch64" ] || [ "$local_arch" = "arm64" ]; then
+        echo "  ✓ Architecture compatible"
+    else
+        echo "  ✗ Architecture may not match"
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-migrate - Device migration and workspace sync
+
+Usage: nh-migrate <command> [args]
+
+Commands:
+  export [name]      Export configs to archive
+  import <file>      Import configs from archive
+  sync <remote>      Sync workspace to remote (rsync/scp)
+  compat             Check migration compatibility
+
+Examples:
+  nh-migrate export my-phone-config
+  nh-migrate import my-phone-config.tar.gz
+  nh-migrate sync user@newdevice:/sdcard/nh-migrate/
+  nh-migrate compat
+EOF
+    exit 1
+}
+
+case "${1:-help}" in
+    export|backup) shift; export_config "${1:-}" ;;
+    import|restore) shift; import_config "${1:-}" ;;
+    sync|push) shift; sync_workspace "${1:-}" ;;
+    compat|check) check_compat ;;
+    *) usage ;;
+esac

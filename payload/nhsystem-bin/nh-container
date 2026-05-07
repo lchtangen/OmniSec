@@ -1,125 +1,169 @@
 #!/system/bin/sh
 # NH_SETUP_VERSION: 2.0 nextgen
-# PRIORITY: P2
-# nh-container - Container/chroot management
+# nh-container — container/chroot management with Docker/podman + versioning
 set -u
 
-NHSYSTEM=/data/local/nhsystem
+NHSYSTEM="${NHSYSTEM:-/data/local/nhsystem}"
+VAR_RUN="$NHSYSTEM/var/run"
+SNAPSHOT_DIR="$NHSYSTEM/snapshots"
+mkdir -p "$VAR_RUN" "$SNAPSHOT_DIR"
+
+detect_runtime() {
+    if command -v docker >/dev/null 2>&1; then
+        echo "docker"; return
+    fi
+    if command -v podman >/dev/null 2>&1; then
+        echo "podman"; return
+    fi
+    echo "chroot"
+}
 
 list_containers() {
     echo "── Containers ──"
     local count=0
-    for root in $NHSYSTEM/roots/*/; do
+    for root in "$NHSYSTEM"/roots/*/; do
         [ -d "$root" ] || continue
-        local name=$(basename "$root")
+        local name
+        name=$(basename "$root")
         local pid=""
-        if [ -f "$NHSYSTEM/var/run/${name}.pid" ]; then
-            pid=$(cat "$NHSYSTEM/var/run/${name}.pid")
-            if kill -0 $pid 2>/dev/null; then
-                echo "  ✓ $name (PID: $pid, running)"
-            else
-                echo "  ○ $name (stopped)"
-            fi
+        [ -f "$VAR_RUN/${name}.pid" ] && pid=$(cat "$VAR_RUN/${name}.pid")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "  ✓ $name (PID: $pid, running)"
         else
             echo "  ○ $name (stopped)"
         fi
         count=$((count + 1))
     done
-    [ $count -eq 0 ] && echo "  No containers found"
+    [ "$count" -eq 0 ] && echo "  No containers found"
+
+    local runtime
+    runtime=$(detect_runtime)
     echo ""
-    # Show available disk
-    df -h $NHSYSTEM 2>/dev/null | tail -1 | awk '{printf "  Storage: %s used / %s total (%s free)\n", $3, $2, $4}'
+    echo "── Runtime: $runtime ──"
+    if [ "$runtime" = "docker" ]; then
+        docker info 2>/dev/null | grep -E 'Containers:|Running:|Images:' | sed 's/^/  /' || echo "  Docker not accessible"
+    elif [ "$runtime" = "podman" ]; then
+        podman info 2>/dev/null | grep -E 'containers:|images:' | head -3 | sed 's/^/  /' || echo "  Podman not accessible"
+    fi
+    df -h "$NHSYSTEM" 2>/dev/null | tail -1 | awk '{printf "\n  Storage: %s used / %s total (%s free)\n", $3, $2, $4}'
 }
 
 create_container() {
     local name="$1" distro="${2:-ubuntu}"
     local root="$NHSYSTEM/roots/$name"
-    if [ -d "$root" ]; then
-        echo "  Container already exists: $name" >&2
-        exit 1
-    fi
-    echo "  Creating container: $name ($distro)"
+    [ -d "$root" ] && { echo "container already exists: $name" >&2; exit 1; }
+
+    local minimal=false pkgs=""
+    for arg in "$@"; do
+        [ "$arg" = "--minimal" ] && minimal=true
+    done
+
+    echo "creating container: $name ($distro)"
     mkdir -p "$root"
-    case "$distro" in
-        ubuntu)
-            echo "  Use: debootstrap --arch=arm64 focal $root"
-            echo "  Or manually: mkdir -p $root/{bin,dev,etc,home,lib,proc,root,sbin,sys,usr,var}"
+
+    if [ "$distro" = "ubuntu" ] && command -v debootstrap >/dev/null 2>&1; then
+        local variant=""
+        $minimal && variant="--variant=minbase"
+        debootstrap --arch=arm64 $variant focal "$root" 2>/dev/null || {
             mkdir -p "$root"/{bin,dev,etc,home,lib,proc,root,sbin,sys,usr,var,tmp}
             chmod 1777 "$root/tmp"
-            echo "  Container skeleton created. Run debootstrap to populate."
-            ;;
-        arch)
-            echo "  Use existing Arch ARM64 setup at $NHSYSTEM/roots/archlinux"
-            echo "  Clone: nh-container clone archlinux $name"
-            ;;
-        *)
-            mkdir -p "$root"/{bin,dev,etc,home,lib,proc,root,sbin,sys,usr,var,tmp}
-            chmod 1777 "$root/tmp"
-            echo "  Container skeleton created for: $distro"
-            ;;
-    esac
-}
-
-clone_container() {
-    local source="$1" dest="$2"
-    local src_root="$NHSYSTEM/roots/$source"
-    local dst_root="$NHSYSTEM/roots/$dest"
-    if [ ! -d "$src_root" ]; then
-        echo "  Source not found: $source" >&2
-        exit 1
-    fi
-    if [ -d "$dst_root" ]; then
-        echo "  Destination already exists: $dest" >&2
-        exit 1
-    fi
-    echo "  Cloning $source → $dest..."
-    mkdir -p "$(dirname "$dst_root")"
-    cp -a "$src_root" "$dst_root"
-    echo "  Clone complete: $dest ($(du -sh "$dst_root" | cut -f1))"
-}
-
-destroy_container() {
-    local name="$1"
-    local root="$NHSYSTEM/roots/$name"
-    if [ ! -d "$root" ]; then
-        echo "  Container not found: $name" >&2
-        exit 1
-    fi
-    if [ "$name" = "archlinux" ] || [ "$name" = "kali-arm64" ]; then
-        echo "  Cannot destroy primary chroots: $name" >&2
-        exit 1
-    fi
-    echo "  WARNING: This will delete $root"
-    echo "  Type 'yes' to confirm:"
-    read -r confirm
-    if [ "$confirm" = "yes" ]; then
-        rm -rf "$root"
-        echo "  Container destroyed: $name"
+        }
+    elif [ "$distro" = "alpine" ] && command -v apk >/dev/null 2>&1; then
+        mkdir -p "$root"/{bin,dev,etc,home,lib,proc,root,sbin,sys,usr,var,tmp}
+        chmod 1777 "$root/tmp"
     else
-        echo "  Cancelled"
+        mkdir -p "$root"/{bin,dev,etc,home,lib,proc,root,sbin,sys,usr,var,tmp}
+        chmod 1777 "$root/tmp"
     fi
+    echo "container created: $name at $root"
 }
 
-usage() {
-    cat <<EOF
-usage: nh-container <command> [args]
+exec_container() {
+    local name="$1"; shift
+    local root="$NHSYSTEM/roots/$name"
+    [ -d "$root" ] || { echo "container not found: $name" >&2; exit 1; }
+    [ $# -eq 0 ] && set -- /bin/sh
 
-Commands:
-  list                    List all containers
-  create <name> [distro]  Create a new container (ubuntu/arch/alpine)
-  clone <source> <dest>   Clone an existing container
-  destroy <name>          Destroy a container
-
-Distros: ubuntu, arch, alpine, debian (requires debootstrap)
-EOF
-    exit 1
+    local runtime
+    runtime=$(detect_runtime)
+    if [ "$runtime" != "chroot" ]; then
+        "$runtime" exec -it "$name" "$@" 2>/dev/null && return 0
+    fi
+    # Fallback: direct chroot
+    for mp in proc sys dev; do
+        mkdir -p "$root/$mp"
+        mount -t "$mp" "$mp" "$root/$mp" 2>/dev/null || true
+    done
+    /system/bin/chroot "$root" "$@"
 }
 
-[ $# -ge 1 ] || usage
-case "$1" in
-    list) list_containers ;;
-    create) shift; [ $# -ge 1 ] || usage; create_container "$1" "${2:-ubuntu}" ;;
-    clone) shift; [ $# -ge 2 ] || usage; clone_container "$1" "$2" ;;
-    destroy) shift; [ $# -ge 1 ] || usage; destroy_container "$1" ;;
-    *) usage ;;
+snapshot_container() {
+    local name="$1" tag="${2:-$(date +%Y%m%d-%H%M%S)}"
+    local root="$NHSYSTEM/roots/$name"
+    [ -d "$root" ] || { echo "container not found: $name" >&2; exit 1; }
+    local snap="$SNAPSHOT_DIR/${name}-${tag}"
+    mkdir -p "$SNAPSHOT_DIR"
+    echo "snapshotting $name → $snap..."
+    cp -a "$root" "$snap"
+    echo "snapshot complete: $snap ($(du -sh "$snap" | awk '{print $1}'))"
+}
+
+rollback_container() {
+    local name="$1" tag="$2"
+    local root="$NHSYSTEM/roots/$name"
+    local snap="$SNAPSHOT_DIR/${name}-${tag}"
+    [ -d "$snap" ] || { echo "snapshot not found: $snap" >&2; exit 1; }
+    echo "rolling back $name to $tag..."
+    rm -rf "$root"
+    cp -a "$snap" "$root"
+    echo "rollback complete"
+}
+
+list_snapshots() {
+    local name="${1:-}"
+    echo "── Container Snapshots ──"
+    local pattern="$SNAPSHOT_DIR/${name:+${name}-}*"
+    for snap in $pattern; do
+        [ -d "$snap" ] || continue
+        local size
+        size=$(du -sh "$snap" 2>/dev/null | awk '{print $1}')
+        echo "  $(basename "$snap")  ($size)"
+    done
+}
+
+case "${1:-list}" in
+    list|status)
+        list_containers
+        ;;
+    create)
+        shift; [ $# -ge 1 ] || { echo "usage: nh-container create <name> [distro] [--minimal]" >&2; exit 2; }
+        create_container "$@"
+        ;;
+    clone)
+        shift; [ $# -ge 2 ] || { echo "usage: nh-container clone <source> <dest>" >&2; exit 2; }
+        clone_container "$1" "$2"
+        ;;
+    exec)
+        shift; [ $# -ge 1 ] || { echo "usage: nh-container exec <name> [cmd...]" >&2; exit 2; }
+        exec_container "$@"
+        ;;
+    snapshot)
+        shift; [ $# -ge 1 ] || { echo "usage: nh-container snapshot <name> [tag]" >&2; exit 2; }
+        snapshot_container "$@"
+        ;;
+    rollback)
+        shift; [ $# -ge 2 ] || { echo "usage: nh-container rollback <name> <tag>" >&2; exit 2; }
+        rollback_container "$@"
+        ;;
+    snapshots)
+        list_snapshots "${2:-}"
+        ;;
+    destroy)
+        shift; [ $# -ge 1 ] || { echo "usage: nh-container destroy <name>" >&2; exit 2; }
+        destroy_container "$1"
+        ;;
+    *)
+        echo "usage: nh-container {list|create|clone|exec|snapshot|rollback|snapshots|destroy}" >&2
+        exit 2
+        ;;
 esac

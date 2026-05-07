@@ -1,0 +1,201 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-cloud - Cloud sync and backup framework
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+CLOUD_DIR=$NHSYSTEM/etc/cloud
+CLOUD_CONF=$CLOUD_DIR/config.conf
+CLOUD_CACHE=$CLOUD_DIR/cache
+
+ensure_config() {
+    mkdir -p $CLOUD_DIR $CLOUD_CACHE
+    [ -f "$CLOUD_CONF" ] || cat > "$CLOUD_CONF" <<CFG
+# nh-cloud configuration
+# provider: local|webdav|s3|rclone
+provider=local
+# Local backup directory
+local_path=$NHSYSTEM/backups/cloud
+# WebDAV endpoint (if provider=webdav)
+webdav_url=
+webdav_user=
+# Rclone remote name (if provider=rclone)
+rclone_remote=
+# Encryption (gpg)
+encrypt=true
+# Sync schedule
+sync_interval=daily
+# Last sync timestamp
+last_sync=0
+CFG
+}
+
+load_config() {
+    ensure_config
+    PROVIDER=$(grep ^provider "$CLOUD_CONF" | cut -d= -f2)
+    LOCAL_PATH=$(grep ^local_path "$CLOUD_CONF" | cut -d= -f2)
+    WEBDAV_URL=$(grep ^webdav_url "$CLOUD_CONF" | cut -d= -f2)
+    RCLONE_REMOTE=$(grep ^rclone_remote "$CLOUD_CONF" | cut -d= -f2)
+    ENCRYPT=$(grep ^encrypt "$CLOUD_CONF" | cut -d= -f2)
+}
+
+status() {
+    load_config
+    echo "── Cloud Sync Status ──"
+    echo ""
+    echo "  Provider:     $PROVIDER"
+    echo "  Local path:   $LOCAL_PATH"
+    echo "  Encryption:   $ENCRYPT"
+    echo ""
+    # Check storage
+    if [ "$PROVIDER" = "local" ] && [ -d "$LOCAL_PATH" ]; then
+        echo "  Local backups:"
+        ls -lh "$LOCAL_PATH" 2>/dev/null | tail -10 | while read -r line; do
+            echo "    $line"
+        done
+        echo ""
+        local count=$(find "$LOCAL_PATH" -type f 2>/dev/null | wc -l)
+        local size=$(du -sh "$LOCAL_PATH" 2>/dev/null | cut -f1)
+        echo "  Total: $count files, $size"
+    fi
+    # Check last sync
+    local last=$(grep ^last_sync "$CLOUD_CONF" | cut -d= -f2)
+    if [ "$last" != "0" ]; then
+        local now=$(date +%s 2>/dev/null || echo 0)
+        local ago=$((now - last))
+        echo "  Last sync: ${ago}s ago"
+    else
+        echo "  Last sync: never"
+    fi
+}
+
+sync_now() {
+    load_config
+    echo "── Syncing to: $PROVIDER ──"
+
+    local ts=$(date +%Y%m%d-%H%M%S 2>/dev/null || echo "unknown")
+    local archive="/tmp/nh-cloud-${ts}.tar.gz"
+
+    # Create archive of configs and data
+    echo "  Creating archive..."
+    tar czf "$archive" \
+        "$NHSYSTEM/etc" \
+        "$NHSYSTEM/bin" \
+        "$NHSYSTEM/workspaces" \
+        "$HOME/.ssh" \
+        "$HOME/.zshrc" \
+        "$HOME/.zprofile" \
+        2>/dev/null || {
+        echo "  Warning: some paths not found, continuing..."
+        tar czf "$archive" "$NHSYSTEM/etc" "$NHSYSTEM/bin" 2>/dev/null
+    }
+
+    local size=$(du -h "$archive" | cut -f1)
+    echo "  Archive: $archive ($size)"
+
+    # Encrypt if enabled
+    local final_archive="$archive"
+    if [ "$ENCRYPT" = "true" ] && command -v gpg >/dev/null 2>&1; then
+        echo "  Encrypting..."
+        gpg --symmetric --armor --batch --passphrase "nh-cloud-${ts}" \
+            --output "${archive}.asc" "$archive" 2>/dev/null && {
+            rm -f "$archive"
+            final_archive="${archive}.asc"
+        }
+    fi
+
+    # Transfer based on provider
+    case "$PROVIDER" in
+        local)
+            mkdir -p "$LOCAL_PATH"
+            mv "$final_archive" "$LOCAL_PATH/"
+            echo "  Saved to: $LOCAL_PATH/"
+            ;;
+        webdav)
+            if command -v curl >/dev/null 2>&1 && [ -n "$WEBDAV_URL" ]; then
+                curl -T "$final_archive" --user "$WEBDAV_USER" "$WEBDAV_URL/" 2>/dev/null && \
+                    echo "  Uploaded to WebDAV" || echo "  WebDAV upload failed" >&2
+            fi
+            ;;
+        rclone)
+            if command -v rclone >/dev/null 2>&1 && [ -n "$RCLONE_REMOTE" ]; then
+                rclone copy "$final_archive" "${RCLONE_REMOTE}:/nh-cloud/" 2>/dev/null && \
+                    echo "  Uploaded via rclone" || echo "  rclone upload failed" >&2
+            fi
+            ;;
+    esac
+
+    # Update last sync
+    local now=$(date +%s 2>/dev/null || echo 0)
+    sed -i "s/^last_sync=.*/last_sync=$now/" "$CLOUD_CONF"
+    echo "  Sync complete"
+}
+
+configure() {
+    echo "── Configure Cloud Sync ──"
+    echo ""
+    echo "Available providers:"
+    echo "  1) Local (backup to nhsystem)"
+    echo "  2) WebDAV (Nextcloud, ownCloud)"
+    echo "  3) rclone (Google Drive, Dropbox, S3, etc.)"
+    echo ""
+    printf "Select provider [1-3]: "
+    read -r choice
+
+    case "$choice" in
+        1)
+            sed -i 's/^provider=.*/provider=local/' "$CLOUD_CONF"
+            printf "Backup directory [${LOCAL_PATH:-$NHSYSTEM/backups/cloud}]: "
+            read -r path
+            [ -n "$path" ] && sed -i "s|^local_path=.*|local_path=$path|" "$CLOUD_CONF"
+            echo "  Configured: local backup"
+            ;;
+        2)
+            sed -i 's/^provider=.*/provider=webdav/' "$CLOUD_CONF"
+            printf "WebDAV URL: "; read -r url
+            printf "Username: "; read -r user
+            sed -i "s|^webdav_url=.*|webdav_url=$url|" "$CLOUD_CONF"
+            sed -i "s/^webdav_user=.*/webdav_user=$user/" "$CLOUD_CONF"
+            echo "  Configured: WebDAV ($url)"
+            ;;
+        3)
+            sed -i 's/^provider=.*/provider=rclone/' "$CLOUD_CONF"
+            printf "Rclone remote name: "; read -r remote
+            sed -i "s/^rclone_remote=.*/rclone_remote=$remote/" "$CLOUD_CONF"
+            echo "  Configured: rclone ($remote)"
+            echo "  Make sure remote is configured: rclone config"
+            ;;
+        *)
+            echo "  Invalid choice" >&2
+            exit 1
+            ;;
+    esac
+}
+
+usage() {
+    cat <<EOF
+nh-cloud - Cloud sync and backup framework
+
+Usage: nh-cloud <command> [args]
+
+Commands:
+  status        Show sync status and backup listing
+  sync          Run cloud sync now
+  configure     Configure cloud provider
+
+Providers:
+  local   — Backup to nhsystem storage
+  webdav  — Nextcloud, ownCloud (curl required)
+  rclone  — Google Drive, Dropbox, S3, etc.
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    status) status ;;
+    sync) sync_now ;;
+    configure|config) configure ;;
+    *) usage ;;
+esac

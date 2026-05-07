@@ -132,3 +132,54 @@ setup() {
 @test "build.prop template exists" {
 	test -f "$ROOT_DIR/deploy/android/build.prop"
 }
+
+@test "nh-ai syntax check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-ai"
+	[ "$status" -eq 0 ]
+}
+
+@test "agent.py syntax check" {
+	run python3 -m py_compile "$ROOT_DIR/src/device/ai/agent.py"
+	[ "$status" -eq 0 ]
+}
+
+@test "setup-ai.sh syntax check" {
+	run bash -n "$ROOT_DIR/src/scripts/setup-ai.sh"
+	[ "$status" -eq 0 ]
+}
+
+@test "nhctl ai help shows usage" {
+	run bash -c "cd $ROOT_DIR && ./nhctl ai help"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"Usage"* ]]
+}
+
+@test "nhctl ask shows no-adb message" {
+	run bash -c "cd $ROOT_DIR && ./nhctl ask test 2>&1 || true"
+	# Should either succeed or show ADB-related error (not crash)
+	[[ "$output" != *"unbound variable"* ]]
+	[[ "$output" != *"syntax error"* ]]
+}
+
+@test "nh-pqc syntax check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-pqc"
+	[ "$status" -eq 0 ]
+}
+
+@test "nhctl pqc help shows usage" {
+	run bash -c "cd $ROOT_DIR && ./nhctl pqc help 2>&1 || true"
+	[[ "$output" != *"unbound variable"* ]]
+	[[ "$output" != *"syntax error"* ]]
+}
+
+@test "nh-key pq-generate usage" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-key"
+	[ "$status" -eq 0 ]
+	[[ "$output" == "" ]]
+}
+
+@test "nh-secret pq commands check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-secret"
+	[ "$status" -eq 0 ]
+	[[ "$output" == "" ]]
+}

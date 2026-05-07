@@ -469,11 +469,23 @@ Services:
   container <cmd>          Container/chroot management with versioning
   kismet {start|stop|status|hop}  Kismet server + channel hopping
   rtl {status|spectrum|adsb|noaa|aprs}  SDR radio tools
+  pqc {status|keygen|encrypt|decrypt|sign|verify|keys}  Post-Quantum cryptography toolkit
 
 Multi-Device:
   --device <serial>  Run command against specific device (e.g. --device 10.0.0.50:52104)
-  killswitch {enable|disable|status|watchdog}  VPN kill switch management
+   killswitch {enable|disable|status|watchdog}  VPN kill switch management
   logs {list|tail|follow|clear|fetch}  View or fetch device logs
+
+AI:
+  ask <question>          Ask the AI assistant anything (shortcut)
+  ai {chat|ask} <question>  Send a chat message to the AI
+  ai recon <target>       Run autonomous reconnaissance agent (ReAct loop)
+  ai diagnose             AI system diagnostic (collects data + AI analysis)
+  ai status               AI-assisted system status analysis
+  ai models               List available AI models
+  ai install [model]      Install an AI model in Arch chroot (default: llama3.2:3b)
+  ai sessions [list|show|clear]  Manage AI agent sessions
+  ai setup                Install AI deps (Ollama + agent + model)
 
 Install:
   install-kali [source]       Download/extract/post-install Kali ARM64 rootfs
@@ -494,7 +506,40 @@ Help:
 EOF
 }
 
+# ── AI Commands ──────────────────────────────────────────────────────────
+nh_ai() {
+    local subcmd="${1:-help}"
+    shift 2>/dev/null || true
+    require_root
+    case "$subcmd" in
+        chat|ask)       adbr "sh /data/local/nhsystem/bin/nh-ai chat $*" ;;
+        diagnose)       adbr "sh /data/local/nhsystem/bin/nh-ai diagnose" ;;
+        status)         adbr "sh /data/local/nhsystem/bin/nh-ai status" ;;
+        models)         adbr "sh /data/local/nhsystem/bin/nh-ai models" ;;
+        install|pull)   adbr "sh /data/local/nhsystem/bin/nh-ai install ${2:-}" ;;
+        recon)          adbr "sh /data/local/nhsystem/bin/nh-ai recon $*" ;;
+        sessions)       adbr "sh /data/local/nhsystem/bin/nh-ai sessions $*" ;;
+        setup)          adbr "sh /data/local/nhsystem/bin/nh-ai setup" ;;
+        help|*)         echo "Usage: nhctl ai <command> [args]"
+                        echo "Commands: chat, ask, diagnose, status, models, install, recon, sessions, setup"
+                        echo "Alias: nhctl ask <question> = nhctl ai ask <question>"
+                        ;;
+    esac
+}
+
+nh_ask() {
+    require_root
+    adbr "sh /data/local/nhsystem/bin/nh-ai chat $*"
+}
+
 case "$cmd" in
+    ask)
+        shift 2>/dev/null || true
+        nh_ask "$@"
+        ;;
+    ai)
+        nh_ai "$@"
+        ;;
     status)
         ./preflight.sh "${1:-$ADB_SERIAL}" || true
         require_root
@@ -634,6 +679,12 @@ case "$cmd" in
         require_root
         action="${2:-status}"
         adbr "sh /data/local/nhsystem/bin/nh-rtl $action"
+        ;;
+    pqc|pq)
+        require_root
+        action="${2:-status}"
+        shift 2>/dev/null || true
+        adbr "sh /data/local/nhsystem/bin/nh-pqc $action $@"
         ;;
     container)
         require_root

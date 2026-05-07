@@ -1,0 +1,165 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-cron - Job scheduler for periodic tasks
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+CRON_DIR=$NHSYSTEM/etc/cron
+CRONTAB=$CRON_DIR/crontab
+CRON_LOG=$NHSYSTEM/logs/cron.log
+CRON_PID=$CRON_DIR/crond.pid
+
+ensure_dirs() {
+    mkdir -p "$CRON_DIR" "$NHSYSTEM/logs"
+    [ -f "$CRONTAB" ] || : > "$CRONTAB"
+}
+
+list_jobs() {
+    ensure_dirs
+    echo "── Scheduled Jobs ──"
+    echo ""
+    if [ -s "$CRONTAB" ]; then
+        local count=0
+        cat "$CRONTAB" | while read -r line; do
+            [ -z "$line" ] || [ "${line#\#}" != "$line" ] && continue
+            count=$((count + 1))
+            echo "  $count) $line"
+        done
+        echo ""
+        echo "  Total: $(grep -cEv '^\s*$|^#' "$CRONTAB" 2>/dev/null || echo 0) active jobs"
+    else
+        echo "  No scheduled jobs"
+    fi
+    echo ""
+    if [ -f "$CRON_PID" ] && kill -0 $(cat "$CRON_PID") 2>/dev/null; then
+        echo "  Daemon: RUNNING (PID $(cat $CRON_PID))"
+    else
+        echo "  Daemon: STOPPED"
+    fi
+}
+
+add_job() {
+    local schedule="${1:-}"
+    local command="${2:-}"
+    [ -z "$schedule" ] || [ -z "$command" ] && { echo "Usage: nh-cron add '<schedule>' '<command>'"; echo "  Schedule format: minute hour day month weekday"; echo "  Example: nh-cron add '0 */4 * * *' 'nh-sweep all'"; exit 1; }
+    ensure_dirs
+    echo "$schedule $command" >> "$CRONTAB"
+    echo "  Added: $schedule $command"
+    restart_daemon
+}
+
+remove_job() {
+    local num="${1:-}"
+    [ -z "$num" ] && { echo "Usage: nh-cron remove <job-number>"; exit 1; }
+    ensure_dirs
+    local tmp=$(mktemp)
+    awk -v n="$num" 'NR==n{next}1' "$CRONTAB" > "$tmp" && mv "$tmp" "$CRONTAB"
+    echo "  Removed job #$num"
+    restart_daemon
+}
+
+start_daemon() {
+    ensure_dirs
+    if [ -f "$CRON_PID" ] && kill -0 $(cat "$CRON_PID") 2>/dev/null; then
+        echo "  Daemon already running (PID $(cat $CRON_PID))"
+        return 0
+    fi
+
+    # Simple cron loop in background
+    (
+        while true; do
+            [ -f "$CRONTAB" ] || { sleep 60; continue; }
+            local now_min=$(date +%M)
+            local now_hr=$(date +%H)
+            local now_day=$(date +%d)
+            local now_mon=$(date +%m)
+            local now_wk=$(date +%u)
+
+            grep -vE '^\s*$|^#' "$CRONTAB" 2>/dev/null | while read -r min hr dom mon wk cmd; do
+                [ -z "$cmd" ] && continue
+                local match=1
+                [ "$min" != "*" ] && [ "$min" -ne "$now_min" ] 2>/dev/null && match=0
+                [ "$hr" != "*" ] && [ "$hr" -ne "$now_hr" ] 2>/dev/null && match=0
+                [ "$match" -eq 1 ] && {
+                    echo "[$(date)] Running: $cmd" >> "$CRON_LOG"
+                    eval "$cmd" >> "$CRON_LOG" 2>&1 &
+                }
+            done
+            sleep 60
+        done
+    ) &
+    local pid=$!
+    echo "$pid" > "$CRON_PID"
+    echo "  Daemon started (PID $pid)"
+}
+
+stop_daemon() {
+    if [ -f "$CRON_PID" ]; then
+        local pid=$(cat "$CRON_PID")
+        kill "$pid" 2>/dev/null && echo "  Daemon stopped" || echo "  Daemon not running"
+        rm -f "$CRON_PID"
+    else
+        echo "  Daemon not running"
+    fi
+}
+
+restart_daemon() {
+    stop_daemon 2>/dev/null
+    start_daemon
+}
+
+run_once() {
+    local job_id="${1:-all}"
+    ensure_dirs
+    if [ "$job_id" = "all" ]; then
+        grep -vE '^\s*$|^#' "$CRONTAB" 2>/dev/null | while read -r min hr dom mon wk cmd; do
+            [ -z "$cmd" ] && continue
+            echo "  Running: $cmd"
+            eval "$cmd" 2>&1
+        done
+    else
+        local cmd=$(awk -v n="$job_id" 'NR==n{print $6" "$7" "$8" "$9" "$10}' "$CRONTAB" 2>/dev/null)
+        [ -z "$cmd" ] && { echo "Job #$job_id not found"; exit 1; }
+        echo "  Running: $cmd"
+        eval "$cmd" 2>&1
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-cron - Job scheduler for periodic tasks
+
+Usage: nh-cron <command> [args]
+
+Commands:
+  list              List scheduled jobs
+  add <schedule> <cmd>  Add job (cron format)
+  remove <number>   Remove job by number
+  start             Start cron daemon
+  stop              Stop cron daemon
+  restart           Restart cron daemon
+  run [number]      Run job(s) now
+
+Schedule format: minute hour day month weekday
+  * = every, */N = every N
+  Example: "0 */6 * * *" = every 6 hours
+
+Quick presets:
+  nh-cron add "0 */4 * * *" "nh-sweep all"
+  nh-cron add "0 0 * * 0"   "nh-secure audit"
+  nh-cron add "*/30 * * * *" "nh-mon simple >> $NHWORK/notes/metrics.log"
+EOF
+    exit 1
+}
+
+case "${1:-list}" in
+    list|ls) list_jobs ;;
+    add) shift; add_job "${1:-}" "${2:-}" ;;
+    remove|rm|del) shift; remove_job "${1:-}" ;;
+    start) start_daemon ;;
+    stop) stop_daemon ;;
+    restart) restart_daemon ;;
+    run|exec) shift; run_once "${1:-all}" ;;
+    *) usage ;;
+esac

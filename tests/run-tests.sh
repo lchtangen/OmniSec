@@ -49,6 +49,12 @@ for f in "$ROOT_DIR"/src/c/*.c; do
 done
 
 echo ""
+echo "--- Python syntax checks ---"
+for f in "$ROOT_DIR"/src/device/ai/*.py; do
+	check "$(basename "$f")" python3 -m py_compile "$f"
+done
+
+echo ""
 echo "--- shebang checks ---"
 while IFS= read -r f; do
 	[ -f "$f" ] || continue
@@ -94,6 +100,11 @@ REQUIRED=(
 	"src/device/bin/nh-rtl"
 	"src/c/nh-diag.c"
 	"tests/test_nh_sudo.c"
+	"src/device/bin/nh-ai"
+	"src/device/ai/agent.py"
+	"src/scripts/setup-ai.sh"
+	"src/device/bin/nh-pqc"
+	"src/scripts/setup-pqc.sh"
 	"src/device/bin/nh-schedule" "src/device/bin/nh-alert"
 	"src/device/bin/nh-sync" "src/device/bin/nh-tunnel"
 	"src/device/bin/nh-dns" "src/device/bin/nh-container"

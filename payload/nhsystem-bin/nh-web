@@ -1,0 +1,112 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-web - Cyberpunk web dashboard server
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+WEB_DIR=$NHSYSTEM/web
+PORT=${NH_WEB_PORT:-8080}
+
+ensure_web() {
+    if [ ! -d "$WEB_DIR" ]; then
+        echo "  Deploying web dashboard..."
+        mkdir -p "$WEB_DIR"
+        # Web files should be deployed via make stage
+        local src="/data/local/tmp/nh-web"
+        if [ -d "$src" ]; then
+            cp -a "$src/"* "$WEB_DIR/"
+        fi
+    fi
+}
+
+start_server() {
+    local host="${1:-127.0.0.1}"
+    ensure_web
+
+    # Try Python 3 first
+    if command -v python3 >/dev/null 2>&1; then
+        if [ -f "$WEB_DIR/server.py" ]; then
+            echo "  Starting nh-web on $host:$PORT"
+            echo "  Dashboard: http://$host:$PORT"
+            echo "  API:       http://$host:$PORT/api/status"
+            NH_WEB_PORT=$PORT python3 "$WEB_DIR/server.py" &
+            echo $! > "$NHSYSTEM/var/run/nh-web.pid"
+            return
+        fi
+    fi
+
+    # Fallback: simple HTTP server
+    if command -v python3 >/dev/null 2>&1; then
+        echo "  Starting minimal web server on $host:$PORT"
+        cd "$WEB_DIR"
+        python3 -m http.server $PORT --bind "$host" &
+        echo $! > "$NHSYSTEM/var/run/nh-web.pid"
+        return
+    fi
+
+    echo "  ERROR: Python 3 required for web dashboard" >&2
+    echo "  Install: pkg install python" >&2
+    exit 1
+}
+
+stop_server() {
+    local pid_file="$NHSYSTEM/var/run/nh-web.pid"
+    if [ -f "$pid_file" ]; then
+        local pid=$(cat "$pid_file")
+        kill "$pid" 2>/dev/null || true
+        rm -f "$pid_file"
+        echo "  nh-web stopped"
+    else
+        echo "  nh-web not running"
+    fi
+}
+
+status_server() {
+    local pid_file="$NHSYSTEM/var/run/nh-web.pid"
+    if [ -f "$pid_file" ] && kill -0 $(cat "$pid_file") 2>/dev/null; then
+        echo "  nh-web: running (PID: $(cat $pid_file))"
+        echo "  Port: $PORT"
+    else
+        echo "  nh-web: stopped"
+    fi
+}
+
+open_dashboard() {
+    if command -v termux-open-url >/dev/null 2>&1; then
+        termux-open-url "http://127.0.0.1:$PORT"
+    else
+        echo "  Dashboard: http://127.0.0.1:$PORT"
+        echo "  Open in browser or install termux-api"
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-web - NetHunter NextGen cyberpunk web dashboard
+
+Usage: nh-web <command>
+
+Commands:
+  start [host]  Start web dashboard (default host: 127.0.0.1)
+  stop          Stop web dashboard
+  restart       Restart web dashboard
+  status        Show server status
+  open          Open dashboard in browser
+
+Requires: Python 3 (install: pkg install python)
+EOF
+    exit 1
+}
+
+mkdir -p "$NHSYSTEM/var/run"
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    start) shift; start_server "${1:-127.0.0.1}" ;;
+    stop) stop_server ;;
+    restart) stop_server; sleep 1; start_server ;;
+    status) status_server ;;
+    open) open_dashboard ;;
+    *) usage ;;
+esac

@@ -42,6 +42,7 @@ stage-payload: build-c
 	cp -a $(SRC_DIR)/device/setup/* $(PAYLOAD_DIR)/
 	find $(SRC_DIR)/device/dotfiles -maxdepth 1 -type f -exec cp -a {} $(PAYLOAD_DIR)/termux-home/ \;
 	cp -a $(SRC_DIR)/device/skel/* $(PAYLOAD_DIR)/kali-skel/
+	cp -a $(SRC_DIR)/device/ai $(PAYLOAD_DIR)/ 2>/dev/null || true
 	cp $(SRC_DIR)/c/nh-sudo.c $(PAYLOAD_DIR)/
 	cp $(SRC_DIR)/c/no-close-range.c $(PAYLOAD_DIR)/
 	cp -a $(DEPLOY_DIR)/chroot/* $(PAYLOAD_DIR)/chroot-bin/ 2>/dev/null || true

@@ -1,8 +1,6 @@
 #!/system/bin/sh
-# NH_SETUP_VERSION: 2.0 default
-# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
-# nh-backup — workspace snapshot backup
-# Usage: nh-backup [workspace|list|restore <date>]
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-backup — workspace + chroot snapshot backup and restore
 set -u
 . /data/local/nhsystem/bin/nh-lib
 
@@ -12,59 +10,109 @@ TODAY="$(date +%Y%m%d)"
 SNAPSHOT="$BACKUP_DIR/workspace-$TODAY"
 KEEP_DAYS=7
 
-case "${1:-workspace}" in
-    workspace)
-        echo "[nh-backup] backing up $WORKSPACE → $SNAPSHOT"
-        mkdir -p "$BACKUP_DIR"
+snapshot_workspace() {
+    echo "[nh-backup] backing up $WORKSPACE → $SNAPSHOT"
+    mkdir -p "$BACKUP_DIR"
 
-        if [ -d "$SNAPSHOT" ]; then
-            echo "[nh-backup] snapshot for today already exists: $SNAPSHOT"
+    if [ -d "$SNAPSHOT" ]; then
+        echo "[nh-backup] snapshot for today already exists: $SNAPSHOT"
+    else
+        PREV=$(ls -d "$BACKUP_DIR"/workspace-* 2>/dev/null | sort | tail -1)
+        if [ -n "$PREV" ] && [ "$PREV" != "$SNAPSHOT" ]; then
+            cp -al "$PREV" "$SNAPSHOT" 2>/dev/null || mkdir -p "$SNAPSHOT"
         else
-            # Use hardlinks from yesterday's snapshot if available for delta efficiency
-            PREV=$(ls -d "$BACKUP_DIR"/workspace-* 2>/dev/null | sort | tail -1)
-            if [ -n "$PREV" ] && [ "$PREV" != "$SNAPSHOT" ]; then
-                cp -al "$PREV" "$SNAPSHOT" 2>/dev/null || mkdir -p "$SNAPSHOT"
-            else
-                mkdir -p "$SNAPSHOT"
-            fi
-            rsync -a --delete "$WORKSPACE/" "$SNAPSHOT/" 2>/dev/null || {
-                echo "[nh-backup] rsync not available — using cp"
-                cp -a "$WORKSPACE/." "$SNAPSHOT/"
-            }
-            echo "[nh-backup] snapshot complete: $SNAPSHOT"
+            mkdir -p "$SNAPSHOT"
         fi
+        rsync -a --delete "$WORKSPACE/" "$SNAPSHOT/" 2>/dev/null || {
+            echo "[nh-backup] rsync not available — using cp"
+            cp -a "$WORKSPACE/." "$SNAPSHOT/"
+        }
+        echo "[nh-backup] snapshot complete: $SNAPSHOT"
+    fi
 
-        # Prune old snapshots — keep last KEEP_DAYS
-        # head -n -N (all-but-last-N) is GNU-only; Android toybox head may not support it.
-        # Use POSIX-portable arithmetic: count total, print (total - KEEP_DAYS) oldest.
-        SNAP_LIST=$(ls -d "$BACKUP_DIR"/workspace-* 2>/dev/null | sort)
-        SNAP_COUNT=$(printf '%s\n' "$SNAP_LIST" | grep -c . 2>/dev/null || echo 0)
-        PRUNE_COUNT=$(( SNAP_COUNT - KEEP_DAYS ))
-        if [ "$PRUNE_COUNT" -gt 0 ]; then
-            printf '%s\n' "$SNAP_LIST" | head -n "$PRUNE_COUNT" | while read -r OLD; do
-                echo "[nh-backup] pruning old snapshot: $OLD"
-                rm -rf "$OLD"
-            done
-        fi
+    # Prune old snapshots
+    SNAP_LIST=$(ls -d "$BACKUP_DIR"/workspace-* 2>/dev/null | sort)
+    SNAP_COUNT=$(printf '%s\n' "$SNAP_LIST" | grep -c . 2>/dev/null || echo 0)
+    PRUNE_COUNT=$(( SNAP_COUNT - KEEP_DAYS ))
+    if [ "$PRUNE_COUNT" -gt 0 ]; then
+        printf '%s\n' "$SNAP_LIST" | head -n "$PRUNE_COUNT" | while read -r OLD; do
+            echo "[nh-backup] pruning old snapshot: $OLD"
+            rm -rf "$OLD"
+        done
+    fi
 
-        # restic encrypted backup if configured
-        if command -v restic >/dev/null 2>&1 && [ -n "${RESTIC_REPOSITORY:-}" ]; then
-            echo "[nh-backup] running restic backup"
-            restic backup "$WORKSPACE" 2>/dev/null && \
-                restic forget --keep-daily 7 --prune 2>/dev/null || \
-                echo "[nh-backup] restic backup failed (check RESTIC_REPOSITORY and RESTIC_PASSWORD)"
-        fi
-        ;;
+    # restic if configured
+    if command -v restic >/dev/null 2>&1 && [ -n "${RESTIC_REPOSITORY:-}" ]; then
+        restic backup "$WORKSPACE" 2>/dev/null && \
+            restic forget --keep-daily 7 --prune 2>/dev/null || \
+            echo "[nh-backup] restic backup failed (check RESTIC_REPOSITORY and RESTIC_PASSWORD)"
+    fi
+}
 
-    list)
-        echo "[nh-backup] available snapshots:"
-        ls -1d "$BACKUP_DIR"/workspace-* 2>/dev/null | sort -r | \
-            while read -r S; do
-                SIZE=$(du -sh "$S" 2>/dev/null | awk '{print $1}')
-                echo "  $S  ($SIZE)"
-            done
-        ;;
+snapshot_chroot() {
+    target="${1:-}"
+    [ -z "$target" ] && { echo "usage: nh-backup chroot <arch|kali>"; return 1; }
 
+    case "$target" in
+        arch) ROOT="$(arch_root)"; NAME="archlinux" ;;
+        kali) ROOT="$(kali_root)"; NAME="kali-arm64" ;;
+        *) echo "unknown chroot: $target"; return 1 ;;
+    esac
+    [ -d "$ROOT" ] || { echo "chroot not found: $ROOT"; return 1; }
+
+    SNAP="$BACKUP_DIR/chroot-$NAME-$TODAY"
+    echo "[nh-backup] backing up $NAME chroot → $SNAP"
+    mkdir -p "$BACKUP_DIR"
+
+    # Exclude large caches and mounted filesystems
+    rsync -a --delete \
+        --exclude='/proc' --exclude='/sys' --exclude='/dev' \
+        --exclude='/tmp' --exclude='/run' --exclude='/workspace' \
+        --exclude='/var/cache/pacman/pkg' \
+        --exclude='/sdcard' \
+        "$ROOT/" "$SNAP/" 2>/dev/null || {
+        echo "[nh-backup] rsync not available — using cp (slow)"
+        mkdir -p "$SNAP"
+        cp -a "$ROOT/." "$SNAP/"
+    }
+    echo "[nh-backup] chroot snapshot complete: $SNAP ($(du -sh "$SNAP" | awk '{print $1}'))"
+}
+
+restore_chroot() {
+    target="${1:-}"; date="${2:-}"
+    [ -z "$target" ] || [ -z "$date" ] && { echo "usage: nh-backup restore-chroot <arch|kali> <YYYYMMDD>"; return 1; }
+
+    case "$target" in
+        arch) ROOT="$(arch_root)"; NAME="archlinux" ;;
+        kali) ROOT="$(kali_root)"; NAME="kali-arm64" ;;
+        *) echo "unknown chroot: $target"; return 1 ;;
+    esac
+
+    SRC="$BACKUP_DIR/chroot-$NAME-$date"
+    [ -d "$SRC" ] || { echo "snapshot not found: $SRC"; return 1; }
+    echo "[nh-backup] restoring $NAME chroot from $date..."
+    rsync -a --delete "$SRC/" "$ROOT/" 2>/dev/null || cp -a "$SRC/." "$ROOT/"
+    echo "[nh-backup] chroot restore complete"
+}
+
+list_snapshots() {
+    echo "── Workspace Snapshots ──"
+    ls -1d "$BACKUP_DIR"/workspace-* 2>/dev/null | sort -r | while read -r S; do
+        SIZE=$(du -sh "$S" 2>/dev/null | awk '{print $1}')
+        echo "  $(basename "$S")  ($SIZE)"
+    done
+    echo ""
+    echo "── Chroot Snapshots ──"
+    for snap in "$BACKUP_DIR"/chroot-*; do
+        [ -d "$snap" ] || continue
+        SIZE=$(du -sh "$snap" 2>/dev/null | awk '{print $1}')
+        echo "  $(basename "$snap")  ($SIZE)"
+    done
+}
+
+case "${1:-workspace}" in
+    workspace) snapshot_workspace ;;
+    chroot) shift; snapshot_chroot "$@" ;;
     restore)
         DATE="${2:-}"
         [ -n "$DATE" ] || { echo "usage: nh-backup restore YYYYMMDD" >&2; exit 2; }
@@ -74,9 +122,14 @@ case "${1:-workspace}" in
         rsync -a --delete "$SRC/" "$WORKSPACE/" 2>/dev/null || cp -a "$SRC/." "$WORKSPACE/"
         echo "[nh-backup] restore complete"
         ;;
-
+    restore-chroot)
+        shift; restore_chroot "$@"
+        ;;
+    list)
+        list_snapshots
+        ;;
     *)
-        echo "usage: nh-backup [workspace|list|restore YYYYMMDD]" >&2
+        echo "usage: nh-backup [workspace|chroot <arch|kali>|restore YYYYMMDD|restore-chroot <arch|kali> YYYYMMDD|list]" >&2
         exit 2
         ;;
 esac

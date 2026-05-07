@@ -1,0 +1,336 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-pqc - Post-Quantum Cryptography utility (ML-KEM, ML-DSA, SLH-DSA)
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+PQC_DIR=$NHSYSTEM/etc/pqc
+OPENSSL_CNF=$PQC_DIR/openssl.cnf
+ARCH_OPENSSL=/data/local/nhsystem/roots/archlinux/usr/bin/openssl
+
+ensure_dirs() {
+    mkdir -p $PQC_DIR/keys $PQC_DIR/certs
+}
+
+pqc_status() {
+    echo "── Post-Quantum Cryptography Status ──"
+    echo ""
+
+    local openssl_avail=0
+    local oqs_avail=0
+    local liboqs_avail=0
+
+    # Check system openssl for OQS provider
+    if command -v openssl >/dev/null 2>&1; then
+        local oqs_check
+        oqs_check=$(openssl list -providers 2>/dev/null | grep -i oqs)
+        if [ -n "$oqs_check" ]; then
+            echo "  ✓ System OpenSSL with OQS provider"
+            openssl_avail=1
+            oqs_avail=1
+        else
+            echo "  ~ OpenSSL available (no OQS provider)"
+            openssl_avail=1
+        fi
+    else
+        echo "  ✗ OpenSSL not available"
+    fi
+
+    # Check Arch chroot OpenSSL
+    if [ -x "$ARCH_OPENSSL" ]; then
+        echo "  ✓ Arch chroot OpenSSL reachable"
+    fi
+
+    # Check liboqs tools
+    if command -v oqs-keygen >/dev/null 2>&1 || [ -x /usr/local/bin/oqs-keygen ]; then
+        echo "  ✓ liboqs tools available"
+        liboqs_avail=1
+    fi
+
+    # Check for PQ SSH support
+    if ssh -Q kex 2>/dev/null | grep -q "mlkem"; then
+        echo "  ✓ SSH supports PQ KEX algorithms"
+        ssh -Q kex 2>/dev/null | grep "mlkem" | while read -r alg; do echo "    $alg"; done
+    else
+        echo "  ✗ SSH does not advertise PQ KEX (install openssh with oqs)"
+    fi
+
+    # Check for PQ keys
+    local key_count
+    key_count=$(find $PQC_DIR/keys -name "*.pqkey" 2>/dev/null | wc -l)
+    echo "  ${key_count} PQ key(s) in store"
+
+    echo ""
+    echo "  Recommended algorithms (NIST standards):"
+    echo "    ML-KEM-768  (FIPS 203) — Key Encapsulation Mechanism"
+    echo "    ML-DSA-65   (FIPS 204) — Digital Signature"
+    echo "    SLH-DSA-SHA2-128s (FIPS 205) — Hash-based Signature"
+    echo ""
+    echo "  Config: $PQC_DIR"
+}
+
+detect_openssl() {
+    # Try Arch openssl with OQS first, then system
+    if [ -x "$ARCH_OPENSSL" ]; then
+        local arch_root=/data/local/nhsystem/roots/archlinux
+        if [ -f "$arch_root/usr/lib/ossl-modules/oqsprovider.so" ]; then
+            echo "$ARCH_OPENSSL"
+            return 0
+        fi
+    fi
+    if command -v openssl >/dev/null 2>&1; then
+        if openssl list -providers 2>/dev/null | grep -q oqs; then
+            command -v openssl
+            return 0
+        fi
+    fi
+    return 1
+}
+
+keygen() {
+    ensure_dirs
+    local algo="${1:-ml-kem-768}"
+    local name="${2:-pq-${algo}-$(date +%s)}"
+    local keyfile="$PQC_DIR/keys/${name}.pqkey"
+    local pubfile="${keyfile}.pub"
+
+    local ossl
+    ossl=$(detect_openssl) || {
+        echo "  ERROR: OpenSSL with OQS provider not available" >&2
+        echo "  Run 'nh-pqc setup' to install" >&2
+        return 1
+    }
+
+    echo "  Generating $algo keypair..."
+    echo "  Name: $name"
+    echo ""
+
+    case "$algo" in
+        ml-kem-768|kyber768)
+            echo "  Algorithm: ML-KEM-768 (FIPS 203, NIST Level 3)"
+            echo "  Use: Key Encapsulation (encryption key exchange)"
+            # Generate private key
+            $ossl genpkey -algorithm ml-kem-768 -out "$keyfile" 2>/dev/null || {
+                echo "  ERROR: Key generation failed" >&2
+                return 1
+            }
+            # Extract public key
+            $ossl pkey -in "$keyfile" -pubout -out "$pubfile" 2>/dev/null
+            ;;
+        ml-kem-512|kyber512)
+            $ossl genpkey -algorithm ml-kem-512 -out "$keyfile" 2>/dev/null
+            $ossl pkey -in "$keyfile" -pubout -out "$pubfile" 2>/dev/null
+            ;;
+        ml-kem-1024|kyber1024)
+            $ossl genpkey -algorithm ml-kem-1024 -out "$keyfile" 2>/dev/null
+            $ossl pkey -in "$keyfile" -pubout -out "$pubfile" 2>/dev/null
+            ;;
+        ml-dsa-65|dilithium3)
+            echo "  Algorithm: ML-DSA-65 (FIPS 204, NIST Level 3)"
+            echo "  Use: Digital Signatures"
+            $ossl genpkey -algorithm ml-dsa-65 -out "$keyfile" 2>/dev/null
+            $ossl pkey -in "$keyfile" -pubout -out "$pubfile" 2>/dev/null
+            ;;
+        ml-dsa-44|dilithium2)
+            $ossl genpkey -algorithm ml-dsa-44 -out "$keyfile" 2>/dev/null
+            $ossl pkey -in "$keyfile" -pubout -out "$pubfile" 2>/dev/null
+            ;;
+        ml-dsa-87|dilithium5)
+            $ossl genpkey -algorithm ml-dsa-87 -out "$keyfile" 2>/dev/null
+            $ossl pkey -in "$keyfile" -pubout -out "$pubfile" 2>/dev/null
+            ;;
+        slh-dsa-sha2-128s|sphincs-sha2-128s)
+            echo "  Algorithm: SLH-DSA-SHA2-128s (FIPS 205, NIST Level 1)"
+            echo "  Use: Digital Signatures (hash-based, conservative)"
+            $ossl genpkey -algorithm slh-dsa-sha2-128s -out "$keyfile" 2>/dev/null
+            $ossl pkey -in "$keyfile" -pubout -out "$pubfile" 2>/dev/null
+            ;;
+        *)
+            echo "  Unknown algorithm: $algo" >&2
+            echo "  Supported: ml-kem-512, ml-kem-768, ml-kem-1024, ml-dsa-44, ml-dsa-65, ml-dsa-87, slh-dsa-sha2-128s" >&2
+            return 1
+            ;;
+    esac
+
+    if [ -f "$keyfile" ] && [ -f "$pubfile" ]; then
+        echo ""
+        echo "  ✓ Key pair generated"
+        echo "  Private: $keyfile ($(du -h "$keyfile" | cut -f1))"
+        echo "  Public:  $pubfile ($(du -h "$pubfile" | cut -f1))"
+    else
+        echo "  ERROR: Key generation may have failed" >&2
+        return 1
+    fi
+}
+
+encrypt() {
+    local pubkey="${1:-}"
+    local input="${2:-}"
+    local label="${3:-file}"
+    [ -f "$pubkey" ] || { echo "  Usage: nh-pqc encrypt <pubkey.pem> <input> [label]" >&2; return 1; }
+    [ -f "$input" ] || { echo "  Input not found: $input" >&2; return 1; }
+
+    local ossl
+    ossl=$(detect_openssl) || { echo "  ERROR: OQS OpenSSL not available" >&2; return 1; }
+
+    local output="${input}.pqc-enc"
+    echo "  Encrypting with ML-KEM-768 hybrid..."
+    echo "  Input:  $input"
+    echo "  Output: $output"
+
+    # Generate ephemeral KEM keypair and encapsulate
+    local tmp_dir
+    tmp_dir=$(mktemp -d /tmp/pqc.XXXXXX)
+    $ossl pkeyutl -encrypt -pubin -inkey "$pubkey" \
+        -out "$output" -in "$input" \
+        -kem-type ml-kem-768 2>/dev/null || {
+        # Fallback: hybrid encrypt with temp key
+        local sym_key="$tmp_dir/sym.key"
+        $ossl rand -hex 32 > "$sym_key"
+        $ossl pkeyutl -encrypt -pubin -inkey "$pubkey" \
+            -out "$tmp_dir/kem.bin" -in "$sym_key" \
+            -kem-type ml-kem-768 2>/dev/null || {
+            echo "  ERROR: Encryption failed" >&2
+            rm -rf "$tmp_dir"
+            return 1
+        }
+        # Encrypt data with symmetric key
+        $ossl enc -aes-256-gcm -salt -pbkdf2 \
+            -pass file:"$sym_key" -in "$input" -out "$output" 2>/dev/null || {
+            echo "  ERROR: Symmetric encryption failed" >&2
+            rm -rf "$tmp_dir"
+            return 1
+        }
+        # Prepend KEM ciphertext
+        local tmp_out="${output}.tmp"
+        cat "$tmp_dir/kem.bin" "$output" > "$tmp_out"
+        mv "$tmp_out" "$output"
+    }
+
+    rm -rf "$tmp_dir"
+    echo "  ✓ Encrypted: $output ($(du -h "$output" | cut -f1))"
+}
+
+decrypt() {
+    local keyfile="${1:-}"
+    local input="${2:-}"
+    [ -f "$keyfile" ] || { echo "  Usage: nh-pqc decrypt <private-key> <file>" >&2; return 1; }
+    [ -f "$input" ] || { echo "  Input not found: $input" >&2; return 1; }
+
+    local ossl
+    ossl=$(detect_openssl) || { echo "  ERROR: OQS OpenSSL not available" >&2; return 1; }
+
+    local output="${input%.pqc-enc}.pqc-dec"
+    echo "  Decrypting..."
+    echo "  Input:  $input"
+    echo "  Output: $output"
+
+    $ossl pkeyutl -decrypt -inkey "$keyfile" \
+        -in "$input" -out "$output" 2>/dev/null || {
+        echo "  ERROR: Decryption failed" >&2
+        return 1
+    }
+    echo "  ✓ Decrypted: $output"
+}
+
+sign() {
+    local keyfile="${1:-}"
+    local input="${2:-}"
+    [ -f "$keyfile" ] || { echo "  Usage: nh-pqc sign <private-key> <file>" >&2; return 1; }
+    [ -f "$input" ] || { echo "  Input not found: $input" >&2; return 1; }
+
+    local ossl
+    ossl=$(detect_openssl) || { echo "  ERROR: OQS OpenSSL not available" >&2; return 1; }
+
+    local sigfile="${input}.pqc-sig"
+    $ossl pkeyutl -sign -inkey "$keyfile" \
+        -in "$input" -out "$sigfile" 2>/dev/null || {
+        echo "  ERROR: Signing failed" >&2
+        return 1
+    }
+    echo "  ✓ Signed: $sigfile ($(du -h "$sigfile" | cut -f1))"
+}
+
+verify() {
+    local pubkey="${1:-}"
+    local input="${2:-}"
+    local sigfile="${3:-${input}.pqc-sig}"
+    [ -f "$pubkey" ] || { echo "  Usage: nh-pqc verify <pubkey> <file> [signature]" >&2; return 1; }
+    [ -f "$input" ] || { echo "  Input not found: $input" >&2; return 1; }
+
+    local ossl
+    ossl=$(detect_openssl) || { echo "  ERROR: OQS OpenSSL not available" >&2; return 1; }
+
+    if $ossl pkeyutl -verify -pubin -inkey "$pubkey" \
+        -in "$input" -sigfile "$sigfile" 2>/dev/null; then
+        echo "  ✓ Signature VERIFIED"
+        return 0
+    else
+        echo "  ✗ Signature INVALID"
+        return 1
+    fi
+}
+
+list_keys() {
+    local count=0
+    echo "── Post-Quantum Keys ──"
+    for f in $PQC_DIR/keys/*.pqkey; do
+        [ -f "$f" ] || continue
+        count=$((count+1))
+        local name=$(basename "$f" .pqkey)
+        local pub="${f}.pub"
+        local algo="?"
+        local ossl
+        ossl=$(detect_openssl) 2>/dev/null || true
+        if [ -n "$ossl" ] && [ -f "$f" ]; then
+            algo=$($ossl pkey -in "$f" -text -noout 2>/dev/null | head -1)
+        fi
+        printf "  %-30s %s\n" "$name" "${algo:-unknown}"
+        [ -f "$pub" ] && printf "  %-30s %s\n" "" "pub: $(du -h "$pub" | cut -f1)" || true
+    done
+    [ "$count" -eq 0 ] && echo "  No PQ keys. Generate one: nh-pqc keygen ml-kem-768 mykey"
+}
+
+usage() {
+    cat <<EOF
+nh-pqc - Post-Quantum Cryptography Toolkit
+
+Usage: nh-pqc <command> [args]
+
+Commands:
+  status                  Show PQ crypto capabilities
+  keygen <algo> [name]    Generate PQ keypair
+                            algos: ml-kem-512|768|1024, ml-dsa-44|65|87, slh-dsa-sha2-128s
+  encrypt <pubkey> <file>  Hybrid PQ-encrypt a file
+  decrypt <privkey> <file> Decrypt a PQ-encrypted file
+  sign <privkey> <file>    Sign a file with PQ signature
+  verify <pubkey> <file> [sig] Verify a PQ signature
+  keys                    List stored PQ keys
+
+Requires: OpenSSL with OQS provider (install via nh-pqc setup or setup-pqc.sh)
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    status|info) pqc_status ;;
+    keygen|generate|gen)
+        shift; keygen "${1:-ml-kem-768}" "${2:-}"
+        ;;
+    encrypt|enc)
+        shift; [ $# -ge 2 ] || usage; encrypt "$1" "$2" "${3:-}"
+        ;;
+    decrypt|dec)
+        shift; [ $# -ge 2 ] || usage; decrypt "$1" "$2"
+        ;;
+    sign)
+        shift; [ $# -ge 2 ] || usage; sign "$1" "$2"
+        ;;
+    verify)
+        shift; [ $# -ge 2 ] || usage; verify "$1" "$2" "${3:-}"
+        ;;
+    keys|list) list_keys ;;
+    *) usage ;;
+esac

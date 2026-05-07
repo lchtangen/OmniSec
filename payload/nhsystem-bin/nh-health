@@ -104,5 +104,16 @@ if [ "$ISSUES" -eq 0 ]; then
     ok "All checks passed"
 else
     echo "  \033[31m✗ $ISSUES issue(s) found — review above\033[0m"
+    # Auto-alert on critical issues
+    if [ "$ISSUES" -ge 2 ] && [ -x /data/local/nhsystem/bin/nh-alert ]; then
+        /data/local/nhsystem/bin/nh-alert warn "nh-health: $ISSUES issue(s) on $(hostname 2>/dev/null || echo device)" 2>/dev/null || true
+    fi
+fi
+
+# Auto-heal flag
+if [ "${NH_AUTO_HEAL:-}" = "1" ] && [ "$ISSUES" -gt 0 ] && [ -x /data/local/nhsystem/bin/nh-heal ]; then
+    echo ""
+    info "NH_AUTO_HEAL enabled — running nh-heal..."
+    /data/local/nhsystem/bin/nh-heal all 2>/dev/null || true
 fi
 echo "══════════════════════════════════════════════════════"

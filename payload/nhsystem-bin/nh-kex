@@ -57,6 +57,46 @@ status_kex() {
     return 1
 }
 
+persist_kex() {
+    echo "starting KEX persistence watchdog..."
+    (
+        while true; do
+            if ! status_kex >/dev/null 2>&1; then
+                echo "$(date) KEX not running — restarting" >> "$KEX_LOG"
+                start_kex
+            elif ! ss -tlnp 2>/dev/null | grep -q ':5901'; then
+                echo "$(date) KEX VNC port 5901 not open — restarting" >> "$KEX_LOG"
+                stop_kex
+                sleep 1
+                start_kex
+            fi
+            sleep 30
+        done
+    ) &
+    WPID=$!
+    echo "$WPID" > /data/local/tmp/nh-kex-watchdog.pid
+    echo "KEX persistence watchdog started (pid $WPID)"
+}
+
+unpersist_kex() {
+    WPID_FILE=/data/local/tmp/nh-kex-watchdog.pid
+    if [ -f "$WPID_FILE" ]; then
+        kill "$(cat "$WPID_FILE")" 2>/dev/null || true
+        rm -f "$WPID_FILE"
+        echo "KEX persistence watchdog stopped"
+    fi
+    stop_kex
+}
+
+boot_kex() {
+    # Called from boot script — start KEX if enabled
+    if [ -f "$NHSYSTEM/etc/kex-autostart" ]; then
+        echo "KEX autostart enabled — starting KEX"
+        start_kex
+        persist_kex
+    fi
+}
+
 case "${1:-status}" in
     start) start_kex ;;
     stop)  stop_kex ;;
@@ -72,8 +112,31 @@ case "${1:-status}" in
     log)
         cat "$KEX_LOG" 2>/dev/null || echo "no KEX log"
         ;;
+    persist|watchdog)
+        persist_kex
+        ;;
+    unpersist)
+        unpersist_kex
+        ;;
+    autostart)
+        mkdir -p "$NHSYSTEM/etc"
+        case "${2:-status}" in
+            enable) touch "$NHSYSTEM/etc/kex-autostart"; echo "KEX autostart enabled" ;;
+            disable) rm -f "$NHSYSTEM/etc/kex-autostart"; echo "KEX autostart disabled" ;;
+            status)
+                if [ -f "$NHSYSTEM/etc/kex-autostart" ]; then
+                    echo "KEX autostart: enabled"
+                else
+                    echo "KEX autostart: disabled"
+                fi
+                ;;
+        esac
+        ;;
+    boot)
+        boot_kex
+        ;;
     *)
-        echo "usage: nh-kex {start|stop|restart|status|log}" >&2
+        echo "usage: nh-kex {start|stop|restart|status|log|persist|unpersist|autostart|boot}" >&2
         exit 2
         ;;
 esac

@@ -1,0 +1,120 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-killswitch — iptables-based VPN kill switch (fail-closed)
+# Blocks all non-VPN traffic when VPN is active
+set -u
+
+NHSYSTEM="${NHSYSTEM:-/data/local/nhsystem}"
+LOG="$NHSYSTEM/logs/killswitch.log"
+MARK=51820
+TABLE=100
+VPN_IFACE="${NH_VPN_IFACE:-wg0}"
+
+mkdir -p "$NHSYSTEM/logs"
+
+log() { echo "[nh-killswitch] $(date) $*" >> "$LOG"; echo "$*"; }
+
+have_iptables() {
+    command -v iptables >/dev/null 2>&1 || \
+    [ -f /system/bin/iptables ] || \
+    [ -f /system/sbin/iptables ]
+}
+
+enable_killswitch() {
+    have_iptables || { echo "iptables not available"; exit 1; }
+
+    log "enabling VPN kill switch (interface: $VPN_IFACE)..."
+
+    # Allow established connections
+    iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+
+    # Allow VPN interface traffic
+    iptables -A OUTPUT -o "$VPN_IFACE" -j ACCEPT 2>/dev/null || true
+
+    # Allow localhost
+    iptables -A OUTPUT -o lo -j ACCEPT 2>/dev/null || true
+
+    # Allow DHCP/ DNS before VPN is up
+    iptables -A OUTPUT -p udp --dport 67:68 -j ACCEPT 2>/dev/null || true
+    iptables -A OUTPUT -p udp --dport 53 -j ACCEPT 2>/dev/null || true
+    iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT 2>/dev/null || true
+
+    # Allow WireGuard UDP port
+    WG_PORT="$(grep ListenPort /data/local/nhsystem/etc/wireguard/*.conf 2>/dev/null | head -1 | awk '{print $NF}')"
+    [ -n "$WG_PORT" ] && iptables -A OUTPUT -p udp --dport "$WG_PORT" -j ACCEPT 2>/dev/null || true
+
+    # Allow ADB (critical for management)
+    iptables -A OUTPUT -p tcp --dport 52104 -j ACCEPT 2>/dev/null || true
+
+    # Block everything else
+    iptables -A OUTPUT -j DROP 2>/dev/null || true
+
+    # Same for INPUT (only established + VPN)
+    iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+    iptables -A INPUT -i "$VPN_IFACE" -j ACCEPT 2>/dev/null || true
+    iptables -A INPUT -i lo -j ACCEPT 2>/dev/null || true
+
+    log "kill switch enabled — non-VPN traffic blocked"
+}
+
+disable_killswitch() {
+    log "disabling VPN kill switch..."
+
+    # Flush our rules (assume we're the only ones using these chains)
+    iptables -F OUTPUT 2>/dev/null || true
+    iptables -F INPUT 2>/dev/null || true
+
+    # Restore default policy (accept)
+    iptables -P OUTPUT ACCEPT 2>/dev/null || true
+    iptables -P INPUT ACCEPT 2>/dev/null || true
+
+    log "kill switch disabled — all traffic allowed"
+}
+
+status_killswitch() {
+    echo "── VPN Kill Switch Status ──"
+    if iptables -C OUTPUT -j DROP 2>/dev/null; then
+        echo "  Status: ENABLED (non-VPN traffic blocked)"
+    else
+        echo "  Status: DISABLED (all traffic allowed)"
+    fi
+    echo ""
+    echo "  VPN interface: $VPN_IFACE"
+    echo "  Rules in OUTPUT chain:"
+    iptables -L OUTPUT -n --line-numbers 2>/dev/null | head -20
+    echo ""
+    echo "  Rules in INPUT chain:"
+    iptables -L INPUT -n --line-numbers 2>/dev/null | head -20
+}
+
+watchdog() {
+    log "starting kill switch watchdog (interval: 30s)..."
+    while true; do
+        if command -v wg >/dev/null 2>&1; then
+            if ! wg show "$VPN_IFACE" >/dev/null 2>&1; then
+                log "WATCHDOG: VPN interface $VPN_IFACE is down!"
+                enable_killswitch
+            fi
+        fi
+        sleep 30
+    done
+}
+
+case "${1:-status}" in
+    enable|on|start)
+        enable_killswitch
+        ;;
+    disable|off|stop)
+        disable_killswitch
+        ;;
+    status)
+        status_killswitch
+        ;;
+    watchdog)
+        watchdog
+        ;;
+    *)
+        echo "usage: nh-killswitch [enable|disable|status|watchdog]" >&2
+        exit 2
+        ;;
+esac

@@ -1,0 +1,173 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-hids - Host Intrusion Detection System
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+HIDS_DB=$NHSYSTEM/etc/hids/baseline.db
+HIDS_LOG=$NHSYSTEM/logs/hids.log
+HIDS_CONF=$NHSYSTEM/etc/hids/hids.conf
+NHWORK=$NHSYSTEM/workspaces/main
+
+ensure_dirs() {
+    mkdir -p "$NHSYSTEM/etc/hids" "$NHSYSTEM/logs"
+    [ -f "$HIDS_CONF" ] || cat > "$HIDS_CONF" <<CONF
+# HIDS Configuration
+watch_dirs=/etc,/data/local/nhsystem/bin,/data/adb/modules
+watch_files=/etc/passwd,/etc/shadow,/data/adb/magisk.db
+alert_cmd=nh-alert
+check_interval=300
+CONF
+}
+
+load_config() {
+    ensure_dirs
+    WATCH_DIRS=$(grep ^watch_dirs "$HIDS_CONF" 2>/dev/null | cut -d= -f2 | tr ',' ' ')
+    WATCH_FILES=$(grep ^watch_files "$HIDS_CONF" 2>/dev/null | cut -d= -f2 | tr ',' ' ')
+    ALERT_CMD=$(grep ^alert_cmd "$HIDS_CONF" 2>/dev/null | cut -d= -f2)
+}
+
+init_baseline() {
+    ensure_dirs
+    echo "── Initializing HIDS Baseline ──"
+    echo ""
+
+    load_config
+    : > "$HIDS_DB"
+
+    for dir in $WATCH_DIRS; do
+        [ -d "$dir" ] || continue
+        find "$dir" -type f -exec sha256sum {} \; 2>/dev/null >> "$HIDS_DB"
+        local count=$(find "$dir" -type f 2>/dev/null | wc -l)
+        echo "  Indexed: $dir ($count files)"
+    done
+
+    for f in $WATCH_FILES; do
+        [ -f "$f" ] && sha256sum "$f" 2>/dev/null >> "$HIDS_DB"
+    done
+
+    local total=$(wc -l < "$HIDS_DB")
+    echo "  Baseline complete: $total file hashes"
+    echo "$(date)" >> "$HIDS_DB"
+}
+
+check_integrity() {
+    ensure_dirs
+    [ -f "$HIDS_DB" ] || { echo "No baseline. Run: nh-hids init"; return 1; }
+
+    load_config
+    echo "── HIDS Integrity Check ──"
+    echo "  $(date)"
+    echo ""
+
+    local changes=0
+    local added=0
+    local removed=0
+
+    # Build current file list
+    local current=$(mktemp)
+    for dir in $WATCH_DIRS; do
+        [ -d "$dir" ] && find "$dir" -type f -exec sha256sum {} \; 2>/dev/null >> "$current"
+    done
+    for f in $WATCH_FILES; do
+        [ -f "$f" ] && sha256sum "$f" 2>/dev/null >> "$current"
+    done
+
+    # Compare
+    while read -r hash file; do
+        if grep -q "$file" "$HIDS_DB" 2>/dev/null; then
+            if ! grep -q "$hash  $file" "$HIDS_DB" 2>/dev/null; then
+                echo "  MODIFIED: $file"
+                changes=$((changes + 1))
+                [ -n "$ALERT_CMD" ] && eval "$ALERT_CMD" "FILE_CHANGED:$file" 2>/dev/null || true
+            fi
+        else
+            echo "  NEW FILE: $file"
+            added=$((added + 1))
+        fi
+    done < "$current"
+
+    while read -r hash file; do
+        if ! grep -q "$file" "$current" 2>/dev/null; then
+            echo "  DELETED: $file"
+            removed=$((removed + 1))
+        fi
+    done < "$HIDS_DB"
+
+    rm -f "$current"
+
+    echo ""
+    echo "── Results ──"
+    echo "  Modified: $changes"
+    echo "  Added:    $added"
+    echo "  Removed:  $removed"
+    echo "  Total:    $(wc -l < "$HIDS_DB") baseline entries"
+
+    [ $((changes + added + removed)) -gt 0 ] && return 1 || return 0
+}
+
+start_monitor() {
+    echo "── Starting HIDS Monitor ──"
+    ensure_dirs
+    [ -f "$HIDS_DB" ] || { echo "No baseline. Run: nh-hids init"; return 1; }
+
+    load_config
+    local interval=$(grep ^check_interval "$HIDS_CONF" 2>/dev/null | cut -d= -f2)
+    [ -z "$interval" ] && interval=300
+
+    echo "  Check interval: ${interval}s"
+    echo "  Log: $HIDS_LOG"
+    echo "  PID: $$"
+    echo ""
+
+    while true; do
+        echo "[$(date)] HIDS check running..." >> "$HIDS_LOG"
+        if ! check_integrity >> "$HIDS_LOG" 2>&1; then
+            echo "[$(date)] ALERT: Integrity violations detected" >> "$HIDS_LOG"
+        fi
+        sleep "$interval"
+    done
+}
+
+show_alerts() {
+    local lines="${1:-20}"
+    echo "── Recent HIDS Alerts ──"
+    echo ""
+    if [ -f "$HIDS_LOG" ]; then
+        grep -i "MODIFIED\|DELETED\|NEW\|ALERT" "$HIDS_LOG" 2>/dev/null | tail -"$lines"
+    else
+        echo "  No alerts"
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-hids - Host Intrusion Detection System
+
+Usage: nh-hids <command> [args]
+
+Commands:
+  init              Initialize integrity baseline
+  check             Run integrity check
+  start             Start continuous monitoring
+  alerts [lines]    Show recent alerts (default 20)
+  config            Show configuration
+
+Examples:
+  nh-hids init
+  nh-hids check
+  nh-hids start &
+  nh-hids alerts 50
+EOF
+    exit 1
+}
+
+case "${1:-help}" in
+    init|baseline) init_baseline ;;
+    check|scan|verify) check_integrity ;;
+    start|monitor) start_monitor ;;
+    alerts|log|logs) show_alerts "${2:-20}" ;;
+    config|conf) cat "$HIDS_CONF" 2>/dev/null || echo "No config" ;;
+    *) usage ;;
+esac
