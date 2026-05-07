@@ -1,0 +1,301 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P4
+# nh-ebpf - eBPF kernel defense & observability manager
+set -u
+
+EBPF_DIR=/data/local/nhsystem/etc/ebpf
+TRACE_BIN=/data/local/nhsystem/bin/nh-trace
+
+ensure_dirs() {
+    mkdir -p $EBPF_DIR/programs $EBPF_DIR/logs
+}
+
+ebpf_status() {
+    echo "══ eBPF Kernel Observability ════════════════════════"
+    echo ""
+
+    # Check kernel support
+    echo "── Kernel Support ──"
+    if [ -f /sys/kernel/btf/vmlinux ]; then
+        echo "  ✓ BTF info available (kernel $KVER)"
+    fi
+    if [ -d /sys/fs/bpf ]; then
+        echo "  ✓ BPF filesystem mounted"
+    fi
+    if [ -f /proc/sys/kernel/unprivileged_bpf_disabled ]; then
+        local bpf_disabled
+        bpf_disabled=$(cat /proc/sys/kernel/unprivileged_bpf_disabled 2>/dev/null)
+        if [ "$bpf_disabled" = "1" ]; then
+            echo "  ~ Unprivileged BPF disabled (root can still use)"
+        else
+            echo "  ✓ Unprivileged BPF enabled"
+        fi
+    fi
+
+    echo ""
+
+    # Check tools
+    echo "── Available Tools ──"
+    if command -v bpftool >/dev/null 2>&1; then
+        echo "  ✓ bpftool available"
+    else
+        echo "  ✗ bpftool not available"
+    fi
+    if command -v llvm-objdump >/dev/null 2>&1 || command -v llvm-objdump-18 >/dev/null 2>&1; then
+        echo "  ✓ LLVM objdump available (can inspect eBPF objects)"
+    else
+        echo "  ~ LLVM tools not available (needed for eBPF compilation)"
+    fi
+    if [ -f "$TRACE_BIN" ]; then
+        echo "  ✓ nh-trace tracer available"
+    fi
+
+    echo ""
+
+    # Check loaded programs
+    echo "── Loaded eBPF Programs ──"
+    if command -v bpftool >/dev/null 2>&1; then
+        local prog_count
+        prog_count=$(bpftool prog list 2>/dev/null | grep -c "^[0-9]*:" || echo 0)
+        if [ "$prog_count" -gt 0 ]; then
+            echo "  $prog_count eBPF program(s) loaded:"
+            bpftool prog list 2>/dev/null | while read -r line; do echo "    $line"; done
+        else
+            echo "  (no eBPF programs loaded)"
+        fi
+
+        echo ""
+        echo "── eBPF Maps ──"
+        local map_count
+        map_count=$(bpftool map list 2>/dev/null | grep -c "^[0-9]*:" || echo 0)
+        if [ "$map_count" -gt 0 ]; then
+            echo "  $map_count eBPF map(s) active"
+            bpftool map list 2>/dev/null | while read -r line; do echo "    $line"; done
+        else
+            echo "  (no eBPF maps)"
+        fi
+    else
+        echo "  (bpftool not available, cannot list programs)"
+    fi
+
+    echo ""
+    echo "── Trace Status ──"
+    if [ -f /sys/kernel/debug/tracing/tracing_on ]; then
+        local tracing
+        tracing=$(cat /sys/kernel/debug/tracing/tracing_on 2>/dev/null)
+        [ "$tracing" = "1" ] && echo "  ✓ Kernel tracing enabled" || echo "  ~ Kernel tracing disabled"
+    fi
+}
+
+ebpf_list() {
+    echo "── eBPF Programs ──"
+    if command -v bpftool >/dev/null 2>&1; then
+        bpftool prog list 2>/dev/null || echo "  (error listing programs)"
+    else
+        echo "  (bpftool required)"
+    fi
+    echo ""
+    echo "── eBPF Maps ──"
+    if command -v bpftool >/dev/null 2>&1; then
+        bpftool map list 2>/dev/null || echo "  (error listing maps)"
+    fi
+}
+
+ebpf_monitor() {
+    local duration="${1:-10}"
+    echo "── eBPF Monitor (${duration}s) ──"
+    echo ""
+
+    # Monitor via trace_pipe if available
+    if [ -f /sys/kernel/debug/tracing/trace_pipe ]; then
+        echo "  Tracing syscalls for ${duration}s..."
+        echo "  Press Ctrl+C to stop early"
+        echo ""
+
+        # Enable tracing of common syscalls
+        local syscalls="execve connect openat read write"
+        for sc in $syscalls; do
+            echo 1 > "/sys/kernel/debug/tracing/events/syscalls/sys_enter_${sc}/enable" 2>/dev/null || true
+        done
+        echo 1 > /sys/kernel/debug/tracing/tracing_on 2>/dev/null || true
+
+        # Read trace pipe with timeout
+        timeout "$duration" cat /sys/kernel/debug/tracing/trace_pipe 2>/dev/null | while read -r line; do
+            echo "  $line"
+        done || true
+
+        # Disable tracing
+        echo 0 > /sys/kernel/debug/tracing/tracing_on 2>/dev/null || true
+        for sc in $syscalls; do
+            echo 0 > "/sys/kernel/debug/tracing/events/syscalls/sys_enter_${sc}/enable" 2>/dev/null || true
+        done
+    else
+        echo "  ✗ Tracefs not available (CONFIG_TRACING required)"
+        echo ""
+        echo "  Falling back to process monitor..."
+        ps aux 2>/dev/null | head -20
+    fi
+}
+
+ebpf_trace() {
+    local syscall="${1:-execve}"
+    local duration="${2:-5}"
+    echo "── Tracing syscall: $syscall (${duration}s) ──"
+
+    if [ ! -f "/sys/kernel/debug/tracing/events/syscalls/sys_enter_${syscall}/enable" ]; then
+        echo "  ✗ Syscall '$syscall' not traceable"
+        echo "  Available: execve, connect, openat, read, write, bind, accept, clone, fork"
+        exit 1
+    fi
+
+    echo "  Enabling trace on sys_enter_$syscall..."
+    echo 1 > "/sys/kernel/debug/tracing/events/syscalls/sys_enter_${syscall}/enable" 2>/dev/null || {
+        echo "  ✗ Failed to enable trace (need root)"
+        exit 1
+    }
+    echo 1 > /sys/kernel/debug/tracing/tracing_on 2>/dev/null
+
+    echo "  Tracing for ${duration}s... (Ctrl+C to stop early)"
+    echo ""
+
+    timeout "$duration" cat /sys/kernel/debug/tracing/trace_pipe 2>/dev/null | while read -r line; do
+        echo "  $line"
+    done || true
+
+    # Cleanup
+    echo 0 > "/sys/kernel/debug/tracing/events/syscalls/sys_enter_${syscall}/enable" 2>/dev/null || true
+}
+
+ebpf_file_monitor() {
+    local path="${1:-/data/local/nhsystem}"
+    echo "── File Integrity Monitor ──"
+    echo "  Watching: $path"
+    echo "  (uses inotify via nh-trace or fallback polling)"
+    echo ""
+
+    # Try nh-trace binary
+    if [ -x "$TRACE_BIN" ]; then
+        "$TRACE_BIN" watch "$path" 2>/dev/null || {
+            echo "  nh-trace watch not available, using polling..."
+            monitor_poll "$path"
+        }
+    else
+        monitor_poll "$path"
+    fi
+}
+
+monitor_poll() {
+    local path="$1"
+    local interval="${2:-5}"
+    echo "  Polling every ${interval}s for changes in: $path"
+    echo "  (run: find $path -mmin -1 -type f -ls)"
+    echo ""
+
+    # One-shot check
+    find "$path" -mmin -1 -type f -ls 2>/dev/null | while read -r line; do
+        echo "  MODIFIED: $line"
+    done
+    [ -z "$(find "$path" -mmin -1 -type f 2>/dev/null)" ] && echo "  (no changes in last minute)"
+}
+
+ebpf_security_check() {
+    echo "── eBPF Security Audit ──"
+    echo ""
+
+    # Check for eCapture-style TLS sniffing
+    if [ -f /sys/kernel/debug/tracing/uprobe_events ]; then
+        local uprobes
+        uprobes=$(cat /sys/kernel/debug/tracing/uprobe_events 2>/dev/null)
+        if echo "$uprobes" | grep -qi "ssl\|tls\|gnutls\|nspr"; then
+            echo "  ⚠ SSL/TLS uprobes detected — possible TLS capture!"
+            echo "$uprobes" | grep -i "ssl\|tls\|gnutls\|nspr" | while read -r line; do
+                echo "    $line"
+            done
+        else
+            echo "  ✓ No TLS capture uprobes detected"
+        fi
+    fi
+
+    # Check for unexpected bpf() syscall usage
+    if command -v bpftool >/dev/null 2>&1; then
+        echo ""
+        echo "── Authorized eBPF Programs ──"
+        bpftool prog list 2>/dev/null | grep -E "name|type" | while read -r line; do
+            echo "  $line"
+        done
+    fi
+
+    # Suggest monitoring
+    echo ""
+    echo "── Recommendations ──"
+    echo "  Run 'nh-ebpf monitor' to watch syscalls in real-time"
+    echo "  Run 'nh-ebpf trace execve' to monitor process execution"
+    echo "  Run 'nh-ebpf trace connect' to monitor network connections"
+}
+
+setup_ebpf() {
+    echo "── eBPF Setup ──"
+    echo ""
+    ensure_dirs
+
+    # Check kernel features
+    echo "  Kernel eBPF features:"
+    for feat in bpf btf tracing kprobe uprobe tracepoint; do
+        if [ -d "/sys/kernel/debug/tracing" ] || [ -d "/sys/fs/bpf" ]; then
+            echo "  ✓ $feat supported"
+        fi
+    done
+
+    echo ""
+    echo "  To install eBPF development tools in Arch chroot:"
+    echo "    nh-ebpf enter-arch"
+    echo "    pacman -S bpftool clang llvm bpf" 
+    echo ""
+    echo "  Or run: setup-ebpf.sh"
+}
+
+enter_chroot() {
+    if [ -x /data/local/nhsystem/bin/nh-enter-arch ]; then
+        nh-enter-arch
+    elif [ -f /data/local/nhsystem/roots/archlinux/usr/bin/bash ]; then
+        chroot /data/local/nhsystem/roots/archlinux /usr/bin/bash
+    else
+        echo "  Arch chroot not available"
+        exit 1
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-ebpf - eBPF Kernel Defense & Observability
+
+Usage: nh-ebpf <command> [args]
+
+Commands:
+  status                Show eBPF kernel support and loaded programs
+  list                  List loaded eBPF programs and maps
+  monitor [seconds]     Real-time syscall trace monitor
+  trace <syscall> [sec] Trace a specific syscall (execve, connect, openat, etc.)
+  watch <path>          File integrity monitor
+  audit                 Security audit for unauthorized eBPF programs
+  setup                 Check and guide eBPF setup
+  enter-arch            Enter Arch chroot for manual configuration
+
+Requires: Root, kernel with CONFIG_BPF, tracefs mounted
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    status|info) ebpf_status ;;
+    list|progs) ebpf_list ;;
+    monitor) ebpf_monitor "${2:-10}" ;;
+    trace) shift; ebpf_trace "${1:-execve}" "${2:-5}" ;;
+    watch|fim) shift; ebpf_file_monitor "${1:-/data/local/nhsystem}" ;;
+    audit|security) ebpf_security_check ;;
+    setup) setup_ebpf ;;
+    enter-arch) enter_chroot ;;
+    *) usage ;;
+esac

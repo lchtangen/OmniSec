@@ -516,3 +516,19 @@ setup() {
 	run bash -n "$ROOT_DIR/src/device/bin/nh-recon-mesh"
 	[ "$status" -eq 0 ]
 }
+
+# Advanced Tools Tests
+@test "nh-exploit syntax check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-exploit"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-orchestrate syntax check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-orchestrate"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-web-console syntax check" {
+	run python3 -m py_compile "$ROOT_DIR/src/device/bin/nh-web-console"
+	[ "$status" -eq 0 ]
+}

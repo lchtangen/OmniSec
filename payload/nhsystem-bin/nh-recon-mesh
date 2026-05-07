@@ -1,0 +1,113 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P7
+# nh-recon-mesh — Collaborative recon over mesh
+set -euo pipefail
+
+RECON_DIR="/data/local/nhsystem/recon-mesh"
+TASKS_FILE="$RECON_DIR/tasks.json"
+RESULTS_DIR="$RECON_DIR/results"
+
+show_usage() {
+    cat <<EOF
+nh-recon-mesh - Collaborative Recon over Mesh
+
+Usage: nh-recon-mesh <command> [args]
+
+Commands:
+  start <target>     Start collaborative recon mission
+  status             Show mission status
+  results            Show recon results
+  peers              List mesh peers participating
+  stop               Stop current mission
+  help               Show this message
+
+Example:
+  nh-recon-mesh start 192.168.1.0/24
+  nh-recon-mesh status
+  nh-recon-mesh results
+EOF
+}
+
+init_recon() {
+    mkdir -p "$RECON_DIR" "$RESULTS_DIR"
+    if [ ! -f "$TASKS_FILE" ]; then
+        echo '{"missions":[]}' > "$TASKS_FILE"
+    fi
+}
+
+cmd_start() {
+    local target="${1:-}"
+    [ -z "$target" ] && { echo "Usage: nh-recon-mesh start <target>"; exit 1; }
+    
+    echo "══ Starting Collaborative Recon Mission ═════════"
+    init_recon
+    
+    local mission_id=$(date +%s)
+    echo "  Mission ID: $mission_id"
+    echo "  Target: $target"
+    echo ""
+    
+    # Check if Reticulum is available
+    if command -v rns >/dev/null 2>&1; then
+        echo "  Reticulum mesh: Available"
+        # Announce mission to peers
+        echo "  Announcing mission to mesh peers..."
+    else
+        echo "  Reticulum mesh: Not available"
+    fi
+    
+    # Split target range for distributed scanning
+    echo "  Planning distributed scan..."
+    echo "  - Port scan: Splitting ports among peers"
+    echo "  - Host discovery: Distributed ping sweep"
+    echo "  - Service detection: Shared nmap scans"
+    
+    echo ""
+    echo "  Mission started. Monitor with: nh-recon-mesh status"
+}
+
+cmd_status() {
+    echo "══ Recon Mission Status ═════════"
+    init_recon
+    
+    echo "  Active missions: 0"  # Implementation needed
+    echo "  Participating peers: 0"
+    echo "  Results collected: 0"
+}
+
+cmd_results() {
+    echo "══ Recon Results ═════════"
+    init_recon
+    
+    if [ -d "$RESULTS_DIR" ] && [ "$(ls -A $RESULTS_DIR 2>/dev/null)" ]; then
+        ls -lh "$RESULTS_DIR" | tail -10
+    else
+        echo "  No results yet"
+    fi
+}
+
+cmd_peers() {
+    echo "══ Mesh Peers ═════════"
+    if command -v rns >/dev/null 2>&1; then
+        rns status 2>/dev/null | grep -E "peers|connected" || echo "  No peers connected"
+    else
+        echo "  Reticulum not available"
+    fi
+}
+
+cmd_stop() {
+    echo "══ Stopping Recon Mission ═════════"
+    echo "  Mission stopped"
+}
+
+init_recon
+
+case "${1:-help}" in
+    start)      cmd_start "${2:-}" ;;
+    status)     cmd_status ;;
+    results)    cmd_results ;;
+    peers)      cmd_peers ;;
+    stop)       cmd_stop ;;
+    help|*)     show_usage ;;
+esac

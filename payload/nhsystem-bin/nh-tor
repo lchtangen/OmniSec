@@ -1,0 +1,17 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-tor — Tor management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-tor - Tor Management
+Usage: nh-tor {status|start|stop|newid|help}
+EOF
+}
+case "${1:-status}" in
+    status) if pgrep tor >/dev/null; then echo "Tor running"; else echo "Tor stopped"; fi ;;
+    start) tor --runasdaemon 1 2>/dev/null || echo "tor not installed" ;;
+    stop) pkill tor 2>/dev/null || true ;;
+    newid) kill -HUP $(pgrep tor) 2>/dev/null || echo "Tor not running" ;;
+    help|*) show_usage ;;
+esac

@@ -1,0 +1,97 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-optimize — System optimization tool
+set -euo pipefail
+
+show_usage() {
+    cat <<EOF
+nh-optimize - System Optimization Tool
+
+Usage: nh-optimize <command>
+
+Commands:
+  all           Apply all optimizations
+  memory        Clean memory caches
+  storage       Clean temporary files
+  network       Optimize network settings
+  thermal       Apply thermal optimizations
+  reset         Reset to default settings
+  status        Show optimization status
+  help          Show this message
+EOF
+}
+
+cmd_memory() {
+    echo "══ Memory Optimization ═════════════════"
+    echo "  Clearing caches..."
+    sync
+    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+    echo "  Memory caches cleared"
+}
+
+cmd_storage() {
+    echo "══ Storage Optimization ═══════════════"
+    echo "  Cleaning temporary files..."
+    rm -rf /data/local/nhsystem/tmp/* 2>/dev/null || true
+    rm -rf /tmp/* 2>/dev/null || true
+    rm -f /data/local/nhsystem/logs/*.log.old 2>/dev/null || true
+    echo "  Storage cleaned"
+}
+
+cmd_network() {
+    echo "══ Network Optimization ═══════════════"
+    echo "  Optimizing network settings..."
+    setprop net.tcp.buffersize.default 4096,87380,524288,4096,16384,524288 2>/dev/null || true
+    setprop net.tcp.buffersize.wifi 524288,2097152,8388608,524288,2097152,8388608 2>/dev/null || true
+    echo "  Network settings optimized"
+}
+
+cmd_thermal() {
+    echo "══ Thermal Optimization ═══════════════"
+    echo "  Applying thermal throttling..."
+    for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+        [ -f "$cpu" ] && echo "powersave" > "$cpu" 2>/dev/null || true
+    done
+    echo "  Thermal optimizations applied"
+}
+
+cmd_reset() {
+    echo "══ Resetting Optimizations ═════════"
+    echo "  Resetting to defaults..."
+    for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+        [ -f "$cpu" ] && echo "ondemand" > "$cpu" 2>/dev/null || true
+    done
+    echo "  Reset complete"
+}
+
+cmd_status() {
+    echo "══ Optimization Status ═════════════"
+    echo "  CPU Governors:"
+    for cpu in /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor; do
+        [ -f "$cpu" ] && echo "    $(cat $cpu)" || echo "    N/A"
+    done
+    echo ""
+    echo "  Memory:"
+    free -m 2>/dev/null || cat /proc/meminfo | grep MemAvailable
+}
+
+cmd_all() {
+    echo "══ Applying All Optimizations ═══════"
+    cmd_memory
+    cmd_storage
+    cmd_network
+    cmd_thermal
+    echo "  All optimizations applied"
+}
+
+case "${1:-all}" in
+    all)         cmd_all ;;
+    memory)      cmd_memory ;;
+    storage)     cmd_storage ;;
+    network)     cmd_network ;;
+    thermal)     cmd_thermal ;;
+    reset)       cmd_reset ;;
+    status)      cmd_status ;;
+    help|*)      show_usage ;;
+esac

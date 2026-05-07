@@ -1,0 +1,95 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P7
+# nh-siem — Security Information & Event Management
+set -euo pipefail
+
+SIEM_DIR="/data/local/nhsystem/siem"
+EVENTS_DB="$SIEM_DIR/events.json"
+ALERTS_DB="$SIEM_DIR/alerts.json"
+
+show_usage() {
+    cat <<EOF
+nh-siem - Security Information & Event Management
+
+Usage: nh-siem <command> [args]
+
+Commands:
+  start           Start SIEM collection
+  stop            Stop SIEM collection
+  status          Show SIEM status
+  events [num]    Show recent events
+  alerts [num]    Show recent alerts
+  correlate       Run AI correlation on events
+  help            Show this message
+EOF
+}
+
+init_siem() {
+    mkdir -p "$SIEM_DIR"
+    touch "$EVENTS_DB" "$ALERTS_DB"
+}
+
+collect_events() {
+    echo "══ Collecting Security Events ═══════════"
+    init_siem
+    
+    # Collect from various sources
+    echo "  Collecting from auth logs..."
+    grep -i "failed\|invalid\|error" /data/local/nhsystem/logs/*.log 2>/dev/null | head -10 | while read line; do
+        echo "    $line"
+    done
+    
+    echo "  Collecting from system logs..."
+    # Add more collection sources
+}
+
+cmd_status() {
+    echo "══ SIEM Status ═════════════════"
+    init_siem
+    
+    local event_count=$(wc -l < "$EVENTS_DB" 2>/dev/null || echo 0)
+    local alert_count=$(wc -l < "$ALERTS_DB" 2>/dev/null || echo 0)
+    
+    echo "  Events collected: $event_count"
+    echo "  Alerts generated: $alert_count"
+    echo "  Collection: $(pgrep -f "nh-siem collect" >/dev/null && echo "Running" || echo "Stopped")"
+}
+
+cmd_events() {
+    local num="${1:-10}"
+    echo "══ Recent Events (last $num) ═══════"
+    init_siem
+    tail -n "$num" "$EVENTS_DB" 2>/dev/null || echo "  No events yet"
+}
+
+cmd_alerts() {
+    local num="${1:-10}"
+    echo "══ Recent Alerts (last $num) ═══════"
+    init_siem
+    tail -n "$num" "$ALERTS_DB" 2>/dev/null || echo "  No alerts yet"
+}
+
+cmd_correlate() {
+    echo "══ AI Correlation ═══════════════"
+    if [ -f /data/local/nhsystem/bin/nh-ai ]; then
+        echo "  Running AI correlation..."
+        sh /data/local/nhsystem/bin/nh-ai chat "Correlate security events and identify attack patterns" 2>/dev/null || \
+            echo "  AI correlation failed"
+    else
+        echo "  AI not available"
+    fi
+}
+
+init_siem
+
+case "${1:-status}" in
+    start)      echo "SIEM collection started (background)"; while true; do collect_events; sleep 60; done &
+                echo $! > "$SIEM_DIR/pid" ;;
+    stop)       [ -f "$SIEM_DIR/pid" ] && kill $(cat "$SIEM_DIR/pid") 2>/dev/null; rm -f "$SIEM_DIR/pid" ;;
+    status)     cmd_status ;;
+    events)     cmd_events "${2:-}" ;;
+    alerts)     cmd_alerts "${2:-}" ;;
+    correlate)  cmd_correlate ;;
+    help|*)     show_usage ;;
+esac

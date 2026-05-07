@@ -1,0 +1,501 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P3
+# nh-meshchat - P2P mesh networking chat (WiFi/Bluetooth)
+# Performance: battery-efficient, minimal protocol overhead, offline queue
+set -u
+
+NHSYSTEM=${NHSYSTEM:-/data/local/nhsystem}
+MESH_DIR="$NHSYSTEM/mesh"
+CONFIG_DIR="$NHSYSTEM/etc/mesh"
+MSG_DIR="$MESH_DIR/messages"
+PEERS_DIR="$MESH_DIR/peers"
+LOG_DIR="$NHSYSTEM/logs/mesh"
+
+# Default settings
+MESH_PORT=4242
+MESH_INTERFACE="wlan0"
+NODE_NAME="$(getprop ro.product.model 2>/dev/null || hostname -s 2>/dev/null || echo "Node_$$")"
+CHAT_HISTORY=100
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# Ensure directories
+mkdir -p "$MESH_DIR" "$CONFIG_DIR" "$MSG_DIR" "$PEERS_DIR" "$LOG_DIR"
+
+# ── Utility Functions ─────────────────────────────────────
+
+info()  { printf "${BLUE}[INFO]${NC} %s\n" "$*"; }
+ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+err()   { printf "${RED}[ERR]${NC} %s\n" "$*" >&2; }
+debug() { [ "${DEBUG:-0}" = "1" ] && printf "${CYAN}[DBG]${NC} %s\n" "$*" || true; }
+
+get_my_ip() {
+    ip addr show "$MESH_INTERFACE" 2>/dev/null | \
+        grep -oP 'inet \K[\d.]+' | head -1 || echo "127.0.0.1"
+}
+
+# ── Peer Discovery ──────────────────────────────────────
+
+discover_peers() {
+    info "Discovering peers..."
+    
+    # Check WiFi Direct
+    if command -v wpa_cli >/dev/null 2>&1; then
+        debug "Checking WiFi Direct peers..."
+        # wpa_cli p2p_find (requires wpa_supplicant with p2p)
+    fi
+    
+    # Check local network (simple ping sweep - limited)
+    local my_ip
+    my_ip=$(get_my_ip)
+    local network
+    network=$(echo "$my_ip" | cut -d. -f1-3)
+    
+    debug "Scanning network: $network.0/24"
+    
+    # Load known peers
+    if [ -f "$CONFIG_DIR/peers.conf" ]; then
+        echo "Known peers:"
+        cat "$CONFIG_DIR/peers.conf" | while read -r peer; do
+            [ -z "$peer" ] && continue
+            # Quick check if peer is alive
+            if ping -c 1 -W 1 "$peer" >/dev/null 2>&1; then
+                printf "  ${GREEN}●${NC} $peer (reachable)\n"
+            else
+                printf "  ${RED}●${NC} $peer (unreachable)\n"
+            fi
+        done
+    else
+        info "No known peers. Add with: nh-meshchat peer add <ip>"
+    fi
+}
+
+add_peer() {
+    local peer="$1"
+    [ -z "$peer" ] && { err "Usage: nh-meshchat peer add <ip>"; return 1; }
+    
+    # Validate IP (simple check)
+    if ! echo "$peer" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+        err "Invalid IP address: $peer"
+        return 1
+    fi
+    
+    # Add to config
+    if [ ! -f "$CONFIG_DIR/peers.conf" ]; then
+        echo "$peer" > "$CONFIG_DIR/peers.conf"
+    else
+        grep -q "^$peer$" "$CONFIG_DIR/peers.conf" && {
+            warn "Peer already in list: $peer"
+            return 0
+        }
+        echo "$peer" >> "$CONFIG_DIR/peers.conf"
+    fi
+    
+    ok "Peer added: $peer"
+}
+
+remove_peer() {
+    local peer="$1"
+    [ -z "$peer" ] && { err "Usage: nh-meshchat peer remove <ip>"; return 1; }
+    
+    if [ -f "$CONFIG_DIR/peers.conf" ]; then
+        grep -v "^$peer$" "$CONFIG_DIR/peers.conf" > "${CONFIG_DIR}/peers.conf.tmp"
+        mv "${CONFIG_DIR}/peers.conf.tmp" "$CONFIG_DIR/peers.conf"
+        ok "Peer removed: $peer"
+    fi
+}
+
+# ── Chat Server (Listener) ─────────────────────────────
+
+start_listener() {
+    info "Starting mesh chat listener on port $MESH_PORT..."
+    
+    # Check if already running
+    if pgrep -f "nc.*$MESH_PORT" >/dev/null 2>&1; then
+        warn "Listener already running"
+        return 1
+    fi
+    
+    # Start netcat listener (will handle incoming messages)
+    while true; do
+        {
+            read -r msg
+            [ -z "$msg" ] && continue
+            
+            local timestamp
+            timestamp=$(date +'%Y-%m-%d %H:%M:%S')
+            local sender="$REMOTE_ADDR"
+            [ -z "$sender" ] && sender="unknown"
+            
+            # Save message
+            local msg_file="$MSG_DIR/msg-$(date +%s).txt"
+            cat > "$msg_file" <<MSG
+TIMESTAMP=$timestamp
+SENDER=$sender
+MESSAGE=$msg
+MSG
+            
+            # Notify
+            printf "${CYAN}[$timestamp]${NC} ${BOLD}$sender${NC}: $msg\n"
+            
+            # Send ack
+            echo "ACK"
+        } | nc -l -p "$MESH_PORT" -q 1 -w 30 2>/dev/null
+    done &
+    
+    local pid=$!
+    echo "$pid" > "$MESH_DIR/listener.pid"
+    ok "Listener started (PID: $pid)"
+    info "Listening on $(get_my_ip):$MESH_PORT"
+}
+
+stop_listener() {
+    info "Stopping listener..."
+    if [ -f "$MESH_DIR/listener.pid" ]; then
+        local pid
+        pid=$(cat "$MESH_DIR/listener.pid" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null
+            rm -f "$MESH_DIR/listener.pid"
+            ok "Listener stopped"
+        else
+            warn "Listener not running (stale PID file)"
+            rm -f "$MESH_DIR/listener.pid"
+        fi
+    else
+        # Try to kill all nc listeners
+        pkill -f "nc.*$MESH_PORT" 2>/dev/null && ok "Listener stopped" || info "No listener running"
+    fi
+}
+
+# ── Send Message ──────────────────────────────────────
+
+send_message() {
+    local target="$1"
+    local message="$2"
+    
+    [ -z "$target" ] || [ -z "$message" ] && { 
+        err "Usage: nh-meshchat send <ip> <message>"
+        return 1
+    }
+    
+    info "Sending message to $target:$MESH_PORT..."
+    
+    # Send via netcat
+    local response
+    response=$(echo "$message" | nc -w 5 "$target" "$MESH_PORT" 2>/dev/null)
+    
+    if [ -n "$response" ]; then
+        ok "Message sent (response: $response)"
+    else
+        warn "No response from $target (may be offline)"
+        # Queue for later
+        echo "$target|$message" >> "$MESH_DIR/offline_queue.txt"
+        info "Message queued for later delivery"
+    fi
+}
+
+broadcast_message() {
+    local message="$1"
+    [ -z "$message" ] && { err "Usage: nh-meshchat broadcast <message>"; return 1; }
+    
+    info "Broadcasting message to all peers..."
+    
+    if [ ! -f "$CONFIG_DIR/peers.conf" ]; then
+        warn "No peers configured"
+        return 1
+    fi
+    
+    local sent=0
+    local failed=0
+    
+    while read -r peer; do
+        [ -z "$peer" ] && continue
+        if echo "$message" | nc -w 3 "$peer" "$MESH_PORT" >/dev/null 2>&1; then
+            sent=$((sent + 1))
+            debug "  Sent to: $peer"
+        else
+            failed=$((failed + 1))
+            debug "  Failed: $peer"
+        fi
+    done < "$CONFIG_DIR/peers.conf"
+    
+    ok "Broadcast complete: sent=$sent, failed=$failed"
+}
+
+# ── Chat Session ──────────────────────────────────────
+
+start_chat() {
+    local peer="$1"
+    
+    if [ -z "$peer" ]; then
+        # Interactive peer selection
+        if [ -f "$CONFIG_DIR/peers.conf" ]; then
+            echo "Select peer:"
+            local i=1
+            while read -r p; do
+                [ -z "$p" ] && continue
+                echo "  $i) $p"
+                i=$((i + 1))
+            done < "$CONFIG_DIR/peers.conf"
+            echo -n "Choice: "
+            read -r choice
+            peer=$(sed -n "${choice}p" "$CONFIG_DIR/peers.conf")
+        else
+            err "No peers configured. Add with: nh-meshchat peer add <ip>"
+            return 1
+        fi
+    fi
+    
+    [ -z "$peer" ] && { err "Invalid peer selection"; return 1; }
+    
+    info "Starting chat with $peer (Ctrl+C to exit)"
+    info "Your messages will be prefixed with [$NODE_NAME]"
+    echo ""
+    
+    # Start listener if not running
+    if [ ! -f "$MESH_DIR/listener.pid" ]; then
+        start_listener
+        sleep 1
+    fi
+    
+    # Chat loop
+    while true; do
+        echo -n "[$NODE_NAME] "
+        read -r msg
+        [ -z "$msg" ] && continue
+        
+        if [ "$msg" = "/quit" ] || [ "$msg" = "/exit" ]; then
+            info "Leaving chat..."
+            break
+        fi
+        
+        send_message "$peer" "[$NODE_NAME] $msg"
+    done
+}
+
+# ── Message History ───────────────────────────────────
+
+show_history() {
+    local lines="${1:-$CHAT_HISTORY}"
+    
+    echo "── Message History (last $lines) ──"
+    echo ""
+    
+    if [ ! -d "$MSG_DIR" ] || [ -z "$(ls -A "$MSG_DIR" 2>/dev/null)" ]; then
+        info "No messages yet"
+        return 0
+    fi
+    
+    ls -t "$MSG_DIR"/msg-*.txt 2>/dev/null | head -"$lines" | while read -r msg_file; do
+        [ -f "$msg_file" ] || continue
+        local timestamp
+        local sender
+        local message
+        timestamp=$(grep "^TIMESTAMP=" "$msg_file" | cut -d= -f2-)
+        sender=$(grep "^SENDER=" "$msg_file" | cut -d= -f2-)
+        message=$(grep "^MESSAGE=" "$msg_file" | cut -d= -f2-)
+        printf "${CYAN}[$timestamp]${NC} ${BOLD}$sender${NC}: $message\n"
+    done
+}
+
+# ── Status ────────────────────────────────────────
+
+cmd_status() {
+    echo ""
+    echo "════════════════════════════════════════════════════════"
+    echo "  NH-MESHCHAT STATUS"
+    echo "  Node: $NODE_NAME"
+    echo "  IP: $(get_my_ip)"
+    echo "  Time: $(date)"
+    echo "════════════════════════════════════════════════════════"
+    echo ""
+    
+    # Listener status
+    echo "── Listener ──"
+    if [ -f "$MESH_DIR/listener.pid" ]; then
+        local pid
+        pid=$(cat "$MESH_DIR/listener.pid" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            ok "Running (PID: $pid) on port $MESH_PORT"
+        else
+            warn "Not running (stale PID file)"
+        fi
+    else
+        info "Not running"
+    fi
+    
+    echo ""
+    
+    # Peers
+    echo "── Peers ──"
+    if [ -f "$CONFIG_DIR/peers.conf" ]; then
+        local count=0
+        while read -r peer; do
+            [ -z "$peer" ] && continue
+            count=$((count + 1))
+            if ping -c 1 -W 1 "$peer" >/dev/null 2>&1; then
+                printf "  ${GREEN}●${NC} $peer (online)\n"
+            else
+                printf "  ${RED}●${NC} $peer (offline)\n"
+            fi
+        done < "$CONFIG_DIR/peers.conf"
+        [ "$count" -eq 0 ] && info "No peers configured"
+    else
+        info "No peers configured"
+    fi
+    
+    echo ""
+    
+    # Messages
+    echo "── Messages ──"
+    if [ -d "$MSG_DIR" ]; then
+        local msg_count
+        msg_count=$(ls -1 "$MSG_DIR"/msg-*.txt 2>/dev/null | wc -l)
+        echo "  Total messages: $msg_count"
+    else
+        echo "  0 messages"
+    fi
+    
+    echo ""
+    
+    # Offline queue
+    if [ -f "$MESH_DIR/offline_queue.txt" ]; then
+        local queue_count
+        queue_count=$(wc -l < "$MESH_DIR/offline_queue.txt")
+        echo "── Offline Queue ──"
+        echo "  Messages queued: $queue_count"
+    fi
+}
+
+# ── Usage ────────────────────────────────────────
+
+usage() {
+    cat <<EOF
+nh-meshchat - P2P Mesh Networking Chat
+
+Usage: nh-meshchat <command> [options]
+
+Chat:
+  chat [peer_ip]       Start interactive chat with peer
+  send <ip> <msg>      Send a single message
+  broadcast <message>    Send message to all peers
+
+Listener:
+  start                Start listener (receive messages)
+  stop                 Stop listener
+  status               Show mesh status
+
+Peers:
+  peers               List configured peers
+  peer add <ip>        Add a peer
+  peer remove <ip>     Remove a peer
+  discover             Discover peers on network
+
+Messages:
+  history [lines]      Show message history (default: 100)
+  queue                Show offline message queue
+  clear-queue         Clear offline queue
+
+Examples:
+  nh-meshchat start
+  nh-meshchat peer add 192.168.1.100
+  nh-meshchat chat 192.168.1.100
+  nh-meshchat broadcast "Hello mesh!"
+
+Configuration:
+  Node name:     $NODE_NAME
+  Listen port:   $MESH_PORT
+  Interface:     $MESH_INTERFACE
+
+Files:
+  Config:  $CONFIG_DIR/
+  Messages: $MSG_DIR/
+  Logs:   $LOG_DIR/
+
+Notes:
+  - Requires netcat (nc) for messaging
+  - Peers must be on same network or reachable via IP
+  - Offline messages are queued for later delivery
+EOF
+    exit 0
+}
+
+# ── Main ────────────────────────────────────────
+
+[ $# -ge 1 ] || usage
+
+case "$1" in
+    chat)
+        shift
+        start_chat "${1:-}"
+        ;;
+    send)
+        shift
+        send_message "$@"
+        ;;
+    broadcast)
+        shift
+        broadcast_message "$*"
+        ;;
+    start)
+        start_listener
+        ;;
+    stop)
+        stop_listener
+        ;;
+    status)
+        cmd_status
+        ;;
+    peers)
+        if [ -f "$CONFIG_DIR/peers.conf" ]; then
+            echo "── Configured Peers ──"
+            cat "$CONFIG_DIR/peers.conf" | nl
+        else
+            info "No peers configured"
+        fi
+        ;;
+    peer)
+        shift
+        case "${1:-}" in
+            add)      shift; add_peer "$@" ;;
+            remove|del) shift; remove_peer "$@" ;;
+            *) err "Usage: nh-meshchat peer {add|remove} <ip>" ;;
+        esac
+        ;;
+    discover)
+        discover_peers
+        ;;
+    history)
+        shift
+        show_history "${1:-$CHAT_HISTORY}"
+        ;;
+    queue)
+        if [ -f "$MESH_DIR/offline_queue.txt" ]; then
+            echo "── Offline Queue ──"
+            cat "$MESH_DIR/offline_queue.txt" | nl
+        else
+            info "Queue is empty"
+        fi
+        ;;
+    clear-queue)
+        rm -f "$MESH_DIR/offline_queue.txt"
+        ok "Queue cleared"
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        err "Unknown command: $1"
+        usage
+        ;;
+esac

@@ -83,7 +83,7 @@ lint: lint-sh lint-c lint-json
 lint-sh:
 	@echo "--- Shell syntax check ---"
 	@find $(SRC_DIR) -name '*.sh' -exec bash -n {} \;
-	@find $(SRC_DIR) -name 'nh-*' -not -name '*.c' -exec bash -n {} \;
+	@find $(SRC_DIR) -name 'nh-*' -not -name '*.c' -not -name '*.py' -exec bash -n {} \;
 	@bash -n $(ROOT_DIR)/nhctl
 	@find $(ROOT_DIR)/device -name '*.sh' -exec bash -n {} \;
 	@find $(ROOT_DIR)/deploy -name '*.sh' -exec bash -n {} \;

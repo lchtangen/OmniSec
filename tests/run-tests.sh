@@ -36,6 +36,8 @@ for f in "$ROOT_DIR"/src/device/setup/*.sh; do
 	check "setup/$(basename "$f")" bash -n "$f"
 done
 for f in "$ROOT_DIR"/src/device/bin/nh-*; do
+	# Skip Python files
+	head -1 "$f" 2>/dev/null | grep -q "python" && continue
 	check "nhsystem-bin/$(basename "$f")" bash -n "$f"
 done
 for f in "$ROOT_DIR"/src/device/dotfiles/*.zsh; do

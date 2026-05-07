@@ -474,6 +474,11 @@ Services:
    mesh {status|setup|start|stop|identity|peers|yggdrasil}  Resilient mesh networking (Reticulum/Yggdrasil)
    ebpf {status|list|monitor|trace|watch|audit}  eBPF kernel defense, syscall tracing, file integrity
    threat {status|collect|share|fetch|analyze}  Autonomous threat intelligence (IoC, mesh sharing)
+   cellular {status|scan|imsi|detect|c2}  Cellular security (WiFi-sim, no SDR needed)
+   iot {scan|fingerprint|test|fuzz}  IoT security testing (WiFi-based)
+   drone {status|scan|connect|telemetry}  Drone security (WiFi simulation)
+   voice {status|listen|commands}  Voice-controlled operations (offline)
+   autonomic {start|stop|learn|adapt|predict}  Autonomous operations platform
 
 Multi-Device:
   --device <serial>  Run command against specific device (e.g. --device 10.0.0.50:52104)
@@ -715,6 +720,41 @@ threat)
     action="${2:-status}"
     shift 2>/dev/null || true
     adbr "sh /data/local/nhsystem/bin/nh-threat $action $@"
+    ;;
+
+cellular)
+    require_root
+    action="${2:-status}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-cellular $action $@"
+    ;;
+
+iot)
+    require_root
+    action="${2:-scan}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-iot $action $@"
+    ;;
+
+drone)
+    require_root
+    action="${2:-status}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-drone $action $@"
+    ;;
+
+voice)
+    require_root
+    action="${2:-status}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-voice $action $@"
+    ;;
+
+autonomic)
+    require_root
+    action="${2:-status}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-autonomic $action $@"
     ;;
 
 container)

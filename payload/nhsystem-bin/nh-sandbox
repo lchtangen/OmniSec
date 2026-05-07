@@ -1,0 +1,518 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P2
+# nh-sandbox - Isolated execution environment for untrusted code
+# Performance: minimal overhead, efficient cleanup, resource limiting
+set -u
+
+NHSYSTEM=${NHSYSTEM:-/data/local/nhsystem}
+SANDBOX_DIR="$NHSYSTEM/sandbox"
+TEMPLATE_DIR="$SANDBOX_DIR/templates"
+RUN_DIR="$SANDBOX_DIR/run"
+CONFIG_DIR="$NHSYSTEM/etc/sandbox"
+
+# Default limits
+MAX_CPU_TIME=60       # seconds
+MAX_MEM=256           # MB
+MAX_FILES=1024        # max open files
+MAX_PROCS=100         # max processes
+MAX_DISK=100          # MB
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# Ensure directories
+mkdir -p "$SANDBOX_DIR" "$TEMPLATE_DIR" "$RUN_DIR" "$CONFIG_DIR"
+
+# ── Utility Functions ───────────────────────────────────────────
+
+info()  { printf "${BLUE}[INFO]${NC} %s\n" "$*"; }
+ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+err()   { printf "${RED}[ERR]${NC} %s\n" "$*" >&2; }
+debug() { [ "${DEBUG:-0}" = "1" ] && printf "${CYAN}[DBG]${NC} %s\n" "$*" || true; }
+
+cleanup() {
+    local sandbox_id="${1:-}"
+    [ -z "$sandbox_id" ] && return 0
+    
+    local sandbox_path="$RUN_DIR/$sandbox_id"
+    [ -d "$sandbox_path" ] || return 0
+    
+    debug "Cleaning up sandbox: $sandbox_id"
+    
+    # Kill processes in sandbox
+    if [ -f "$sandbox_path/sandbox.pid" ]; then
+        local pid
+        pid=$(cat "$sandbox_path/sandbox.pid" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill -9 -"$pid" 2>/dev/null || true
+        fi
+        rm -f "$sandbox_path/sandbox.pid"
+    fi
+    
+    # Unmount any mounted filesystems
+    if mount | grep -q "$sandbox_path"; then
+        umount -l "$sandbox_path/dev" 2>/dev/null || true
+        umount -l "$sandbox_path/proc" 2>/dev/null || true
+        umount -l "$sandbox_path/sys" 2>/dev/null || true
+        umount -l "$sandbox_path/tmp" 2>/dev/null || true
+    fi
+    
+    # Remove sandbox directory
+    rm -rf "$sandbox_path" 2>/dev/null || true
+    ok "Sandbox $sandbox_id cleaned up"
+}
+
+# ── Sandbox Creation ──────────────────────────────────────────
+
+create_sandbox() {
+    local sandbox_id="${1:-$(date +%s)_$$}"
+    local template="${2:-minimal}"
+    
+    local sandbox_path="$RUN_DIR/$sandbox_id"
+    
+    if [ -d "$sandbox_path" ]; then
+        warn "Sandbox already exists: $sandbox_id"
+        echo "$sandbox_id"
+        return 0
+    fi
+    
+    info "Creating sandbox: $sandbox_id (template: $template)"
+    
+    mkdir -p "$sandbox_path"
+    
+    # Apply template
+    case "$template" in
+        minimal)
+            create_minimal_template "$sandbox_path"
+            ;;
+        chroot)
+            create_chroot_template "$sandbox_path"
+            ;;
+        container)
+            create_container_template "$sandbox_path"
+            ;;
+        *)
+            err "Unknown template: $template"
+            rm -rf "$sandbox_path"
+            return 1
+            ;;
+    esac
+    
+    # Create sandbox metadata
+    cat > "$sandbox_path/.sandbox_info" <<INFO
+SANDBOX_ID=$sandbox_id
+CREATED=$(date +%s)
+TEMPLATE=$template
+USER=$(whoami)
+INFO
+    
+    ok "Sandbox created: $sandbox_id"
+    echo "$sandbox_id"
+}
+
+create_minimal_template() {
+    local sandbox_path="$1"
+    
+    debug "Creating minimal sandbox environment..."
+    
+    # Create basic directory structure
+    mkdir -p "$sandbox_path"/{bin,lib,lib64,usr,dev,proc,sys,tmp,home,etc}
+    
+    # Copy essential binaries (only what's needed)
+    local essential_bins="sh echo cat ls grep sed awk"
+    for bin in $essential_bins; do
+        local bin_path
+        bin_path=$(command -v "$bin" 2>/dev/null) || continue
+        cp "$bin_path" "$sandbox_path/bin/" 2>/dev/null || true
+        # Copy dependencies (simplified)
+        if command -v ldd >/dev/null 2>&1; then
+            ldd "$bin_path" 2>/dev/null | grep -o '/[^ ]*' | while read -r lib; do
+                [ -f "$lib" ] && cp "$lib" "$sandbox_path/lib/" 2>/dev/null || true
+            done
+        fi
+    done
+    
+    # Setup /dev (minimal)
+    mknod "$sandbox_path/dev/null" c 1 3 2>/dev/null || true
+    mknod "$sandbox_path/dev/zero" c 1 5 2>/dev/null || true
+    mknod "$sandbox_path/dev/tty" c 5 0 2>/dev/null || true
+    
+    # Setup /tmp
+    chmod 1777 "$sandbox_path/tmp"
+    
+    # Create passwd file
+    echo "root:x:0:0:root:/root:/bin/sh" > "$sandbox_path/etc/passwd"
+    echo "nobody:x:65534:65534:nobody:/:/bin/false" >> "$sandbox_path/etc/passwd"
+}
+
+create_chroot_template() {
+    local sandbox_path="$1"
+    
+    debug "Creating chroot sandbox environment..."
+    
+    # Try to use existing chroot as base
+    local base_chroot=""
+    for candidate in /data/local/nhsystem/roots/archlinux /data/local/nhsystem/roots/kali-arm64; do
+        if [ -d "$candidate" ] && [ -f "$candidate/bin/sh" ]; then
+            base_chroot="$candidate"
+            break
+        fi
+    done
+    
+    if [ -n "$base_chroot" ]; then
+        info "Using $base_chroot as base for chroot sandbox"
+        # Copy essential parts (not everything, to save space)
+        cp -a "$base_chroot/bin" "$sandbox_path/" 2>/dev/null || true
+        cp -a "$base_chroot/lib" "$sandbox_path/" 2>/dev/null || true
+        cp -a "$base_chroot/usr" "$sandbox_path/" 2>/dev/null || true
+        mkdir -p "$sandbox_path"/{dev,proc,sys,tmp,home,etc}
+    else
+        # Fall back to minimal
+        warn "No base chroot found, using minimal template"
+        create_minimal_template "$sandbox_path"
+    fi
+}
+
+create_container_template() {
+    local sandbox_path="$1"
+    
+    debug "Creating container sandbox (using namespaces)..."
+    
+    # This requires unshare command
+    if ! command -v unshare >/dev/null 2>&1; then
+        warn "unshare not available, falling back to chroot"
+        create_chroot_template "$sandbox_path"
+        return
+    fi
+    
+    # Create a more complete environment
+    create_chroot_template "$sandbox_path"
+    
+    # Mark as container type
+    echo "CONTAINER=1" >> "$sandbox_path/.sandbox_info"
+}
+
+# ── Sandbox Execution ─────────────────────────────────────────
+
+run_in_sandbox() {
+    local sandbox_id="$1"
+    shift
+    local command="$*"
+    
+    [ -z "$sandbox_id" ] && { err "Usage: run_in_sandbox <id> <command>"; return 1; }
+    [ -z "$command" ] && { err "No command specified"; return 1; }
+    
+    local sandbox_path="$RUN_DIR/$sandbox_id"
+    [ -d "$sandbox_path" ] || { err "Sandbox not found: $sandbox_id"; return 1; }
+    
+    info "Executing in sandbox $sandbox_id: $command"
+    
+    # Set resource limits
+    ulimit -t "$MAX_CPU_TIME" 2>/dev/null || true
+    ulimit -v $((MAX_MEM * 1024)) 2>/dev/null || true
+    ulimit -n "$MAX_FILES" 2>/dev/null || true
+    ulimit -u "$MAX_PROCS" 2>/dev/null || true
+    ulimit -f $((MAX_DISK * 1024)) 2>/dev/null || true
+    
+    # Execute in sandbox
+    local start_time
+    local end_time
+    local exit_code
+    
+    start_time=$(date +%s)
+    
+    # Use chroot to execute
+    if [ -f "$sandbox_path/.sandbox_info" ] && grep -q "CONTAINER=1" "$sandbox_path/.sandbox_info" 2>/dev/null; then
+        # Container mode with unshare
+        unshare --mount --pid --fork chroot "$sandbox_path" /bin/sh -c "$command" 2>&1
+        exit_code=$?
+    else
+        # Simple chroot
+        chroot "$sandbox_path" /bin/sh -c "$command" 2>&1
+        exit_code=$?
+    fi
+    
+    end_time=$(date +%s)
+    
+    # Log execution
+    local duration=$((end_time - start_time))
+    echo "[$(date)] SANDBOX=$sandbox_id CMD=\"$command\" EXIT=$exit_code DURATION=${duration}s" >> "$CONFIG_DIR/exec.log"
+    
+    # Output result
+    if [ $exit_code -eq 0 ]; then
+        ok "Command executed successfully (${duration}s)"
+    else
+        warn "Command exited with code $exit_code (${duration}s)"
+    fi
+    
+    return $exit_code
+}
+
+# ── Sandbox Management ────────────────────────────────────────
+
+list_sandboxes() {
+    echo "── Active Sandboxes ──"
+    echo ""
+    
+    if [ ! -d "$RUN_DIR" ] || [ -z "$(ls -A "$RUN_DIR" 2>/dev/null)" ]; then
+        info "No sandboxes found"
+        return 0
+    fi
+    
+    printf "  %-20s %-15s %-10s %-20s\n" "ID" "Template" "Age" "Status"
+    printf "  %-20s %-15s %-10s %-20s\n" "────────────────────" "───────────────" "──────────" "────────────────────"
+    
+    for sb in "$RUN_DIR"/*; do
+        [ -d "$sb" ] || continue
+        local id
+        local template=""
+        local created=0
+        local age=""
+        
+        id=$(basename "$sb")
+        
+        if [ -f "$sb/.sandbox_info" ]; then
+            template=$(grep "^TEMPLATE=" "$sb/.sandbox_info" | cut -d= -f2)
+            created=$(grep "^CREATED=" "$sb/.sandbox_info" | cut -d= -f2)
+        fi
+        
+        if [ "$created" -gt 0 ]; then
+            local now
+            now=$(date +%s)
+            local diff=$((now - created))
+            if [ "$diff" -lt 3600 ]; then
+                age="$((diff / 60))m"
+            elif [ "$diff" -lt 86400 ]; then
+                age="$((diff / 3600))h"
+            else
+                age="$((diff / 86400))d"
+            fi
+        fi
+        
+        # Check if processes still running
+        local status="stopped"
+        if [ -f "$sb/sandbox.pid" ]; then
+            local pid
+            pid=$(cat "$sb/sandbox.pid" 2>/dev/null)
+            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+                status="running"
+            fi
+        fi
+        
+        printf "  %-20s %-15s %-10s %-20s\n" "$id" "${template:-unknown}" "$age" "$status"
+    done
+}
+
+cmd_exec() {
+    local sandbox_id="$1"
+    shift
+    local command="$*"
+    
+    [ -z "$sandbox_id" ] && { err "Usage: nh-sandbox exec <sandbox_id> <command>"; return 1; }
+    [ -z "$command" ] && { err "No command specified"; return 1; }
+    
+    run_in_sandbox "$sandbox_id" "$command"
+}
+
+cmd_shell() {
+    local sandbox_id="$1"
+    [ -z "$sandbox_id" ] && { err "Usage: nh-sandbox shell <sandbox_id>"; return 1; }
+    
+    local sandbox_path="$RUN_DIR/$sandbox_id"
+    [ -d "$sandbox_path" ] || { err "Sandbox not found: $sandbox_id"; return 1; }
+    
+    info "Entering sandbox shell: $sandbox_id"
+    info "Type 'exit' to leave sandbox"
+    echo ""
+    
+    chroot "$sandbox_path" /bin/sh || warn "Shell exited"
+}
+
+cmd_delete() {
+    local sandbox_id="$1"
+    [ -z "$sandbox_id" ] && { err "Usage: nh-sandbox delete <sandbox_id>"; return 1; }
+    
+    cleanup "$sandbox_id"
+}
+
+cmd_cleanup() {
+    info "Cleaning up all stopped sandboxes..."
+    local cleaned=0
+    
+    for sb in "$RUN_DIR"/*; do
+        [ -d "$sb" ] || continue
+        local id
+        id=$(basename "$sb")
+        
+        # Check if still running
+        local running=0
+        if [ -f "$sb/sandbox.pid" ]; then
+            local pid
+            pid=$(cat "$sb/sandbox.pid" 2>/dev/null)
+            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+                running=1
+            fi
+        fi
+        
+        if [ "$running" -eq 0 ]; then
+            cleanup "$id"
+            cleaned=$((cleaned + 1))
+        else
+            warn "Skipping running sandbox: $id"
+        fi
+    done
+    
+    ok "Cleaned up $cleaned sandboxes"
+}
+
+# ── Usage ─────────────────────────────────────────────────────
+
+usage() {
+    cat <<EOF
+nh-sandbox - Isolated Execution Environment
+
+Usage: nh-sandbox <command> [options]
+
+Sandbox Management:
+  create [template]     Create a new sandbox (templates: minimal, chroot, container)
+  list                   List all sandboxes
+  delete <id>           Delete a sandbox
+  cleanup                Delete all stopped sandboxes
+
+Execution:
+  exec <id> <command>   Execute command in sandbox
+  shell <id>             Enter interactive shell in sandbox
+  run <id> <script>      Run a script in sandbox
+
+Templates:
+  minimal                Minimal environment (sh, basic utils)
+  chroot                 Based on existing chroot (Arch/Kali)
+  container              Container with namespace isolation (requires unshare)
+
+Configuration:
+  config                 Show/edit configuration
+  limits                 Show current resource limits
+  set-limit <name> <val> Set resource limit
+
+Examples:
+  nh-sandbox create minimal
+  nh-sandbox exec abc123 "echo hello"
+  nh-sandbox shell abc123
+  nh-sandbox cleanup
+
+Resource Limits (default):
+  CPU time:    ${MAX_CPU_TIME}s
+  Memory:      ${MAX_MEM}MB
+  Open files:  ${MAX_FILES}
+  Processes:   ${MAX_PROCS}
+  Disk:        ${MAX_DISK}MB
+
+Directories:
+  Run dir:   $RUN_DIR/
+  Config:    $CONFIG_DIR/
+  Logs:      $CONFIG_DIR/exec.log
+
+Notes:
+  - Some features require root access
+  - Container mode requires 'unshare' command
+  - Clean up sandboxes after use to free resources
+EOF
+    exit 0
+}
+
+cmd_limits() {
+    echo "── Current Resource Limits ──"
+    echo ""
+    printf "  %-20s %-10s\n" "Resource" "Limit"
+    printf "  %-20s %-10s\n" "────────────────────" "──────────"
+    printf "  %-20s %-10s\n" "CPU time" "${MAX_CPU_TIME}s"
+    printf "  %-20s %-10s\n" "Memory" "${MAX_MEM}MB"
+    printf "  %-20s %-10s\n" "Open files" "$MAX_FILES"
+    printf "  %-20s %-10s\n" "Processes" "$MAX_PROCS"
+    printf "  %-20s %-10s\n" "Disk" "${MAX_DISK}MB"
+}
+
+cmd_set_limit() {
+    local name="$1"
+    local value="$2"
+    
+    [ -z "$name" ] || [ -z "$value" ] && { err "Usage: nh-sandbox set-limit <name> <value>"; return 1; }
+    
+    case "$name" in
+        cpu_time|MAX_CPU_TIME) export MAX_CPU_TIME="$value" ;;
+        mem|MAX_MEM)          export MAX_MEM="$value" ;;
+        files|MAX_FILES)      export MAX_FILES="$value" ;;
+        procs|MAX_PROCS)      export MAX_PROCS="$value" ;;
+        disk|MAX_DISK)        export MAX_DISK="$value" ;;
+        *)
+            err "Unknown limit: $name"
+            echo "Valid limits: cpu_time, mem, files, procs, disk"
+            return 1
+            ;;
+    esac
+    
+    ok "Set $name=$value"
+}
+
+# ── Main ───────────────────────────────────────────────────────
+
+[ $# -ge 1 ] || usage
+
+case "$1" in
+    create)
+        shift
+        create_sandbox "${1:-}" "${2:-minimal}"
+        ;;
+    list)
+        list_sandboxes
+        ;;
+    exec)
+        shift
+        cmd_exec "$@"
+        ;;
+    shell)
+        shift
+        cmd_shell "$@"
+        ;;
+    run)
+        shift
+        local sandbox_id="$1"
+        shift
+        local script="$*"
+        [ -f "$script" ] && script="sh $script"
+        cmd_exec "$sandbox_id" "$script"
+        ;;
+    delete)
+        shift
+        cmd_delete "$@"
+        ;;
+    cleanup)
+        cmd_cleanup
+        ;;
+    limits)
+        cmd_limits
+        ;;
+    set-limit)
+        shift
+        cmd_set_limit "$@"
+        ;;
+    config)
+        info "Configuration directory: $CONFIG_DIR"
+        ls -la "$CONFIG_DIR/" 2>/dev/null || warn "No config files yet"
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        err "Unknown command: $1"
+        usage
+        ;;
+esac

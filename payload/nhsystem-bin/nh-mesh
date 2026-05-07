@@ -1,0 +1,425 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P2
+# nh-mesh - Resilient Mesh Networking (Reticulum, Yggdrasil, LXMF)
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+MESH_DIR=$NHSYSTEM/etc/mesh
+RNS_CONFIG=$MESH_DIR/config.rns
+YGG_CONFIG=$MESH_DIR/yggdrasil.conf
+IDENTITY_FILE=$MESH_DIR/identity.pub
+
+ensure_dirs() {
+    mkdir -p $MESH_DIR $MESH_DIR/logs $MESH_DIR/peers
+}
+
+mesh_status() {
+    ensure_dirs
+    echo "══ Mesh Network Status ══════════════════════════════"
+    echo ""
+
+    # Check Reticulum
+    echo "── Reticulum Network Stack ──"
+    if command -v rnsd >/dev/null 2>&1 || python3 -c "import RNS" 2>/dev/null; then
+        echo "  ✓ RNS Python module available"
+        if pgrep -f "rnsd\|RNS\|reticulum" >/dev/null 2>&1; then
+            echo "  ✓ Reticulum daemon running"
+        else
+            echo "  ~ Reticulum daemon not running"
+        fi
+    else
+        echo "  ✗ Reticulum not installed"
+        echo "  Install: setup-mesh.sh"
+    fi
+
+    # Check config
+    if [ -f "$RNS_CONFIG" ]; then
+        echo "  ✓ RNS config: $RNS_CONFIG"
+    else
+        echo "  ~ No RNS config (will be auto-created on first run)"
+    fi
+
+    # Check identity
+    if [ -f "$IDENTITY_FILE" ]; then
+        echo "  ✓ Mesh identity: $(cat "$IDENTITY_FILE" 2>/dev/null | head -1)"
+    fi
+
+    echo ""
+
+    # Check Yggdrasil
+    echo "── Yggdrasil IPv6 Mesh ──"
+    if command -v yggdrasil >/dev/null 2>&1 || [ -x /usr/bin/yggdrasil ]; then
+        echo "  ✓ Yggdrasil available"
+        if ip addr show tun0 2>/dev/null | grep -q "inet6.*200:"; then
+            echo "  ✓ Yggdrasil interface: $(ip addr show tun0 2>/dev/null | grep 'inet6.*200:' | awk '{print $2}')"
+        else
+            echo "  ~ Yggdrasil not connected"
+        fi
+    else
+        echo "  ✗ Yggdrasil not installed"
+    fi
+
+    # Check config
+    if [ -f "$YGG_CONFIG" ]; then
+        echo "  ✓ Yggdrasil config: $YGG_CONFIG"
+    fi
+
+    echo ""
+
+    # Check interfaces
+    echo "── Mesh Interfaces ──"
+    local interfaces=""
+    for iface in /sys/class/net/*; do
+        [ -d "$iface" ] || continue
+        local name
+        name=$(basename "$iface")
+        case "$name" in
+            wlan*|eth*|bt*|pan*|bnep*|tun*|tap*)
+                local ip6 mac
+                ip6=$(ip -6 addr show "$name" 2>/dev/null | grep 'inet6.*scope.*global' | awk '{print $2}' | head -1)
+                mac=$(cat "$iface/address" 2>/dev/null)
+                printf "  %-10s %-30s %s\n" "$name" "${mac:-}" "${ip6:-}"
+                interfaces="$interfaces $name"
+                ;;
+        esac
+    done
+    [ -z "$interfaces" ] && echo "  (no mesh-capable interfaces)"
+
+    echo ""
+
+    # Check peers
+    local peer_count
+    peer_count=$(find $MESH_DIR/peers -name "*.peer" 2>/dev/null | wc -l)
+    echo "── Known Peers ──"
+    if [ "$peer_count" -gt 0 ]; then
+        for peer in $MESH_DIR/peers/*.peer; do
+            [ -f "$peer" ] || continue
+            echo "  $(basename "$peer" .peer)"
+        done
+    else
+        echo "  (none discovered yet)"
+    fi
+    echo ""
+    echo "  Config: $MESH_DIR"
+    echo "  Logs:   $MESH_DIR/logs"
+}
+
+setup_mesh() {
+    echo "── Mesh Network Setup ──"
+    echo ""
+
+    ensure_dirs
+
+    # Check Python
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "  ✗ Python3 required (install in Arch chroot)"
+        exit 1
+    fi
+
+    # Install RNS
+    echo "  Installing Reticulum Network Stack..."
+    pip3 install rns 2>/dev/null || pip3 install --break-system-packages rns 2>/dev/null || {
+        echo "  ! pip install rns failed, trying manual..."
+        if [ -f /data/local/nhsystem/roots/archlinux/usr/bin/pip3 ]; then
+            chroot /data/local/nhsystem/roots/archlinux /usr/bin/pip3 install rns 2>/dev/null || \
+            chroot /data/local/nhsystem/roots/archlinux /usr/bin/pip3 install --break-system-packages rns 2>/dev/null || \
+                echo "  ✗ RNS install failed"
+        fi
+    }
+
+    # Create default config
+    if [ ! -f "$RNS_CONFIG" ]; then
+        echo "  Creating Reticulum config..."
+        python3 -c "
+import RNS
+try:
+    RNS.Reticulum(configdir='$MESH_DIR')
+    print('  ✓ Config created')
+except Exception as e:
+    print(f'  Config note: {e}')
+" 2>/dev/null || {
+            cat > "$RNS_CONFIG" <<CFG
+# Reticulum Network Stack Configuration
+[reticulum]
+share_private_identities = Yes
+share_known_destinations = Yes
+
+[logging]
+loglevel = 3
+
+[interfaces]
+  [[AutoInterface]]
+  type = AutomaticInterface
+  enabled = Yes
+
+  [[UDPInterface]]
+  type = UDPInterface
+  enabled = Yes
+  listen_port = 4242
+  forward_port = 4242
+CFG
+            echo "  ✓ Default RNS config created"
+        }
+    fi
+
+    # Create systemd service
+    local svc_dir="/data/local/nhsystem/roots/archlinux/etc/systemd/system"
+    if [ -d "$svc_dir" ]; then
+        cat > "$svc_dir/rnsd.service" <<SVC
+[Unit]
+Description=Reticulum Network Stack Daemon
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 -m RNS.rnsd --config $MESH_DIR/config.rns
+Restart=always
+RestartSec=10
+User=root
+
+[Install]
+WantedBy=default.target
+SVC
+        echo "  ✓ RNS service created"
+    fi
+
+    echo ""
+    echo "  Setup complete. Start mesh: nh-mesh start"
+}
+
+start_mesh() {
+    echo "── Starting Mesh Network ──"
+
+    ensure_dirs
+
+    # Start Reticulum
+    if python3 -c "import RNS" 2>/dev/null; then
+        if pgrep -f "RNS.rnsd" >/dev/null 2>&1; then
+            echo "  ✓ Reticulum already running"
+        else
+            echo "  Starting Reticulum daemon..."
+            nohup python3 -m RNS.rnsd --config "$RNS_CONFIG" \
+                > "$MESH_DIR/logs/rnsd.log" 2>&1 &
+            sleep 3
+            if pgrep -f "RNS.rnsd" >/dev/null 2>&1; then
+                echo "  ✓ Reticulum daemon started"
+            else
+                echo "  ✗ Reticulum failed to start"
+            fi
+        fi
+    else
+        echo "  ✗ Reticulum not installed"
+        echo "  Run: nh-mesh setup"
+    fi
+
+    # Start Yggdrasil
+    if command -v yggdrasil >/dev/null 2>&1 && [ -f "$YGG_CONFIG" ]; then
+        if pgrep -x yggdrasil >/dev/null 2>&1; then
+            echo "  ✓ Yggdrasil already running"
+        else
+            echo "  Starting Yggdrasil..."
+            nohup yggdrasil --useconffile "$YGG_CONFIG" \
+                > "$MESH_DIR/logs/yggdrasil.log" 2>&1 &
+            sleep 2
+            if pgrep -x yggdrasil >/dev/null 2>&1; then
+                echo "  ✓ Yggdrasil started"
+            else
+                echo "  ✗ Yggdrasil failed to start"
+            fi
+        fi
+    fi
+
+    echo ""
+    mesh_status
+}
+
+stop_mesh() {
+    echo "── Stopping Mesh Network ──"
+    if pgrep -f "RNS.rnsd" >/dev/null 2>&1; then
+        pkill -f "RNS.rnsd" 2>/dev/null
+        echo "  ✓ Reticulum stopped"
+    else
+        echo "  ~ Reticulum not running"
+    fi
+    if pgrep -x yggdrasil >/dev/null 2>&1; then
+        pkill -x yggdrasil 2>/dev/null
+        echo "  ✓ Yggdrasil stopped"
+    else
+        echo "  ~ Yggdrasil not running"
+    fi
+}
+
+mesh_identity() {
+    ensure_dirs
+    echo "── Mesh Identity ──"
+    echo ""
+
+    # Generate or show RNS identity
+    if [ -f "$MESH_DIR/identity" ]; then
+        echo "  RSA Identity Hash: $(cat "$MESH_DIR/identity" 2>/dev/null | head -1)"
+        if command -v python3 >/dev/null 2>&1; then
+            python3 -c "
+import RNS
+try:
+    i = RNS.Identity.from_file('$MESH_DIR/identity')
+    print(f'  Public Key: {i.get_hex()} ')
+    print(f'  Hash: {i.hash}')
+except: pass
+" 2>/dev/null
+        fi
+    else
+        echo "  No identity found. Generate one..."
+        if command -v python3 >/dev/null 2>&1; then
+            python3 -c "
+import RNS
+i = RNS.Identity()
+i.to_file('$MESH_DIR/identity')
+print(f'  ✓ Identity generated')
+print(f'  Hash: {i.hash}')
+with open('$IDENTITY_FILE', 'w') as f:
+    f.write(str(i.hash))
+" 2>/dev/null && echo "  Identity saved: $MESH_DIR/identity"
+        fi
+    fi
+
+    # Show Yggdrasil address
+    if [ -f "$YGG_CONFIG" ]; then
+        local ygg_addr
+        ygg_addr=$(grep -oP 'Address: \K[0-9a-f:]+' "$YGG_CONFIG" 2>/dev/null || \
+                    grep "Address" "$YGG_CONFIG" 2>/dev/null | head -1)
+        if [ -n "$ygg_addr" ]; then
+            echo "  Yggdrasil Address: $ygg_addr"
+        fi
+    fi
+}
+
+mesh_peers() {
+    ensure_dirs
+    echo "── Mesh Peers ──"
+    echo ""
+
+    # Query RNS for peers
+    if python3 -c "import RNS" 2>/dev/null; then
+        python3 -c "
+import RNS
+import os
+try:
+    r = RNS.Reticulum(configdir='$MESH_DIR')
+    peers = r.get_known_destinations()
+    if peers:
+        print(f'  {len(peers)} known destination(s):')
+        for p in peers:
+            print(f'    {p}')
+    else:
+        print('  No peers discovered yet')
+        print('  Ensure Reticulum is running and peers are on the same network')
+except Exception as e:
+    print(f'  Error: {e}')
+    print('  (Reticulum may need to be started first)')
+" 2>/dev/null
+    else
+        echo "  ✗ Reticulum not available"
+    fi
+
+    echo ""
+    echo "  To discover peers, both devices need:"
+    echo "    1. Reticulum running (nh-mesh start)"
+    echo "    2. Same network (WiFi, BLE, or LoRa)"
+    echo "    3. UDP port 4242 open"
+}
+
+mesh_message() {
+    local destination="${1:-}"
+    local message="${2:-}"
+    [ -n "$destination" ] && [ -n "$message" ] || {
+        echo "  Usage: nh-mesh message <destination> <text>" >&2
+        exit 1
+    }
+
+    echo "  Sending LXMF message to: $destination"
+    echo "  Message: $message"
+    echo ""
+
+    if python3 -c "import LXMF" 2>/dev/null; then
+        python3 -c "
+import RNS
+import LXMF
+import asyncio
+
+async def send():
+    router = LXMF.LXMRouter()
+    dest = RNS.Destination.hash_from_name('$destination')
+    msg = LXMF.LXMessage(dest, None, '$message', desired_method=LXMF.LXMessage.DIRECT)
+    await router.send(msg)
+    print('  ✓ Message sent')
+
+asyncio.run(send())
+" 2>/dev/null || echo "  Error: could not send message"
+    else
+        echo "  ✗ LXMF not available (pip install lxmf)"
+    fi
+}
+
+yggdrasil_setup() {
+    ensure_dirs
+    echo "── Yggdrasil IPv6 Mesh ──"
+    echo ""
+
+    if [ -f "$YGG_CONFIG" ]; then
+        echo "  Config: $YGG_CONFIG"
+        local addr
+        addr=$(grep "Address" "$YGG_CONFIG" 2>/dev/null | head -1)
+        [ -n "$addr" ] && echo "  $addr"
+    else
+        echo "  Generating Yggdrasil config..."
+        if command -v yggdrasil >/dev/null 2>&1; then
+            yggdrasil --genconf > "$YGG_CONFIG" 2>/dev/null && \
+                echo "  ✓ Config generated: $YGG_CONFIG" || \
+                echo "  ✗ Failed to generate config"
+        else
+            echo "  ✗ Yggdrasil not installed"
+            echo "  Install: setup-mesh.sh"
+        fi
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-mesh - Resilient Mesh Networking Manager
+
+Usage: nh-mesh <command> [args]
+
+Commands:
+  status                Show mesh network status
+  setup                 Install mesh dependencies (Reticulum, LXMF)
+  start                 Start mesh networking daemons
+  stop                  Stop mesh networking daemons
+  identity              Show/generate mesh identity
+  peers                 List discovered mesh peers
+  message <dest> <msg>  Send encrypted LXMF message to peer
+  yggdrasil             Configure Yggdrasil IPv6 mesh
+
+Protocols:
+  Reticulum (RNS) — Encrypted packet-switched mesh network
+  LXMF — Lightweight Extensible Message Format (over RNS)
+  Yggdrasil — Self-healing IPv6 mesh overlay
+
+Interfaces: WiFi, Bluetooth LE, LoRa (via RNode), TCP
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    status|info) mesh_status ;;
+    setup|install) setup_mesh ;;
+    start|up) start_mesh ;;
+    stop|down) stop_mesh ;;
+    identity|id) mesh_identity ;;
+    peers|nodes) mesh_peers ;;
+    message|msg|send)
+        shift; [ $# -ge 2 ] || usage; mesh_message "$1" "$2"
+        ;;
+    yggdrasil|ygg) yggdrasil_setup ;;
+    *) usage ;;
+esac

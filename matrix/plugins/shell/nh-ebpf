@@ -1,301 +1,395 @@
 #!/system/bin/sh
 # NH_SETUP_VERSION: 3.0 nextgen
-# PRIORITY: P4
-# nh-ebpf - eBPF kernel defense & observability manager
+# PRIORITY: P2
+# nh-ebpf - eBPF Kernel Defense & Observability
+# Load custom eBPF programs, monitor syscalls, file integrity
 set -u
 
-EBPF_DIR=/data/local/nhsystem/etc/ebpf
-TRACE_BIN=/data/local/nhsystem/bin/nh-trace
+NHSYSTEM=${NHSYSTEM:-/data/local/nhsystem}
+EBPF_DIR="$NHSYSTEM/ebpf"
+CONFIG_DIR="$NHSYSTEM/etc/ebpf"
+BPFTRACE_DIR="$NHSYSTEM/bpftrace"
 
-ensure_dirs() {
-    mkdir -p $EBPF_DIR/programs $EBPF_DIR/logs
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+mkdir -p "$EBPF_DIR" "$CONFIG_DIR" "$BPFTRACE_DIR"
+
+info()  { printf "${BLUE}[INFO]${NC} %s\n" "$*"; }
+ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+err()   { printf "${RED}[ERR]${NC} %s\n" "$*" >&2; }
+debug() { [ "${DEBUG:-0}" = "1" ] && printf "${CYAN}[DBG]${NC} %s\n" "$*" || true; }
+
+check_root() {
+    [ "$(id -u)" -eq 0 ] || { err "This command requires root"; return 1; }
 }
 
-ebpf_status() {
-    echo "══ eBPF Kernel Observability ════════════════════════"
-    echo ""
+check_ebpf_support() {
+    # Check if kernel supports eBPF
+    if [ -d /proc/sys/net/core/bpf_jit_enable ] || \
+       [ -f /sys/kernel/debug/tracing/kprobe_events ] || \
+       uname -r | grep -q "5\.[0-9]+"; then
+        ok "Kernel supports eBPF"
+        return 0
+    else
+        warn "Kernel may not support eBPF (requires Linux 4.1+)"
+        return 1
+    fi
+}
 
-    # Check kernel support
+# ── eBPF Program Loader ──────────────────────────────────
+
+load_ebpf_program() {
+    local prog_file="$1"
+    [ -f "$prog_file" ] || { err "Program file not found: $prog_file"; return 1; }
+    
+    check_root || return 1
+    check_ebpf_support || return 1
+    
+    info "Loading eBPF program: $(basename "$prog_file")"
+    
+    # Try bpftrace first
+    if command -v bpftrace >/dev/null 2>&1; then
+        bpftrace -e "$(cat "$prog_file")" &
+        local pid=$!
+        echo "$pid" > "$EBPF_DIR/bpftrace.pid"
+        ok "bpftrace program loaded (PID: $pid)"
+        return 0
+    fi
+    
+    # Try using python/bcc
+    if python3 -c "import bcc" 2>/dev/null; then
+        python3 -c "
+from bcc import BPF
+with open('$prog_file') as f:
+    bpf_text = f.read()
+b = BPF(text=bpf_text)
+print('eBPF program loaded')
+" &
+        ok "BCC program loaded"
+        return 0
+    fi
+    
+    warn "No eBPF loader available (install bpftrace or bcc)"
+    return 1
+}
+
+unload_ebpf() {
+    info "Unloading eBPF programs..."
+    if [ -f "$EBPF_DIR/bpftrace.pid" ]; then
+        local pid
+        pid=$(cat "$EBPF_DIR/bpftrace.pid" 2>/dev/null)
+        [ -n "$pid" ] && kill "$pid" 2>/dev/null
+        rm -f "$EBPF_DIR/bpftrace.pid"
+    fi
+    pkill -f bpftrace 2>/dev/null || true
+    ok "eBPF programs unloaded"
+}
+
+# ── File Integrity Monitor (eBPF) ────────────────────────
+
+start_file_monitor() {
+    local watch_dir="${1:-/data/local/nhsystem}"
+    
+    check_root || return 1
+    
+    info "Starting file integrity monitor on: $watch_dir"
+    
+    # Create bpftrace script for file monitoring
+    local script="$BPFTRACE_DIR/file_monitor.bt"
+    cat > "$script" <<'EBPF'
+#!/usr/bin/env bpftrace
+
+BEGIN {
+    printf("File Integrity Monitor started\n");
+}
+
+tracepoint:syscalls:sys_enter_openat,
+tracepoint:syscalls:sys_enter_write {
+    printf("File access: %s (PID: %d)\n", str(args->filename), pid);
+}
+EBPF
+    
+    chmod +x "$script"
+    
+    if command -v bpftrace >/dev/null 2>&1; then
+        bpftrace "$script" > "$EBPF_DIR/file_monitor.log" 2>&1 &
+        local pid=$!
+        echo "$pid" > "$EBPF_DIR/file_monitor.pid"
+        ok "File monitor started (PID: $pid)"
+        info "Log: $EBPF_DIR/file_monitor.log"
+    else
+        warn "bpftrace not installed"
+        info "Install in Arch: pacman -S bpftrace"
+    fi
+}
+
+# ── Syscall Audit Trail ──────────────────────────────────
+
+start_syscall_audit() {
+    check_root || return 1
+    
+    info "Starting syscall audit trail..."
+    
+    # Monitor execve, connect, bind syscalls
+    local script="$BPFTRACE_DIR/syscall_audit.bt"
+    cat > "$script" <<'EBPF'
+#!/usr/bin/env bpftrace
+
+BEGIN {
+    printf("Syscall Audit Trail started\n");
+}
+
+tracepoint:syscalls:sys_enter_execve {
+    printf("EXEC: %s (PID: %d, UID: %d)\n", 
+           str(args->filename), pid, uid);
+}
+
+tracepoint:syscalls:sys_enter_connect {
+    printf("CONNECT: PID %d connecting to %s\n", pid, 
+           str(args->uservaddr));
+}
+
+tracepoint:syscalls:sys_enter_bind {
+    printf("BIND: PID %d binding to port\n", pid);
+}
+EBPF
+    
+    if command -v bpftrace >/dev/null 2>&1; then
+        bpftrace "$script" > "$EBPF_DIR/syscall_audit.log" 2>&1 &
+        local pid=$!
+        echo "$pid" > "$EBPF_DIR/syscall_audit.pid"
+        ok "Syscall audit started (PID: $pid)"
+        info "Log: $EBPF_DIR/syscall_audit.log"
+    else
+        warn "bpftrace not available"
+    fi
+}
+
+# ── Process Ancestry Tracker ─────────────────────────────
+
+start_process_tracker() {
+    check_root || return 1
+    
+    info "Starting process ancestry tracker..."
+    
+    # Use eBPF to track process relationships
+    local script="$BPFTRACE_DIR/process_tracker.bt"
+    cat > "$script" <<'EBPF'
+#!/usr/bin/env bpftrace
+
+BEGIN {
+    printf("Process Ancestry Tracker started\n");
+}
+
+tracepoint:sched:sched_process_fork {
+    printf("FORK: Parent PID %d -> Child PID %d\n", 
+           args->parent_pid, args->child_pid);
+}
+
+tracepoint:sched:sched_process_exec {
+    printf("EXEC: PID %d comm %s\n", pid, comm);
+}
+EBPF
+    
+    if command -v bpftrace >/dev/null 2>&1; then
+        bpftrace "$script" > "$EBPF_DIR/process_tracker.log" 2>&1 &
+        local pid=$!
+        echo "$pid" > "$EBPF_DIR/process_tracker.pid"
+        ok "Process tracker started (PID: $pid)"
+    else
+        warn "bpftrace not available"
+    fi
+}
+
+# ── Status ───────────────────────────────────────────
+
+show_status() {
+    echo ""
+    echo "════════════════════════════════════════════════════════"
+    echo "  NH-eBPF STATUS"
+    echo "  Time: $(date)"
+    echo "════════════════════════════════════════════════════════"
+    echo ""
+    
+    # Kernel support
     echo "── Kernel Support ──"
-    if [ -f /sys/kernel/btf/vmlinux ]; then
-        echo "  ✓ BTF info available (kernel $KVER)"
+    if check_ebpf_support 2>/dev/null; then
+        ok "eBPF supported"
+        uname -r | sed 's/^/  Kernel: /'
+    else
+        warn "eBPF may not be supported"
     fi
-    if [ -d /sys/fs/bpf ]; then
-        echo "  ✓ BPF filesystem mounted"
-    fi
-    if [ -f /proc/sys/kernel/unprivileged_bpf_disabled ]; then
-        local bpf_disabled
-        bpf_disabled=$(cat /proc/sys/kernel/unprivileged_bpf_disabled 2>/dev/null)
-        if [ "$bpf_disabled" = "1" ]; then
-            echo "  ~ Unprivileged BPF disabled (root can still use)"
-        else
-            echo "  ✓ Unprivileged BPF enabled"
-        fi
-    fi
-
+    
     echo ""
-
-    # Check tools
+    
+    # Running monitors
+    echo "── Active Monitors ──"
+    local monitors="file_monitor syscall_audit process_tracker"
+    for mon in $monitors; do
+        if [ -f "$EBPF_DIR/${mon}.pid" ]; then
+            local pid
+            pid=$(cat "$EBPF_DIR/${mon}.pid" 2>/dev/null)
+            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+                ok "$mon: Running (PID: $pid)"
+            else
+                warn "$mon: Not running (stale PID file)"
+            fi
+        else
+            info "$mon: Not running"
+        fi
+    done
+    
+    echo ""
+    
+    # Tools available
     echo "── Available Tools ──"
-    if command -v bpftool >/dev/null 2>&1; then
-        echo "  ✓ bpftool available"
-    else
-        echo "  ✗ bpftool not available"
-    fi
-    if command -v llvm-objdump >/dev/null 2>&1 || command -v llvm-objdump-18 >/dev/null 2>&1; then
-        echo "  ✓ LLVM objdump available (can inspect eBPF objects)"
-    else
-        echo "  ~ LLVM tools not available (needed for eBPF compilation)"
-    fi
-    if [ -f "$TRACE_BIN" ]; then
-        echo "  ✓ nh-trace tracer available"
-    fi
-
-    echo ""
-
-    # Check loaded programs
-    echo "── Loaded eBPF Programs ──"
-    if command -v bpftool >/dev/null 2>&1; then
-        local prog_count
-        prog_count=$(bpftool prog list 2>/dev/null | grep -c "^[0-9]*:" || echo 0)
-        if [ "$prog_count" -gt 0 ]; then
-            echo "  $prog_count eBPF program(s) loaded:"
-            bpftool prog list 2>/dev/null | while read -r line; do echo "    $line"; done
+    for tool in bpftrace bcc-examples python3; do
+        if command -v "$tool" >/dev/null 2>&1; then
+            ok "$tool: Available"
         else
-            echo "  (no eBPF programs loaded)"
+            info "$tool: Not installed"
         fi
-
-        echo ""
-        echo "── eBPF Maps ──"
-        local map_count
-        map_count=$(bpftool map list 2>/dev/null | grep -c "^[0-9]*:" || echo 0)
-        if [ "$map_count" -gt 0 ]; then
-            echo "  $map_count eBPF map(s) active"
-            bpftool map list 2>/dev/null | while read -r line; do echo "    $line"; done
-        else
-            echo "  (no eBPF maps)"
-        fi
-    else
-        echo "  (bpftool not available, cannot list programs)"
-    fi
-
-    echo ""
-    echo "── Trace Status ──"
-    if [ -f /sys/kernel/debug/tracing/tracing_on ]; then
-        local tracing
-        tracing=$(cat /sys/kernel/debug/tracing/tracing_on 2>/dev/null)
-        [ "$tracing" = "1" ] && echo "  ✓ Kernel tracing enabled" || echo "  ~ Kernel tracing disabled"
-    fi
-}
-
-ebpf_list() {
-    echo "── eBPF Programs ──"
-    if command -v bpftool >/dev/null 2>&1; then
-        bpftool prog list 2>/dev/null || echo "  (error listing programs)"
-    else
-        echo "  (bpftool required)"
-    fi
-    echo ""
-    echo "── eBPF Maps ──"
-    if command -v bpftool >/dev/null 2>&1; then
-        bpftool map list 2>/dev/null || echo "  (error listing maps)"
-    fi
-}
-
-ebpf_monitor() {
-    local duration="${1:-10}"
-    echo "── eBPF Monitor (${duration}s) ──"
-    echo ""
-
-    # Monitor via trace_pipe if available
-    if [ -f /sys/kernel/debug/tracing/trace_pipe ]; then
-        echo "  Tracing syscalls for ${duration}s..."
-        echo "  Press Ctrl+C to stop early"
-        echo ""
-
-        # Enable tracing of common syscalls
-        local syscalls="execve connect openat read write"
-        for sc in $syscalls; do
-            echo 1 > "/sys/kernel/debug/tracing/events/syscalls/sys_enter_${sc}/enable" 2>/dev/null || true
-        done
-        echo 1 > /sys/kernel/debug/tracing/tracing_on 2>/dev/null || true
-
-        # Read trace pipe with timeout
-        timeout "$duration" cat /sys/kernel/debug/tracing/trace_pipe 2>/dev/null | while read -r line; do
-            echo "  $line"
-        done || true
-
-        # Disable tracing
-        echo 0 > /sys/kernel/debug/tracing/tracing_on 2>/dev/null || true
-        for sc in $syscalls; do
-            echo 0 > "/sys/kernel/debug/tracing/events/syscalls/sys_enter_${sc}/enable" 2>/dev/null || true
-        done
-    else
-        echo "  ✗ Tracefs not available (CONFIG_TRACING required)"
-        echo ""
-        echo "  Falling back to process monitor..."
-        ps aux 2>/dev/null | head -20
-    fi
-}
-
-ebpf_trace() {
-    local syscall="${1:-execve}"
-    local duration="${2:-5}"
-    echo "── Tracing syscall: $syscall (${duration}s) ──"
-
-    if [ ! -f "/sys/kernel/debug/tracing/events/syscalls/sys_enter_${syscall}/enable" ]; then
-        echo "  ✗ Syscall '$syscall' not traceable"
-        echo "  Available: execve, connect, openat, read, write, bind, accept, clone, fork"
-        exit 1
-    fi
-
-    echo "  Enabling trace on sys_enter_$syscall..."
-    echo 1 > "/sys/kernel/debug/tracing/events/syscalls/sys_enter_${syscall}/enable" 2>/dev/null || {
-        echo "  ✗ Failed to enable trace (need root)"
-        exit 1
-    }
-    echo 1 > /sys/kernel/debug/tracing/tracing_on 2>/dev/null
-
-    echo "  Tracing for ${duration}s... (Ctrl+C to stop early)"
-    echo ""
-
-    timeout "$duration" cat /sys/kernel/debug/tracing/trace_pipe 2>/dev/null | while read -r line; do
-        echo "  $line"
-    done || true
-
-    # Cleanup
-    echo 0 > "/sys/kernel/debug/tracing/events/syscalls/sys_enter_${syscall}/enable" 2>/dev/null || true
-}
-
-ebpf_file_monitor() {
-    local path="${1:-/data/local/nhsystem}"
-    echo "── File Integrity Monitor ──"
-    echo "  Watching: $path"
-    echo "  (uses inotify via nh-trace or fallback polling)"
-    echo ""
-
-    # Try nh-trace binary
-    if [ -x "$TRACE_BIN" ]; then
-        "$TRACE_BIN" watch "$path" 2>/dev/null || {
-            echo "  nh-trace watch not available, using polling..."
-            monitor_poll "$path"
-        }
-    else
-        monitor_poll "$path"
-    fi
-}
-
-monitor_poll() {
-    local path="$1"
-    local interval="${2:-5}"
-    echo "  Polling every ${interval}s for changes in: $path"
-    echo "  (run: find $path -mmin -1 -type f -ls)"
-    echo ""
-
-    # One-shot check
-    find "$path" -mmin -1 -type f -ls 2>/dev/null | while read -r line; do
-        echo "  MODIFIED: $line"
     done
-    [ -z "$(find "$path" -mmin -1 -type f 2>/dev/null)" ] && echo "  (no changes in last minute)"
 }
 
-ebpf_security_check() {
-    echo "── eBPF Security Audit ──"
-    echo ""
+# ── Log Viewer ──────────────────────────────────────
 
-    # Check for eCapture-style TLS sniffing
-    if [ -f /sys/kernel/debug/tracing/uprobe_events ]; then
-        local uprobes
-        uprobes=$(cat /sys/kernel/debug/tracing/uprobe_events 2>/dev/null)
-        if echo "$uprobes" | grep -qi "ssl\|tls\|gnutls\|nspr"; then
-            echo "  ⚠ SSL/TLS uprobes detected — possible TLS capture!"
-            echo "$uprobes" | grep -i "ssl\|tls\|gnutls\|nspr" | while read -r line; do
-                echo "    $line"
+view_logs() {
+    local log_type="${1:-all}"
+    
+    case "$log_type" in
+        file)
+            [ -f "$EBPF_DIR/file_monitor.log" ] && \
+                tail -50 "$EBPF_DIR/file_monitor.log" || info "No file monitor log"
+            ;;
+        syscall)
+            [ -f "$EBPF_DIR/syscall_audit.log" ] && \
+                tail -50 "$EBPF_DIR/syscall_audit.log" || info "No syscall audit log"
+            ;;
+        process)
+            [ -f "$EBPF_DIR/process_tracker.log" ] && \
+                tail -50 "$EBPF_DIR/process_tracker.log" || info "No process tracker log"
+            ;;
+        all|*)
+            for log in "$EBPF_DIR"/*.log; do
+                [ -f "$log" ] || continue
+                echo "── $(basename "$log") ──"
+                tail -20 "$log"
+                echo ""
             done
-        else
-            echo "  ✓ No TLS capture uprobes detected"
-        fi
-    fi
-
-    # Check for unexpected bpf() syscall usage
-    if command -v bpftool >/dev/null 2>&1; then
-        echo ""
-        echo "── Authorized eBPF Programs ──"
-        bpftool prog list 2>/dev/null | grep -E "name|type" | while read -r line; do
-            echo "  $line"
-        done
-    fi
-
-    # Suggest monitoring
-    echo ""
-    echo "── Recommendations ──"
-    echo "  Run 'nh-ebpf monitor' to watch syscalls in real-time"
-    echo "  Run 'nh-ebpf trace execve' to monitor process execution"
-    echo "  Run 'nh-ebpf trace connect' to monitor network connections"
+            ;;
+    esac
 }
 
-setup_ebpf() {
-    echo "── eBPF Setup ──"
-    echo ""
-    ensure_dirs
-
-    # Check kernel features
-    echo "  Kernel eBPF features:"
-    for feat in bpf btf tracing kprobe uprobe tracepoint; do
-        if [ -d "/sys/kernel/debug/tracing" ] || [ -d "/sys/fs/bpf" ]; then
-            echo "  ✓ $feat supported"
-        fi
-    done
-
-    echo ""
-    echo "  To install eBPF development tools in Arch chroot:"
-    echo "    nh-ebpf enter-arch"
-    echo "    pacman -S bpftool clang llvm bpf" 
-    echo ""
-    echo "  Or run: setup-ebpf.sh"
-}
-
-enter_chroot() {
-    if [ -x /data/local/nhsystem/bin/nh-enter-arch ]; then
-        nh-enter-arch
-    elif [ -f /data/local/nhsystem/roots/archlinux/usr/bin/bash ]; then
-        chroot /data/local/nhsystem/roots/archlinux /usr/bin/bash
-    else
-        echo "  Arch chroot not available"
-        exit 1
-    fi
-}
+# ── Usage ────────────────────────────────────────────
 
 usage() {
     cat <<EOF
 nh-ebpf - eBPF Kernel Defense & Observability
 
-Usage: nh-ebpf <command> [args]
+Usage: nh-ebpf <command> [options]
 
-Commands:
-  status                Show eBPF kernel support and loaded programs
-  list                  List loaded eBPF programs and maps
-  monitor [seconds]     Real-time syscall trace monitor
-  trace <syscall> [sec] Trace a specific syscall (execve, connect, openat, etc.)
-  watch <path>          File integrity monitor
-  audit                 Security audit for unauthorized eBPF programs
-  setup                 Check and guide eBPF setup
-  enter-arch            Enter Arch chroot for manual configuration
+Setup:
+  setup               Install eBPF tools (bpftrace, BCC)
+  check               Check kernel eBPF support
 
-Requires: Root, kernel with CONFIG_BPF, tracefs mounted
+Monitors:
+  start-file [dir]     Start file integrity monitor (default: /data/local/nhsystem)
+  stop-file            Stop file integrity monitor
+  start-syscall        Start syscall audit trail
+  stop-syscall         Stop syscall audit
+  start-process        Start process ancestry tracker
+  stop-process         Stop process tracker
+  stop-all             Stop all monitors
+
+Status:
+  status              Show eBPF status
+  logs [type]         View logs (file|syscall|process|all)
+
+Examples:
+  nh-ebpf setup
+  nh-ebpf start-file /data/local/nhsystem
+  nh-ebpf start-syscall
+  nh-ebpf status
+  nh-ebpf logs all
+
+Installation (in Arch chroot):
+  pacman -S bpftrace bcc-tools python-bcc
+
+Notes:
+  - Requires root access
+  - Requires Linux kernel 4.1+ (eBPF support)
+  - Android GKI kernels have eBPF enabled
+  - Similar to Tetragon/Falco but runs on Android
 EOF
-    exit 1
 }
 
+# ── Main ────────────────────────────────────────────
+
 [ $# -ge 1 ] || usage
+
 case "$1" in
-    status|info) ebpf_status ;;
-    list|progs) ebpf_list ;;
-    monitor) ebpf_monitor "${2:-10}" ;;
-    trace) shift; ebpf_trace "${1:-execve}" "${2:-5}" ;;
-    watch|fim) shift; ebpf_file_monitor "${1:-/data/local/nhsystem}" ;;
-    audit|security) ebpf_security_check ;;
-    setup) setup_ebpf ;;
-    enter-arch) enter_chroot ;;
-    *) usage ;;
+    setup)
+        check_root || exit 1
+        info "Installing eBPF tools..."
+        if [ -f /data/local/nhsystem/roots/archlinux/usr/bin/pacman ]; then
+            chroot /data/local/nhsystem/roots/archlinux pacman -S --noconfirm bpftrace bcc-tools 2>/dev/null || \
+                warn "Failed to install via pacman"
+        else
+            warn "Arch chroot not found for installation"
+        fi
+        ;;
+    check)
+        check_ebpf_support
+        ;;
+    start-file)
+        shift
+        start_file_monitor "${1:-/data/local/nhsystem}"
+        ;;
+    stop-file)
+        [ -f "$EBPF_DIR/file_monitor.pid" ] && \
+            kill "$(cat "$EBPF_DIR/file_monitor.pid")" 2>/dev/null
+        ok "File monitor stopped"
+        ;;
+    start-syscall)
+        start_syscall_audit
+        ;;
+    stop-syscall)
+        [ -f "$EBPF_DIR/syscall_audit.pid" ] && \
+            kill "$(cat "$EBPF_DIR/syscall_audit.pid")" 2>/dev/null
+        ok "Syscall audit stopped"
+        ;;
+    start-process)
+        start_process_tracker
+        ;;
+    stop-process)
+        [ -f "$EBPF_DIR/process_tracker.pid" ] && \
+            kill "$(cat "$EBPF_DIR/process_tracker.pid")" 2>/dev/null
+        ok "Process tracker stopped"
+        ;;
+    stop-all)
+        unload_ebpf
+        ;;
+    status)
+        show_status
+        ;;
+    logs)
+        shift
+        view_logs "${1:-all}"
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        err "Unknown command: $1"
+        usage
+        ;;
 esac

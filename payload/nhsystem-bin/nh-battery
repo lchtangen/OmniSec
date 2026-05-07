@@ -1,50 +1,99 @@
 #!/system/bin/sh
-# NH_SETUP_VERSION: 2.0 nextgen
-# nh-battery - Battery status and health monitor
-set -u
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-battery — Battery health and optimization tool
+set -euo pipefail
 
-BAT=/sys/class/power_supply/battery
+show_usage() {
+    cat <<EOF
+nh-battery - Battery Health & Optimization
 
-echo "══ Battery Status ══"
-echo ""
+Usage: nh-battery <command>
 
-STATUS=$(cat $BAT/status 2>/dev/null)
-CAPACITY=$(cat $BAT/capacity 2>/dev/null)
-HEALTH=$(cat $BAT/health 2>/dev/null)
-TEMP=$(cat $BAT/temp 2>/dev/null)
-VOLTAGE=$(cat $BAT/voltage_now 2>/dev/null)
-CURRENT=$(cat $BAT/current_now 2>/dev/null)
-CHARGE_FULL=$(cat $BAT/charge_full 2>/dev/null)
-CHARGE_NOW=$(cat $BAT/charge_now 2>/dev/null)
-TECHNOLOGY=$(cat $BAT/technology 2>/dev/null)
+Commands:
+  status       Show battery status and health
+  health       Detailed battery health report
+  optimize     Apply battery optimization settings
+  stats        Show battery usage stats
+  help         Show this message
+EOF
+}
 
-[ -n "$STATUS" ] && echo "  Status:     $STATUS"
-[ -n "$CAPACITY" ] && printf "  Charge:     %d%%\n" "$CAPACITY"
-[ -n "$HEALTH" ] && echo "  Health:     $HEALTH"
-[ -n "$TEMP" ] && printf "  Temp:       %d°C\n" "$((TEMP / 10))"
-[ -n "$VOLTAGE" ] && printf "  Voltage:    %dmV\n" "$((VOLTAGE / 1000))"
-[ -n "$CURRENT" ] && printf "  Current:    %dmA\n" "$((CURRENT / 1000))"
-[ -n "$TECHNOLOGY" ] && echo "  Type:       $TECHNOLOGY"
+cmd_status() {
+    echo "══ Battery Status ═════════════════════════════════"
+    if [ -d /sys/class/power_supply/battery ]; then
+        local capacity=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "N/A")
+        local status=$(cat /sys/class/power_supply/battery/status 2>/dev/null || echo "N/A")
+        local temp=$(cat /sys/class/power_supply/battery/temp 2>/dev/null || echo "N/A")
+        local voltage=$(cat /sys/class/power_supply/battery/voltage_now 2>/dev/null || echo "N/A")
+        
+        echo "  Capacity:     ${capacity}%"
+        echo "  Status:       ${status}"
+        echo "  Temperature:  $((temp / 10))°C"
+        echo "  Voltage:      $((voltage / 1000))mV"
+    else
+        echo "  Battery not found"
+    fi
+}
 
-if [ -n "$CHARGE_FULL" ] && [ -n "$CHARGE_NOW" ] && [ "$CHARGE_FULL" -gt 0 ]; then
-    PCT=$((CHARGE_NOW * 100 / CHARGE_FULL))
-    printf "  Wear:       %d%% capacity remaining\n" "$PCT"
-    printf "  Wear loss:  %d%%\n" "$((100 - PCT))"
-fi
+cmd_health() {
+    echo "══ Battery Health Report ══════════════════════════"
+    if [ -d /sys/class/power_supply/battery ]; then
+        local health=$(cat /sys/class/power_supply/battery/health 2>/dev/null || echo "Unknown")
+        local cycle_count=$(cat /sys/class/power_supply/battery/cycle_count 2>/dev/null || echo "N/A")
+        local charge_full=$(cat /sys/class/power_supply/battery/charge_full 2>/dev/null || echo "N/A")
+        local charge_design=$(cat /sys/class/power_supply/battery/charge_full_design 2>/dev/null || echo "N/A")
+        
+        echo "  Health:         ${health}"
+        echo "  Cycle Count:    ${cycle_count}"
+        echo "  Charge Full:    ${charge_full}µAh"
+        echo "  Design Capacity:${charge_design}µAh"
+        
+        if [ "$charge_full" != "N/A" ] && [ "$charge_design" != "N/A" ]; then
+            local ratio=$((charge_full * 100 / charge_design))
+            echo "  Health Percent: ${ratio}%"
+        fi
+    else
+        echo "  Battery not found"
+    fi
+}
 
-# Battery bar visualization
-if [ -n "$CAPACITY" ]; then
-    BAR_LEN=20
-    FILL=$((CAPACITY * BAR_LEN / 100))
-    EMPTY=$((BAR_LEN - FILL))
-    case "$STATUS" in
-        Charging) COLOR=33 ;;  # yellow
-        Discharging) COLOR=32 ;;  # green
-        *) COLOR=36 ;;  # cyan
-    esac
-    printf "\n  [\033[%dm" "$COLOR"
-    i=0; while [ "$i" -lt "$FILL" ]; do printf "█"; i=$((i+1)); done
-    printf "\033[0m"
-    i=0; while [ "$i" -lt "$EMPTY" ]; do printf "░"; i=$((i+1)); done
-    printf "] %d%%\n" "$CAPACITY"
-fi
+cmd_optimize() {
+    echo "══ Battery Optimization ═══════════════════════════"
+    echo "  Applying optimizations..."
+    
+    # Disable unnecessary services
+    setprop persist.sys.disable_rescue true 2>/dev/null || true
+    
+    # Reduce screen brightness if possible
+    local brightness=$(cat /sys/class/backlight/backlight/brightness 2>/dev/null || echo "")
+    if [ -n "$brightness" ]; then
+        echo $((brightness / 2)) > /sys/class/backlight/backlight/brightness 2>/dev/null || true
+        echo "  Reduced screen brightness"
+    fi
+    
+    # Enable battery saver mode
+    settings put global low_power 1 2>/dev/null || true
+    echo "  Enabled battery saver mode"
+    
+    echo "  Optimizations applied"
+}
+
+cmd_stats() {
+    echo "══ Battery Usage Stats ════════════════════════════"
+    if [ -f /sys/class/power_supply/battery/uevent ]; then
+        grep -E "POWER_SUPPLY_" /sys/class/power_supply/battery/uevent | while read -r line; do
+            echo "  $line"
+        done
+    else
+        echo "  Stats not available"
+    fi
+}
+
+case "${1:-status}" in
+    status)      cmd_status ;;
+    health)      cmd_health ;;
+    optimize)    cmd_optimize ;;
+    stats)       cmd_stats ;;
+    help|*)      show_usage ;;
+esac

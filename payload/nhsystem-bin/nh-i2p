@@ -1,0 +1,16 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-i2p — I2P management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-i2p - I2P Management
+Usage: nh-i2p {status|start|stop|help}
+EOF
+}
+case "${1:-status}" in
+    status) if pgrep i2p >/dev/null; then echo "I2P running"; else echo "I2P stopped"; fi ;;
+    start) echo "I2P start not implemented" ;;
+    stop) pkill i2p 2>/dev/null || true ;;
+    help|*) show_usage ;;
+esac

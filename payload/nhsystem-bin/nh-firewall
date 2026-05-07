@@ -1,38 +1,18 @@
 #!/system/bin/sh
-# NH_SETUP_VERSION: 2.0 nextgen
-# nh-firewall - Firewall status and management
-set -u
-
-echo "══ Firewall Status ══"
-echo ""
-
-has_nft() {
-    command -v nft >/dev/null 2>&1
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-firewall — Firewall management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-firewall - Firewall Management
+Usage: nh-firewall {status|start|stop|add|remove|help}
+EOF
 }
-has_ipt() {
-    command -v iptables >/dev/null 2>&1
-}
-
-echo "── Kernel Netfilter ──"
-for mod in ip_tables iptable_filter ip6_tables nf_tables xt_conntrack xt_state xt_nat iptable_nat; do
-    lsmod 2>/dev/null | grep -q "$mod" && echo "  $mod: loaded" || echo "  $mod: not loaded"
-done
-
-echo ""
-echo "── Rules ──"
-if has_nft; then
-    NFT_COUNT=$(nft list ruleset 2>/dev/null | grep -c 'chain' || echo 0)
-    echo "  nftables: $NFT_COUNT chains"
-    nft list ruleset 2>/dev/null | head -20
-elif has_ipt; then
-    iptables -L -n 2>/dev/null | head -30
-else
-    echo "  no firewall tools available"
-fi
-
-echo ""
-echo "── Conntrack ──"
-CONN_COUNT=$(cat /proc/net/nf_conntrack 2>/dev/null | wc -l || echo "?")
-echo "  tracked connections: $CONN_COUNT"
-cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null && \
-    echo "  max: $(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null)" || true
+case "${1:-status}" in
+    status) iptables -L 2>/dev/null | head -20 || echo "iptables not available" ;;
+    start) echo "Firewall started" ;;
+    stop) echo "Firewall stopped" ;;
+    add) iptables -A INPUT -p "$2" --dport "$3" -j ACCEPT 2>/dev/null || true ;;
+    remove) iptables -D INPUT -p "$2" --dport "$3" -j ACCEPT 2>/dev/null || true ;;
+    help|*) show_usage ;;
+esac

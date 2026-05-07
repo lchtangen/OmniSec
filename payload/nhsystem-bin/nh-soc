@@ -1,0 +1,138 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P7
+# nh-soc — Security Operations Center Dashboard
+set -euo pipefail
+
+SOC_DIR="/data/local/nhsystem/soc"
+DASHBOARD="$SOC_DIR/dashboard.html"
+
+show_usage() {
+    cat <<EOF
+nh-soc - Security Operations Center
+
+Usage: nh-soc <command> [args]
+
+Commands:
+  start [port]    Start SOC web dashboard (default: 8080)
+  stop             Stop SOC dashboard
+  status           Show SOC status
+  events           Show recent security events
+  alerts           Show active alerts
+  help             Show this message
+
+Example:
+  nh-soc start 8080
+  nh-soc events
+  nh-soc alerts
+EOF
+}
+
+init_soc() {
+    mkdir -p "$SOC_DIR"
+    if [ ! -f "$DASHBOARD" ]; then
+        cat > "$DASHBOARD" <<'HTML'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NetHunter SOC</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: monospace; background: #0a0a0a; color: #0f0; margin: 0; padding: 10px; }
+        h1 { color: #f00; border-bottom: 2px solid #f00; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+        .card { background: #1a1a1a; padding: 15px; border: 1px solid #0f0; }
+        .alert { color: #f00; font-weight: bold; }
+        .ok { color: #0f0; }
+    </style>
+</head>
+<body>
+    <h1>⚠ NetHunter SOC — Security Operations Center</h1>
+    <div class="grid">
+        <div class="card">
+            <h3>Active Alerts</h3>
+            <p class="alert" id="alerts">0</p>
+        </div>
+        <div class="card">
+            <h3>Events (24h)</h3>
+            <p class="ok" id="events">0</p>
+        </div>
+        <div class="card">
+            <h3>Threat Level</h3>
+            <p class="ok" id="threat">Low</p>
+        </div>
+        <div class="card">
+            <h3>Systems</h3>
+            <p class="ok" id="systems">Online</p>
+        </div>
+    </div>
+    <script>
+        setInterval(() => {
+            fetch('/api/status').then(r => r.json()).then(d => {
+                document.getElementById('alerts').textContent = d.alerts || 0;
+                document.getElementById('events').textContent = d.events || 0;
+                document.getElementById('threat').textContent = d.threat || 'Low';
+            }).catch(() => {});
+        }, 5000);
+    </script>
+</body>
+</html>
+HTML
+    fi
+}
+
+cmd_start() {
+    local port="${1:-8080}"
+    echo "══ Starting SOC Dashboard on port $port ═══════"
+    init_soc
+    
+    # Start simple HTTP server
+    cd "$SOC_DIR"
+    python3 -m http.server "$port" 2>/dev/null &
+    echo $! > "$SOC_DIR/soc.pid"
+    echo "  SOC Dashboard: http://127.0.0.1:$port/dashboard.html"
+}
+
+cmd_stop() {
+    echo "══ Stopping SOC Dashboard ═══════"
+    if [ -f "$SOC_DIR/soc.pid" ]; then
+        kill $(cat "$SOC_DIR/soc.pid") 2>/dev/null || true
+        rm -f "$SOC_DIR/soc.pid"
+        echo "  SOC stopped"
+    else
+        echo "  SOC not running"
+    fi
+}
+
+cmd_status() {
+    echo "══ SOC Status ══════════════"
+    if [ -f "$SOC_DIR/soc.pid" ] && kill -0 $(cat "$SOC_DIR/soc.pid") 2>/dev/null; then
+        echo "  Status: Running"
+        echo "  Dashboard: http://127.0.0.1:8080/dashboard.html"
+    else
+        echo "  Status: Stopped"
+    fi
+}
+
+cmd_events() {
+    echo "══ Recent Security Events ═══════"
+    # Placeholder for event display
+    echo "  No events yet"
+}
+
+cmd_alerts() {
+    echo "══ Active Alerts ══════════════"
+    # Placeholder for alert display
+    echo "  No alerts"
+}
+
+init_soc
+
+case "${1:-help}" in
+    start)      cmd_start "${2:-}" ;;
+    stop)       cmd_stop ;;
+    status)     cmd_status ;;
+    events)     cmd_events ;;
+    alerts)     cmd_alerts ;;
+    help|*)     show_usage ;;
+esac

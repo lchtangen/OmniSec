@@ -1,0 +1,17 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-sniffer — Packet capture tool
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-sniffer - Packet Capture Tool
+Usage: nh-sniffer {start|stop|status|pcap [filter]}
+EOF
+}
+case "${1:-help}" in
+    start) echo "Starting packet capture..."; tcpdump -i any -w /data/local/nhsystem/logs/capture.pcap 2>/dev/null & echo $! > /data/local/nhsystem/logs/sniffer.pid ;;
+    stop) [ -f /data/local/nhsystem/logs/sniffer.pid ] && kill $(cat /data/local/nhsystem/logs/sniffer.pid) 2>/dev/null && rm /data/local/nhsystem/logs/sniffer.pid ;;
+    status) [ -f /data/local/nhsystem/logs/sniffer.pid ] && echo "Running (PID: $(cat /data/local/nhsystem/logs/sniffer.pid))" || echo "Stopped" ;;
+    pcap) shift; tcpdump -r /data/local/nhsystem/logs/capture.pcap "$@" 2>/dev/null | head -50 ;;
+    help|*) show_usage ;;
+esac

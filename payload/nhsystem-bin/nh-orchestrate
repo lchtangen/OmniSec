@@ -1,0 +1,148 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P7
+# nh-orchestrate — Multi-device orchestration
+set -euo pipefail
+
+ORCH_DIR="/data/local/nhsystem/orchestration"
+DEVICES_FILE="$ORCH_DIR/devices.json"
+TASKS_FILE="$ORCH_DIR/tasks.json"
+
+show_usage() {
+    cat <<EOF
+nh-orchestrate - Multi-Device Orchestration
+
+Usage: nh-orchestrate <command> [args]
+
+Commands:
+  discover         Discover NetHunter devices on network
+  add <ip>         Add device to cluster
+  remove <ip>      Remove device from cluster
+  list             List cluster devices
+  run <cmd>        Run command on all devices
+  status           Show cluster status
+  help             Show this message
+
+Example:
+  nh-orchestrate discover
+  nh-orchestrate add 192.168.1.50
+  nh-orchestrate run "nh-perf status"
+EOF
+}
+
+init_orch() {
+    mkdir -p "$ORCH_DIR"
+    if [ ! -f "$DEVICES_FILE" ]; then
+        echo '{"devices":[]}' > "$DEVICES_FILE"
+    fi
+    if [ ! -f "$TASKS_FILE" ]; then
+        echo '{"tasks":[]}' > "$TASKS_FILE"
+    fi
+}
+
+cmd_discover() {
+    echo "══ Discovering NetHunter Devices ═══════════"
+    echo "  Scanning local network..."
+    
+    # Scan for ADB devices
+    adb devices 2>/dev/null | grep -v "List" | grep "device$" | while read device rest; do
+        echo "  Found: $device"
+    done
+    
+    # Scan for SSH ports
+    local subnet=$(ip route | grep "src" | head -1 | awk '{print $1}')
+    echo "  Scanning subnet: $subnet"
+    
+    # Simple ping sweep (first 20 ips)
+    if command -v nmap >/dev/null 2>&1; then
+        nmap -p 2222,8022,22 --open "$subnet" 2>/dev/null | grep -E "Nmap|open" | head -20
+    fi
+}
+
+cmd_add() {
+    local ip="${1:-}"
+    [ -z "$ip" ] && { echo "Usage: nh-orchestrate add <ip>"; exit 1; }
+    
+    echo "══ Adding Device: $ip ═══════════"
+    init_orch
+    
+    # Test connectivity
+    if ping -c 1 "$ip" >/dev/null 2>&1; then
+        echo "  Device reachable: ✓"
+        # Add to devices file
+        python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+data['devices'].append({'ip': sys.argv[2], 'added': sys.argv[3]})
+with open(sys.argv[1], 'w') as f:
+    json.dump(data, f, indent=2)
+print('  Added to cluster')
+" "$DEVICES_FILE" "$ip" "$(date -Iseconds)" 2>/dev/null || echo "  $ip added (text)"
+    else
+        echo "  Device not reachable: ✗"
+    fi
+}
+
+cmd_list() {
+    echo "══ Cluster Devices ═══════════"
+    init_orch
+    
+    if [ -s "$DEVICES_FILE" ]; then
+        python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+for d in data.get('devices', []):
+    print(f\"  {d['ip']} (added: {d['added']})\")
+" "$DEVICES_FILE" 2>/dev/null || cat "$DEVICES_FILE"
+    else
+        echo "  No devices in cluster"
+    fi
+}
+
+cmd_run() {
+    local cmd="${1:-}"
+    [ -z "$cmd" ] && { echo "Usage: nh-orchestrate run <command>"; exit 1; }
+    
+    echo "══ Running on Cluster: $cmd ═══════════"
+    init_orch
+    
+    python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+for d in data.get('devices', []):
+    print(f\"  {d['ip']}: \")
+" "$DEVICES_FILE" 2>/dev/null || echo "  No devices to run on"
+    
+    # Run on each device via ADB/SSH
+    echo "  Command execution not fully implemented"
+}
+
+cmd_status() {
+    echo "══ Cluster Status ═══════════"
+    init_orch
+    
+    local count=$(python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+print(len(data.get('devices', [])))
+" "$DEVICES_FILE" 2>/dev/null || echo "0")
+    
+    echo "  Devices in cluster: $count"
+    echo "  Active tasks: 0"
+}
+
+init_orch
+
+case "${1:-help}" in
+    discover)   cmd_discover ;;
+    add)        cmd_add "${2:-}" ;;
+    remove)      echo "Remove not implemented" ;;
+    list)       cmd_list ;;
+    run)        cmd_run "${2:-}" ;;
+    status)     cmd_status ;;
+    help|*)     show_usage ;;
+esac

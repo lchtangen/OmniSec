@@ -1,0 +1,327 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P6
+# nh-hsm - Hardware Security Module management (YubiKey, SoloKey, Nitrokey, TEE)
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+HSM_DIR=$NHSYSTEM/etc/hsm
+
+ensure_dirs() {
+    mkdir -p $HSM_DIR/keys $HSM_DIR/config
+}
+
+detect_hsm() {
+    echo "── Hardware Security Module Detection ──"
+    echo ""
+
+    local found=0
+
+    # Check USB devices for YubiKey / SoloKey / Nitrokey
+    if [ -d /sys/bus/usb/devices ]; then
+        local yubikey
+        yubikey=$(grep -l "Yubico\|YubiKey\|SoloKey\|Nitrokey" /sys/bus/usb/devices/*/manufacturer 2>/dev/null | head -1)
+        if [ -n "$yubikey" ]; then
+            local devpath
+            devpath=$(dirname "$yubikey")
+            local vendor product
+            vendor=$(cat "$devpath/idVendor" 2>/dev/null)
+            product=$(cat "$devpath/idProduct" 2>/dev/null)
+            local manufacturer
+            manufacturer=$(cat "$devpath/manufacturer" 2>/dev/null)
+            local product_name
+            product_name=$(cat "$devpath/product" 2>/dev/null)
+            echo "  ✓ USB HSM detected:"
+            echo "      Manufacturer: ${manufacturer:-Unknown}"
+            echo "      Product:      ${product_name:-Unknown}"
+            echo "      USB ID:      ${vendor}:${product}"
+            found=1
+        fi
+    fi
+
+    # Check /dev for hidraw (used by YubiKey via libfido2)
+    for dev in /dev/hidraw*; do
+        [ -e "$dev" ] || continue
+        local report_desc
+        report_desc=$(cat "$dev/device/report_descriptor" 2>/dev/null | strings 2>/dev/null | grep -i "yubico\|yubikey\|fido" | head -1)
+        [ -n "$report_desc" ] && {
+            echo "  ✓ FIDO2 device: $dev"
+            found=1
+        }
+    done
+
+    # Check for PCSC smart card reader
+    if command -v pcsc_scan >/dev/null 2>&1; then
+        local readers
+        readers=$(pcsc_scan -n 2>/dev/null | grep -i "yubico\|nitrokey\|reader" | head -3)
+        if [ -n "$readers" ]; then
+            echo "  ✓ PCSC smart card reader:"
+            echo "$readers" | while read -r line; do echo "      $line"; done
+            found=1
+        fi
+    elif [ -e /dev/chardev ] || ls /dev/input/event* >/dev/null 2>&1; then
+        # Check NFC
+        if ls /dev/input/event* 2>/dev/null | xargs -I{} strings {} 2>/dev/null | grep -qi "nfc\|yubico"; then
+            echo "  ✓ NFC device detected (possible HSM)"
+            found=1
+        fi
+    fi
+
+    # Check for libfido2 support
+    if command -v fido2-token >/dev/null 2>&1; then
+        echo "  ✓ libfido2 available"
+        local tokens
+        tokens=$(fido2-token -L 2>/dev/null)
+        if [ -n "$tokens" ]; then
+            echo "  ✓ FIDO2 tokens:"
+            echo "$tokens" | while read -r line; do echo "      $line"; done
+            found=1
+        fi
+    fi
+
+    # Check for OpenSC PKCS#11
+    if [ -f /usr/lib/libykcs11.so ] || [ -f /usr/lib/pkcs11/ykcs11.so ]; then
+        echo "  ✓ YubiKey PKCS#11 module found"
+        found=1
+    fi
+
+    # Check for TEE (Android StrongBox)
+    if [ -d /system/apex ] && command -v keystore_cli >/dev/null 2>&1; then
+        echo "  ✓ Android TEE/StrongBox reachable"
+        found=1
+    fi
+
+    [ "$found" -eq 0 ] && echo "  ✗ No HSM detected"
+    echo ""
+    echo "  Connect a YubiKey, SoloKey, or Nitrokey via USB-C OTG."
+    echo "  Run: nh-hsm setup   (install HSM dependencies)"
+    echo "  Run: nh-hsm status  (refresh detection)"
+}
+
+setup_hsm() {
+    echo "── HSM Setup ──"
+    echo ""
+
+    # Check for required tools
+    local missing=0
+
+    for cmd in fido2-token ykman opensc-tool pkcs11-tool; do
+        if command -v "$cmd" >/dev/null 2>&1; then
+            echo "  ✓ $cmd available"
+        else
+            echo "  ✗ $cmd not available"
+            missing=$((missing+1))
+        fi
+    done
+
+    if [ "$missing" -gt 0 ]; then
+        echo ""
+        echo "  Missing tools. Install HSM dependencies:"
+        echo "    Inside Arch chroot:"
+        echo "      sudo pacman -S libfido2 yubikey-manager opensc pcsc-lite ccid"
+        echo "    Or run: nh-hsm enter-arch"
+        echo "    Then:   setup-hsm.sh"
+    fi
+
+    # Create SSH config for FIDO2 keys
+    ensure_dirs
+    local ssh_config="/data/data/com.termux/files/home/.ssh/config"
+    if [ -f "$ssh_config" ]; then
+        if ! grep -q "SecurityKeyProvider" "$ssh_config" 2>/dev/null; then
+            echo ""
+            echo "  Adding FIDO2 SSH config..."
+            mkdir -p "$(dirname "$ssh_config")"
+            cat >> "$ssh_config" <<CFG
+
+# FIDO2/YubiKey SSH keys (sk-* key types)
+Host *
+    SecurityKeyProvider internal
+CFG
+            echo "  ✓ FIDO2 SSH config added"
+        fi
+    fi
+}
+
+hsm_status() {
+    echo "══ HSM Status ═══════════════════════════════════════"
+    echo ""
+
+    detect_hsm
+    echo ""
+
+    # Check for existing FIDO2 SSH keys
+    echo "── FIDO2 SSH Keys ──"
+    local has_fido=0
+    for key in $HOME/.ssh/id_sk* $HOME/.ssh/id_ecdsa_sk*; do
+        [ -f "$key" ] || continue
+        has_fido=1
+        local pub="${key}.pub"
+        local fp=""
+        [ -f "$pub" ] && fp=$(ssh-keygen -lf "$pub" 2>/dev/null | awk '{print $2}')
+        echo "  $(basename "$key"): ${fp:-no pub}"
+    done
+    [ "$has_fido" -eq 0 ] && echo "  (none. Generate: nh-hsm ssh-key)"
+    echo ""
+
+    # Check for PIV slots
+    echo "── PIV Slots ──"
+    if command -v ykman >/dev/null 2>&1; then
+        ykman piv info 2>/dev/null || echo "  (no YubiKey PIV access)"
+    else
+        echo "  (ykman not available)"
+    fi
+    echo ""
+
+    # Check for OpenPGP card
+    echo "── OpenPGP Card ──"
+    if command -v gpg >/dev/null 2>&1 && command -v gpg-connect-agent >/dev/null 2>&1; then
+        gpg --card-status 2>/dev/null | head -10 || echo "  (no OpenPGP card)"
+    else
+        echo "  (gpg not available)"
+    fi
+}
+
+fido2_keygen() {
+    local type="${1:-ed25519-sk}"
+    local comment="${2:-nethunter-hsm-$(date +%Y%m%d)}"
+
+    echo "  Generating FIDO2 SSH key: $type"
+    echo "  Make sure your security key is connected."
+    echo "  You may need to touch the key when prompted."
+    echo ""
+
+    local key_file="$HOME/.ssh/id_${type}"
+    if [ -f "$key_file" ]; then
+        echo "  Key exists: $key_file" >&2
+        echo "  Use a different type or remove it first." >&2
+        exit 1
+    fi
+
+    ssh-keygen -t "$type" -C "$comment" -f "$key_file" -N "" 2>&1 || {
+        echo "  ERROR: Key generation failed" >&2
+        echo "  Check HSM connection: nh-hsm detect" >&2
+        exit 1
+    }
+
+    echo ""
+    echo "  ✓ FIDO2 SSH key generated"
+    echo "  Private: $key_file"
+    echo "  Public:  ${key_file}.pub"
+    echo ""
+    cat "${key_file}.pub"
+}
+
+fido2_list_keys() {
+    echo "── FIDO2 SSH Keys ──"
+    local found=0
+    for key in $HOME/.ssh/id_sk* $HOME/.ssh/id_ecdsa_sk* $HOME/.ssh/id_ed25519_sk*; do
+        [ -f "$key" ] || continue
+        found=1
+        local pub="${key}.pub"
+        local fp
+        fp=$(ssh-keygen -lf "$pub" 2>/dev/null | awk '{print $2}')
+        printf "  %-25s %s\n" "$(basename "$key")" "${fp:-}"
+    done
+    [ "$found" -eq 0 ] && echo "  (no FIDO2 keys)"
+}
+
+piv_info() {
+    echo "── PIV Status ──"
+    if command -v ykman >/dev/null 2>&1; then
+        ykman piv info 2>/dev/null || echo "  (no YubiKey or PIV not supported)"
+        echo ""
+        echo "  To generate a PIV key:"
+        echo "    ykman piv generate-key 9a pubkey.pem"
+        echo "    ykman piv generate-certificate -s 'CN=MyKey' 9a pubkey.pem"
+    else
+        echo "  (ykman not available)"
+    fi
+}
+
+openpgp_status() {
+    echo "── OpenPGP Card Status ──"
+    if command -v gpg >/dev/null 2>&1 && command -v gpg-connect-agent >/dev/null 2>&1; then
+        gpg --card-status 2>/dev/null | head -15 || echo "  (no OpenPGP card or reader)"
+    else
+        echo "  (gpg or gpg-connect-agent not available)"
+    fi
+}
+
+nfc_provision() {
+    echo "── NFC Key Provisioning ──"
+    echo ""
+    echo "  Tap your YubiKey/Nitrokey to the NFC reader."
+    echo "  This will configure the HSM for SSH access."
+    echo ""
+
+    # Check NFC hardware
+    if [ ! -d /sys/class/nfc ]; then
+        echo "  ✗ No NFC hardware detected"
+        echo "  Ensure NFC is enabled in Android settings."
+        exit 1
+    fi
+
+    echo "  NFC hardware detected."
+    echo "  To provision via NFC, install inside Arch chroot:"
+    echo "    sudo pacman -S nfc-tools libfreefare"
+    echo "    nh-hsm enter-arch"
+    echo "    nfc-list           # list NFC targets"
+    echo "    nfc-mfsetacr122    # configure reader"
+}
+
+enter_chroot() {
+    if [ -x /data/local/nhsystem/bin/nh-enter-arch ]; then
+        nh-enter-arch
+    elif [ -f /data/local/nhsystem/roots/archlinux/usr/bin/bash ]; then
+        chroot /data/local/nhsystem/roots/archlinux /usr/bin/bash
+    else
+        echo "  Arch chroot not available"
+        exit 1
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-hsm - Hardware Security Module Manager
+
+Usage: nh-hsm <command> [args]
+
+Commands:
+  detect               Detect connected HSMs (YubiKey, SoloKey, Nitrokey)
+  status               Full HSM status report
+  setup                Check and guide HSM dependency installation
+  ssh-key [type] [comment]  Generate FIDO2 SSH key (default: ed25519-sk)
+  ssh-keys             List existing FIDO2 SSH keys
+  piv                  Show YubiKey PIV status
+  openpgp              Show OpenPGP card status
+  nfc                  NFC key provisioning setup
+  enter-arch           Enter Arch chroot for manual HSM config
+
+Supported HSMs:
+  YubiKey 5/5C/5NFC (FIDO2, PIV, OpenPGP)
+  SoloKey / SoloKey USB-C (FIDO2)
+  Nitrokey Pro / Storage / Start (OpenPGP)
+
+Requires USB-C OTG adapter for wired connection.
+NFC works with Android built-in reader.
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    detect|scan) detect_hsm ;;
+    status|info) hsm_status ;;
+    setup) setup_hsm ;;
+    ssh-key|ssh-keygen|fido2-key)
+        shift; fido2_keygen "${1:-ed25519-sk}" "${2:-}"
+        ;;
+    ssh-keys|fido2-keys|keys)
+        fido2_list_keys
+        ;;
+    piv) piv_info ;;
+    openpgp|gpg) openpgp_status ;;
+    nfc) nfc_provision ;;
+    enter-arch) enter_chroot ;;
+    *) usage ;;
+esac

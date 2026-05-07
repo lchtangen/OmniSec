@@ -1,0 +1,16 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-dnscrypt — DNSCrypt management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-dnscrypt - DNSCrypt Management
+Usage: nh-dnscrypt {status|start|stop|help}
+EOF
+}
+case "${1:-status}" in
+    status) if pgrep dnscrypt-proxy >/dev/null; then echo "DNSCrypt running"; else echo "DNSCrypt stopped"; fi ;;
+    start) dnscrypt-proxy 2>/dev/null & ;;
+    stop) pkill dnscrypt-proxy 2>/dev/null || true ;;
+    help|*) show_usage ;;
+esac

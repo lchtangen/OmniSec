@@ -1,0 +1,16 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-db — Database management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-db - Database Management
+Usage: nh-db {status|start|stop|query|help}
+EOF
+}
+case "${1:-status}" in
+    status) echo "Databases:"; ls /data/local/nhsystem/db/*.db 2>/dev/null || echo "None" ;;
+    start) echo "Start not implemented" ;; stop) echo "Stop not implemented" ;;
+    query) sqlite3 "$2" "$3" 2>/dev/null || echo "sqlite3 not available" ;;
+    help|*) show_usage ;;
+esac

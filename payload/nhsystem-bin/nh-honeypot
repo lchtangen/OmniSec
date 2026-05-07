@@ -1,0 +1,101 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P7
+# nh-honeypot — Honeypot Deployment Tool
+set -euo pipefail
+
+HP_DIR="/data/local/nhsystem/honeypot"
+PID_FILE="$HP_DIR/honeypot.pid"
+
+show_usage() {
+    cat <<EOF
+nh-honeypot - Honeypot Deployment Tool
+
+Usage: nh-honeypot <command> [args]
+
+Commands:
+  start [port]    Start SSH honeypot (default: 2223)
+  stop             Stop honeypot
+  status           Show honeypot status
+  logs             Show honeypot logs
+  analyze          Analyze captured attacks
+  help             Show this message
+
+Example:
+  nh-honeypot start 2223
+  nh-honeypot status
+  nh-honeypot analyze
+EOF
+}
+
+init_hp() {
+    mkdir -p "$HP_DIR"
+    touch "$HP_DIR/attacks.log"
+}
+
+cmd_start() {
+    local port="${1:-2223}"
+    echo "══ Starting Honeypot on port $port ═════════"
+    init_hp
+    
+    # Simple honeypot using netcat
+    while true; do
+        echo "SSH-2.0-OpenSSH_8.2p1" | nc -l -p "$port" 2>/dev/null
+        echo "$(date): Connection attempt on port $port" >> "$HP_DIR/attacks.log"
+    done &
+    
+    echo $! > "$PID_FILE"
+    echo "  Honeypot started (PID: $(cat $PID_FILE))"
+    echo "  Listening on port: $port"
+}
+
+cmd_stop() {
+    echo "══ Stopping Honeypot ═════════"
+    if [ -f "$PID_FILE" ]; then
+        kill $(cat "$PID_FILE") 2>/dev/null || true
+        rm -f "$PID_FILE"
+        echo "  Honeypot stopped"
+    else
+        echo "  Honeypot not running"
+    fi
+}
+
+cmd_status() {
+    echo "══ Honeypot Status ═════════"
+    if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+        echo "  Status: Running (PID: $(cat $PID_FILE))"
+        echo "  Attacks logged: $(wc -l < $HP_DIR/attacks.log)"
+    else
+        echo "  Status: Stopped"
+    fi
+}
+
+cmd_logs() {
+    echo "══ Honeypot Logs ═════════"
+    init_hp
+    tail -20 "$HP_DIR/attacks.log" 2>/dev/null || echo "  No attacks logged yet"
+}
+
+cmd_analyze() {
+    echo "══ Attack Analysis ═════════"
+    init_hp
+    
+    if [ -s "$HP_DIR/attacks.log" ]; then
+        echo "  Total attacks: $(wc -l < $HP_DIR/attacks.log)"
+        echo "  Recent activity:"
+        tail -10 "$HP_DIR/attacks.log"
+    else
+        echo "  No attacks to analyze"
+    fi
+}
+
+init_hp
+
+case "${1:-help}" in
+    start)      cmd_start "${2:-}" ;;
+    stop)       cmd_stop ;;
+    status)     cmd_status ;;
+    logs)       cmd_logs ;;
+    analyze)    cmd_analyze ;;
+    help|*)     show_usage ;;
+esac

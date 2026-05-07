@@ -1,0 +1,98 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-netdiag — Advanced network diagnostics
+set -euo pipefail
+
+show_usage() {
+    cat <<EOF
+nh-netdiag - Advanced Network Diagnostics
+
+Usage: nh-netdiag <command> [target]
+
+Commands:
+  status       Show network interface status
+  ping <host>  Ping a host (default: 8.8.8.8)
+  trace <host> Traceroute to host
+  speed        Speed test (requires speedtest-cli)
+  dns          DNS lookup test
+  ports        Show open ports
+  wifi         WiFi diagnostics
+  help         Show this message
+EOF
+}
+
+cmd_status() {
+    echo "══ Network Status ═══════════════════════════════"
+    echo ""
+    echo "── Interfaces ──"
+    ip addr show 2>/dev/null | grep -E "^[0-9]+:|inet " | head -20
+    echo ""
+    echo "── Routing ──"
+    ip route 2>/dev/null | head -10
+    echo ""
+    echo "── DNS ──"
+    cat /etc/resolv.conf 2>/dev/null || echo "  Not available"
+}
+
+cmd_ping() {
+    local target="${1:-8.8.8.8}"
+    echo "══ Pinging $target ══════════════════════════════"
+    ping -c 4 "$target"
+}
+
+cmd_trace() {
+    local target="${1:-8.8.8.8}"
+    echo "══ Traceroute to $target ════════════════════════"
+    if command -v traceroute >/dev/null 2>&1; then
+        traceroute "$target"
+    else
+        echo "  traceroute not installed"
+    fi
+}
+
+cmd_speed() {
+    echo "══ Network Speed Test ══════════════════════════"
+    if command -v speedtest-cli >/dev/null 2>&1; then
+        speedtest-cli --simple
+    else
+        echo "  speedtest-cli not installed"
+        echo "  Install: pip install speedtest-cli"
+    fi
+}
+
+cmd_dns() {
+    local domain="${1:-google.com}"
+    echo "══ DNS Lookup: $domain ═════════════════════════"
+    nslookup "$domain" 2>/dev/null || dig "$domain" 2>/dev/null || echo "  DNS tools not available"
+}
+
+cmd_ports() {
+    echo "══ Open Ports ═══════════════════════════════════"
+    if command -v ss >/dev/null 2>&1; then
+        ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null
+    else
+        cat /proc/net/tcp 2>/dev/null | head -10
+    fi
+}
+
+cmd_wifi() {
+    echo "══ WiFi Diagnostics ═════════════════════════════"
+    if [ -d /sys/class/net/wlan0 ]; then
+        echo "  wlan0 status: $(cat /sys/class/net/wlan0/operstate 2>/dev/null || echo N/A)"
+        iwconfig wlan0 2>/dev/null | head -5
+    else
+        echo "  wlan0 not found"
+    fi
+}
+
+case "${1:-status}" in
+    status)      cmd_status ;;
+    ping)        cmd_ping "${2:-}" ;;
+    trace)       cmd_trace "${2:-}" ;;
+    speed)       cmd_speed ;;
+    dns)         cmd_dns "${2:-}" ;;
+    ports)       cmd_ports ;;
+    wifi)        cmd_wifi ;;
+    help|*)      show_usage ;;
+esac
