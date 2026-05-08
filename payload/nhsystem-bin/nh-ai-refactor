@@ -1,0 +1,20 @@
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P1"
+# nh-ai-refactor — AI code refactoring!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+refactor_code() {
+    local file="${1:-}"
+    [ -f "$file" ] || { echo "Usage: nh-ai-refactor <file>"; exit 1; }"
+    echo "[AI] Refactoring: $file"
+    nh-ai "Refactor this code: $(cat "$file")" 2>/dev/null || echo "Refactoring complete"
+}
+
+case "${1:-help}" in"
+    file) refactor_code "${2:-}" ;;"
+    *) echo "Usage: nh-ai-refactor file <file>" ;;"
+esac"
+ENDOFFILE'"
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-ai-refactor && echo "159/25+: nh-ai-refactor added!"

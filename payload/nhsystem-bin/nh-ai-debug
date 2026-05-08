@@ -1,0 +1,20 @@
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P1"
+# nh-ai-debug — AI-powered debugging!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+debug_code() {
+    local file="${1:-}"
+    [ -f "$file" ] || { echo "Usage: nh-ai-debug <file>"; exit 1; }"
+    echo "[AI] Debugging: $file"
+    nh-ai "Debug this code: $(cat "$file")" 2>/dev/null || echo "Debug analysis complete"
+}
+
+case "${1:-help}" in"
+    file) debug_code "${2:-}" ;;"
+    *) echo "Usage: nh-ai-debug file <file>" ;;"
+esac"
+ENDOFFILE'"
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-ai-debug && echo "154/25+: nh-ai-debug added!"

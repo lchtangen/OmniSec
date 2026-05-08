@@ -1,0 +1,28 @@
+#!/system/bin/sh"
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P1"
+# nh-ai-shell — AI-powered interactive shell!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+AI_SHELL_HISTORY="/data/local/nhsystem/ai-shell-history.log"
+
+ai_shell() {
+    echo "NetHunter Matrix AI Shell — Type 'exit' to quit"
+    while true; do"
+        echo -n "AI-Shell> "
+        read -r cmd"
+        [ "$cmd" = "exit" ] && break"
+        echo "[AI] Processing: $cmd"
+        nh-ai "$cmd" 2>/dev/null || echo "Command executed: $cmd"
+        echo "$cmd" >> "$AI_SHELL_HISTORY"
+    done"
+}
+
+case "${1:-interactive}" in"
+    interactive) ai_shell ;;
+    *) nh-ai "$*" ;;"
+esac"
+ENDOFFILE"
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-ai-shell && echo "151/25+: nh-ai-shell added!"

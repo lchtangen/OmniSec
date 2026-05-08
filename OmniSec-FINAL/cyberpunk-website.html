@@ -9,10 +9,10 @@
 *{margin:0;padding:0;box-sizing:border-box}
 ::selection{background:var(--m);color:var(--bg)}
 :root{
---c:#00E5FF;--m:#D946EF;--y:#FBBF24;--g:#34D399;
---r:#F87171;--b:#60A5FA;--o:#FB923C;--p:#A78BFA;
+--c:#00B8D4;--m:#B81CC2;--y:#D28D00;--g:#259D72;
+--r:#E04040;--b:#3B82F6;--o:#F0701A;--p:#7C3AED;
 --bg:#0A0E17;--bg2:#0F1625;--bg3:#18213A;--surf:#121B2D;
---t:#D1D8E8;--tm:#7B88A8;
+--t:#B8C4D8;--tm:#5A6B8A;
 --font-d:'Orbitron',sans-serif;
 --font-m:'Rajdhani',sans-serif;
 --font-c:'JetBrains Mono',monospace;
@@ -113,8 +113,8 @@
 .ai-chat{flex:1;display:flex;flex-direction:column;gap:16px;margin-bottom:16px}
 .ai-msg{max-width:80%;padding:12px 16px;border-radius:12px;font-size:14px;line-height:1.6;animation:msgIn .3s ease-out}
 @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-.ai-msg.bot{align-self:flex-start;background:rgba(255,0,255,.08);border:1px solid rgba(255,0,255,.15);border-bottom-left-radius:4px;color:#D0D0F0}
-.ai-msg.user{align-self:flex-end;background:rgba(0,255,255,.08);border:1px solid rgba(0,255,255,.15);border-bottom-right-radius:4px;color:var(--c)}
+.ai-msg.bot{align-self:flex-start;background:rgba(128,90,213,.12);border:1px solid rgba(128,90,213,.2);border-bottom-left-radius:4px;color:#C8D0E8}
+.ai-msg.user{align-self:flex-end;background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.15);border-bottom-right-radius:4px;color:var(--c)}
 .ai-msg .highlight{color:var(--y)}
 .ai-msg .code{display:block;background:rgba(0,0,0,.4);padding:8px 12px;border-radius:6px;font-family:var(--font-c);font-size:12px;margin-top:8px;color:var(--g);border-left:2px solid var(--g)}
 .ai-input{display:flex;gap:8px}
@@ -870,11 +870,11 @@ details .content{padding:0 18px 14px;color:var(--tm);font-size:13px;line-height:
 <div class="section-divider"></div>
 
 <div class="stats-row">
-<div class="stat-card" style="border-color:#00E5FF"><div class="number" style="background:linear-gradient(135deg,#00E5FF,#60A5FA);-webkit-background-clip:text;-webkit-text-fill-color:transparent">161</div><div class="label">Security Tools</div></div>
-<div class="stat-card" style="border-color:#D946EF"><div class="number" style="background:linear-gradient(135deg,#D946EF,#A78BFA);-webkit-background-clip:text;-webkit-text-fill-color:transparent">15+</div><div class="label">Platforms Supported</div></div>
-<div class="stat-card" style="border-color:#FBBF24"><div class="number" style="background:linear-gradient(135deg,#FBBF24,#FB923C);-webkit-background-clip:text;-webkit-text-fill-color:transparent">0</div><div class="label">Cloud Dependencies</div></div>
-<div class="stat-card" style="border-color:#34D399"><div class="number" style="background:linear-gradient(135deg,#34D399,#00E5FF);-webkit-background-clip:text;-webkit-text-fill-color:transparent">50K+</div><div class="label">Lines of Code</div></div>
-<div class="stat-card" style="border-color:#F87171"><div class="number" style="background:linear-gradient(135deg,#F87171,#FB923C);-webkit-background-clip:text;-webkit-text-fill-color:transparent">100%</div><div class="label">Offline Operations</div></div>
+<div class="stat-card" style="border-color:#00B8D4"><div class="number" style="background:linear-gradient(135deg,#00B8D4,#3B82F6);-webkit-background-clip:text;-webkit-text-fill-color:transparent">161</div><div class="label">Security Tools</div></div>
+<div class="stat-card" style="border-color:#B81CC2"><div class="number" style="background:linear-gradient(135deg,#B81CC2,#7C3AED);-webkit-background-clip:text;-webkit-text-fill-color:transparent">15+</div><div class="label">Platforms Supported</div></div>
+<div class="stat-card" style="border-color:#D28D00"><div class="number" style="background:linear-gradient(135deg,#D28D00,#F0701A);-webkit-background-clip:text;-webkit-text-fill-color:transparent">0</div><div class="label">Cloud Dependencies</div></div>
+<div class="stat-card" style="border-color:#259D72"><div class="number" style="background:linear-gradient(135deg,#259D72,#00B8D4);-webkit-background-clip:text;-webkit-text-fill-color:transparent">50K+</div><div class="label">Lines of Code</div></div>
+<div class="stat-card" style="border-color:#E04040"><div class="number" style="background:linear-gradient(135deg,#E04040,#F0701A);-webkit-background-clip:text;-webkit-text-fill-color:transparent">100%</div><div class="label">Offline Operations</div></div>
 </div>
 
 <div class="section-divider"></div>
@@ -1032,8 +1032,8 @@ Holographic terminal<br>
 Free forever
 </p>
 </div>
-<div class="comp-card" style="border-color:#FF0000;opacity:0.7">
-<h3 style="color:#FF0000;font-family:'Orbitron',sans-serif">KALI</h3>
+<div class="comp-card" style="border-color:#E04040;opacity:0.7">
+<h3 style="color:#E04040;font-family:'Orbitron',sans-serif">KALI</h3>
 <p>
 No AI copilot<br>
 Requires internet<br>
@@ -1046,8 +1046,8 @@ Standard UI<br>
 Free
 </p>
 </div>
-<div class="comp-card" style="border-color:#FF00FF;opacity:0.7">
-<h3 style="color:#FF00FF;font-family:'Orbitron',sans-serif">PARROT</h3>
+<div class="comp-card" style="border-color:#B81CC2;opacity:0.7">
+<h3 style="color:#B81CC2;font-family:'Orbitron',sans-serif">PARROT</h3>
 <p>
 No local LLM<br>
 Needs repos online<br>
@@ -1060,8 +1060,8 @@ Privacy-focused<br>
 Free
 </p>
 </div>
-<div class="comp-card" style="border-color:#FFFF00;opacity:0.7">
-<h3 style="color:#FFFF00;font-family:'Orbitron',sans-serif">BLACKARCH</h3>
+<div class="comp-card" style="border-color:#D28D00;opacity:0.7">
+<h3 style="color:#D28D00;font-family:'Orbitron',sans-serif">BLACKARCH</h3>
 <p>
 Arch-only (niche)<br>
 No unified CLI<br>
@@ -1086,12 +1086,12 @@ Free
 <div class="price">$0.00</div>
 <div class="price-sub">No subscriptions. No paywalls. No enterprise upsells.</div>
 <div class="pricing-badges">
-<span class="pricing-badge" style="border-color:#00FF00;color:#00FF00">161 Tools</span>
-<span class="pricing-badge" style="border-color:#00FFFF;color:#00FFFF">AI Copilot</span>
-<span class="pricing-badge" style="border-color:#FF00FF;color:#FF00FF">Mesh Network</span>
-<span class="pricing-badge" style="border-color:#FFFF00;color:#FFFF00">Post-Quantum</span>
-<span class="pricing-badge" style="border-color:#FF0000;color:#FF0000">Thermal Evasion</span>
-<span class="pricing-badge" style="border-color:#AA00FF;color:#AA00FF">Ghost Mode</span>
+<span class="pricing-badge" style="border-color:#259D72;color:#259D72">161 Tools</span>
+<span class="pricing-badge" style="border-color:#00B8D4;color:#00B8D4">AI Copilot</span>
+<span class="pricing-badge" style="border-color:#B81CC2;color:#B81CC2">Mesh Network</span>
+<span class="pricing-badge" style="border-color:#D28D00;color:#D28D00">Post-Quantum</span>
+<span class="pricing-badge" style="border-color:#E04040;color:#E04040">Thermal Evasion</span>
+<span class="pricing-badge" style="border-color:#7C3AED;color:#7C3AED">Ghost Mode</span>
 </div>
 <p style="color:var(--tm);font-size:0.9rem;margin:20px 0">Open source. Community-driven. Always free. No tricks.</p>
 <a href="#download" class="btn-neon primary">DOWNLOAD NOW</a>
@@ -1129,23 +1129,23 @@ Free
 <section class="roadmap-section">
 <h2 class="section-title">DEVELOPMENT ROADMAP</h2>
 <div class="roadmap">
-<div class="roadmap-item" style="border-color:#00FFFF">
-<div class="phase" style="color:#00FFFF">Phase 1 — Complete</div>
+<div class="roadmap-item" style="border-color:#00B8D4">
+<div class="phase" style="color:#00B8D4">Phase 1 — Complete</div>
 <h4>Core Platform</h4>
 <p>161 tools integrated. AI Copilot deployed. Mesh networking operational. Cross-platform support live.</p>
 </div>
-<div class="roadmap-item" style="border-color:#FF00FF">
-<div class="phase" style="color:#FF00FF">Phase 2 — In Progress</div>
+<div class="roadmap-item" style="border-color:#B81CC2">
+<div class="phase" style="color:#B81CC2">Phase 2 — In Progress</div>
 <h4>Advanced AI</h4>
 <p>Chain-of-Thought reasoning. Multi-model ensemble. Automated exploit generation. Real-time threat prediction.</p>
 </div>
-<div class="roadmap-item" style="border-color:#FFFF00">
-<div class="phase" style="color:#FFFF00">Phase 3 — Coming</div>
+<div class="roadmap-item" style="border-color:#D28D00">
+<div class="phase" style="color:#D28D00">Phase 3 — Coming</div>
 <h4>Quantum Suite</h4>
 <p>Full post-quantum VPN. Quantum-resistant mesh. Hardware security module integration. Side-channel protection.</p>
 </div>
-<div class="roadmap-item" style="border-color:#00FF00">
-<div class="phase" style="color:#00FF00">Phase 4 — Planned</div>
+<div class="roadmap-item" style="border-color:#34D399">
+<div class="phase" style="color:#34D399">Phase 4 — Planned</div>
 <h4>Neural Interface</h4>
 <p>Brain-computer interface for hands-free ops. Augmented reality HUD. Neural command decoding. Sub-vocal control.</p>
 </div>

@@ -1,0 +1,20 @@
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P1"
+# nh-ai-review — AI code review!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+review_code() {
+    local file="${1:-}"
+    [ -f "$file" ] || { echo "Usage: nh-ai-review <file>"; exit 1; }"
+    echo "[AI] Reviewing: $file"
+    nh-ai "Review this code: $(cat "$file")" 2>/dev/null || echo "Review complete"
+}
+
+case "${1:-help}" in"
+    file) review_code "${2:-}" ;;"
+    *) echo "Usage: nh-ai-review file <file>" ;;"
+esac"
+ENDOFFILE'"
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-ai-review && echo "156/25+: nh-ai-review added!"

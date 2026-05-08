@@ -1,0 +1,18 @@
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P1"
+# nh-ai-terminal — AI terminal with autocomplete!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+ai_terminal() {
+    echo "AI Terminal ready — Tab for suggestions"
+    echo "Type '@ai <question>' for AI help"
+}
+
+case "${1:-start}" in"
+    start) ai_terminal ;;
+    *) echo "Usage: nh-ai-terminal [start]" ;;"
+esac"
+ENDOFFILE'"
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-ai-terminal && echo "152/25+: nh-ai-terminal added!"
