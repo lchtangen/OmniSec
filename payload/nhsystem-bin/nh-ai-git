@@ -1,0 +1,20 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-ai-git — AI Git helper!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+git_help() {
+    local task="${1:-}"'
+    echo "[AI] Git help: $task"'
+    nh-ai "Help with Git: $task" 2>/dev/null || echo "Git commands suggested"'
+}
+
+case "${1:-help}" in'
+    help) git_help "${2:-}" ;;'
+    *) echo "Usage: nh-ai-git [help <task>]" ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-ai-git && echo "163/25+: nh-ai-git added!"

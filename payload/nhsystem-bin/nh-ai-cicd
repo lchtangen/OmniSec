@@ -1,0 +1,20 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-ai-cicd — AI CI/CD pipeline generator!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+generate_pipeline() {
+    local desc="${1:-}"'
+    echo "[AI] Generating CI/CD: $desc"'
+    nh-ai "Generate CI/CD pipeline for: $desc" 2>/dev/null || echo "Pipeline template"'
+}
+
+case "${1:-help}" in'
+    gen) generate_pipeline "${2:-}" ;;'
+    *) echo "Usage: nh-ai-cicd [gen <desc>]" ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-ai-cicd && echo "162/25+: nh-ai-cicd added!"

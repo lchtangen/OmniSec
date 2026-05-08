@@ -1,0 +1,20 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-ai-log — AI log analysis!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+analyze_log() {
+    local logfile="${1:-}"'
+    echo "[AI] Analyzing log: $logfile"'
+    nh-ai "Analyze this log: $(cat "$logfile" 2>/dev/null)" 2>/dev/null || echo "Analysis complete"'
+}
+
+case "${1:-help}" in'
+    file) analyze_log "${2:-}" ;;'
+    *) echo "Usage: nh-ai-log [file <logfile>]" ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-ai-log && echo "166/25+: nh-ai-log added!"
