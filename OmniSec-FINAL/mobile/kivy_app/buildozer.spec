@@ -1,0 +1,36 @@
+[app]
+title = OmniSec ULTIMATE
+package.name = omnisec
+package.domain = io.omnisec
+source.dir = .
+source.include_exts = py,png,jpg,kv,atlas
+version = 3.0.0
+requirements = python3,kivy==2.3.0,kivymd==1.2.0,pyjnius,android,requests,sqlite3,pycryptodome
+orientation = portrait
+osx.python_version = 3
+osx.kivy_version = 2.2.1
+presplash.filename = presplash.png
+icon.filename = icon.png
+android.logcat_filters = *:S python:D
+android.api = 33
+android.minapi = 24
+android.sdk = 33
+android.ndk = 25b
+android.gradle_dependencies = 
+android.bootstrap = sdl2
+android.wakelock = True
+android.window_soft_input_mode = adjustResize
+android.accept_sdk_license = True
+android.manifest_intent_filters = 
+android.add_src = 
+android.add_src_exclude = *.pyc
+android.allow_backup = True
+android.archs = arm64-v8a
+android.manifest = 
+android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_WIFI_STATE,CHANGE_WIFI_STATE,BLUETOOTH,BLUETOOTH_ADMIN,ACCESS_FINE_LOCATION,ACCESS_COARSE_LOCATION,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,FOREGROUND_SERVICE
+android.extra_java_dirs = 
+android.add_src = 
+ios.codesign.debug = 
+ios.codesign.release = 
+ios.codesign.debug_all = 
+archs = arm64-v8a
