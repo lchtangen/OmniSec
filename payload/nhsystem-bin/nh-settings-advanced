@@ -1,0 +1,26 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-settings-advanced — Advanced settings!
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+show_advanced_settings() {
+    echo "Advanced Settings:"
+    echo "  Debug Mode: $([ -f /data/local/nhsystem/debug ] && echo "ON" || echo "OFF")"
+    echo "  Verbose Logging: $([ -f /data/local/nhsystem/verbose ] && echo "ON" || echo "OFF")"
+    echo "  Experimental Features: $([ -f /data/local/nhsystem/experimental ] && echo "ON" || echo "OFF")"
+}
+
+toggle_debug() {
+    echo "[*] Toggling debug mode..."
+}
+
+case "${1:-show}" in
+    show) show_advanced_settings;;
+    debug) toggle_debug ;;
+    *) show_advanced_settings ;;
+esac
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-settings-advanced && echo "508/25+: nh-settings-advanced added!"

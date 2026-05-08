@@ -1,0 +1,32 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-settings-chroot — Chroot settings!
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+CHROOT_DIR="/data/local/nhsystem/roots"
+
+show_chroot_settings() {
+    echo "Chroot Settings:"
+    echo "  Chroot Dir: $CHROOT_DIR"
+    ls -1 "$CHROOT_DIR/" 2>/dev/null | while read d; do
+        echo "    - $d"
+    done
+}
+
+add_chroot() {
+    local name="${1:-}"
+    [ -z "$name" ] && { echo "Usage: nh-settings-chroot add <name>"; exit 1; }
+    echo "[*] Adding chroot: $name"
+    mkdir -p "$CHROOT_DIR/$name"
+}
+
+case "${1:-show}" in
+    show) show_chroot_settings ;;
+    add) add_chroot "${2:-}" ;;
+    *) show_chroot_settings ;;
+esac
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-settings-chroot && echo "504/25+: nh-settings-chroot added!"

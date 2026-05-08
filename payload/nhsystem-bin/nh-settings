@@ -1,0 +1,42 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-settings — Main settings manager!
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+show_banner() {
+    echo ""
+    echo "════════════════════════════════════════"
+    echo "  NetHunter Matrix v3.0 — Settings"
+    echo "════════════════════════════════════════"
+    echo ""
+}
+
+show_menu() {
+    show_banner
+    echo "Settings Categories:"
+    echo "  1. AI Settings (nh-settings-ai)"
+    echo "  2. Device Settings (nh-settings-device)"
+    echo "  3. Chroot Settings (nh-settings-chroot)"
+    echo "  4. Network Settings (nh-settings-network)"
+    echo "  5. Security Settings (nh-settings-security)"
+    echo "  6. Display Settings (nh-settings-display)"
+    echo "  7. Advanced Settings (nh-settings-advanced)"
+    echo ""
+}
+
+case "${1:-menu}" in
+    menu|show) show_menu ;;
+    ai) nh-settings-ai "${2:-}" ;;
+    device) nh-settings-device "${2:-}" ;;
+    chroot) nh-settings-chroot "${2:-}" ;;
+    network) nh-settings-network "${2:-}" ;;
+    security) nh-settings-security "${2:-}" ;;
+    display) nh-settings-display "${2:-}" ;;
+    advanced) nh-settings-advanced "${2:-}" ;;
+    *) show_menu ;;
+esac
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-settings && echo "501/25+: nh-settings added!"

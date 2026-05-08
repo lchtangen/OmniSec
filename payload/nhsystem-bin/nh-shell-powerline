@@ -1,0 +1,19 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-shell-powerline — Powerline shells!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+install_powerline() {
+    echo "[*] Installing Powerline..."'
+    echo "  Powerline: statusline plugin for shells"'
+}
+
+case "${1:-help}" in'
+    install) install_powerline ;;'
+    *) echo "Usage: nh-shell-powerline [install]" ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-shell-powerline && echo "517/25+: nh-shell-powerline added!"

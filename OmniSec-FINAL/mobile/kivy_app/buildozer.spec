@@ -1,5 +1,5 @@
 [app]
-title = OmniSec ULTIMATE
+title = OmniSec
 package.name = omnisec
 package.domain = io.omnisec
 source.dir = .

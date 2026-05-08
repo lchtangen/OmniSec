@@ -1,0 +1,27 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-settings-security — Security settings!
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+show_security_settings() {
+    echo "Security Settings:"
+    echo "  SELinux: $(getenforce 2>/dev/null || echo "Unknown/Not installed")"
+    echo "  Firewall: $(iptables -L 2>/dev/null | head -3 || echo "iptables not available")"
+    echo "  Root Access: $([ -w / ] && echo "Available" || echo "Rootless mode")"
+}
+
+set_firewall() {
+    local action="${1:-status}"
+    echo "[*] Firewall: $action"
+}
+
+case "${1:-show}" in
+    show) show_security_settings ;;
+    firewall) set_firewall "${2:-}" ;;
+    *) show_security_settings ;;
+esac
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-settings-security && echo "506/25+: nh-settings-security added!"

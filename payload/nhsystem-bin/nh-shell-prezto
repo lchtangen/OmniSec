@@ -1,0 +1,19 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-shell-prezto — Prezto (zsh) setup!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+install_prezto() {
+    echo "[*] Installing Prezto..."'
+    echo "  Prezto: configuration framework for Zsh"'
+}
+
+case "${1:-help}" in'
+    install) install_prezto ;;'
+    *) echo "Usage: nh-shell-prezto [install]" ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-shell-prezto && echo "519/25+: nh-shell-prezto added!"

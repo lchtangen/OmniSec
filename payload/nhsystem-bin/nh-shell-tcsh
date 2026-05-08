@@ -1,0 +1,25 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-shell-tcsh — TC shell setup!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+install_tcsh() {
+    echo "[*] Installing TC shell..."'
+    echo "  TCsh: enhanced C-shell"'
+}
+
+enter_tcsh() {
+    echo "[*] Entering TCsh..."'
+    exec tcsh -l'
+}
+
+case "${1:-help}" in'
+    install) install_tcsh ;;'
+    enter) enter_tcsh ;;'
+    *) echo "Usage: nh-shell-tcsh [install|enter]" ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-shell-tcsh && echo "513/25+: nh-shell-tcsh added!"

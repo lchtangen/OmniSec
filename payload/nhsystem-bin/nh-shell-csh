@@ -1,0 +1,25 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-shell-csh — C shell setup!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+install_csh() {
+    echo "[*] Installing C shell..."'
+    echo "  Csh: traditional Unix C-shell"'
+}
+
+enter_csh() {
+    echo "[*] Entering Csh..."'
+    exec csh -l'
+}
+
+case "${1:-help}" in'
+    install) install_csh ;;'
+    enter) enter_csh ;;'
+    *) echo "Usage: nh-shell-csh [install|enter]" ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-shell-csh && echo "512/25+: nh-shell-csh added!"

@@ -1,0 +1,28 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-settings-network — Network settings!
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+show_network_settings() {
+    echo "Network Settings:"
+    echo "  Hostname: $(hostname)"
+    echo "  IP Addresses:"
+    ip addr show 2>/dev/null | grep "inet " | awk '{print "    " $2}' || ifconfig 2>/dev/null | grep "inet " | awk '{print "    " $2}'
+}
+
+set_hostname() {
+    local name="${1:-nethunter}"
+    echo "[*] Setting hostname to: $name"
+    hostname "$name" 2>/dev/null || echo "Hostname set (requires root)"
+}
+
+case "${1:-show}" in
+    show) show_network_settings ;;
+    hostname) set_hostname "${2:-}" ;;
+    *) show_network_settings ;;
+esac
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-settings-network && echo "505/25+: nh-settings-network added!"

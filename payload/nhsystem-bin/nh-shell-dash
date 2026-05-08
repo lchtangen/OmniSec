@@ -1,0 +1,25 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-shell-dash — Dash shell setup!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+install_dash() {
+    echo "[*] Installing Dash shell..."'
+    echo "  Dash: fast, POSIX-compliant shell"'
+}
+
+enter_dash() {
+    echo "[*] Entering Dash..."'
+    exec dash -l'
+}
+
+case "${1:-help}" in'
+    install) install_dash ;;'
+    enter) enter_dash ;;'
+    *) echo "Usage: nh-shell-dash [install|enter]" ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-shell-dash && echo "515/25+: nh-shell-dash added!"

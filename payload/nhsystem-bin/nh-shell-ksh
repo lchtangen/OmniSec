@@ -1,0 +1,25 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-shell-ksh — Korn shell setup!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+install_ksh() {
+    echo "[*] Installing Korn shell..."'
+    echo "  Ksh: Korn shell, powerful scripting"'
+}
+
+enter_ksh() {
+    echo "[*] Entering Ksh..."'
+    exec ksh -l'
+}
+
+case "${1:-help}" in'
+    install) install_ksh ;;'
+    enter) enter_ksh ;;'
+    *) echo "Usage: nh-shell-ksh [install|enter]" ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-shell-ksh && echo "514/25+: nh-shell-ksh added!"

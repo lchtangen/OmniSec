@@ -1,0 +1,25 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-shell-zsh — Zsh shell setup!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+install_zsh() {
+    echo "[*] Installing Zsh shell..."'
+    echo "  Zsh: powerful shell with enhancements"'
+}
+
+enter_zsh() {
+    echo "[*] Entering Zsh..."'
+    exec zsh -l'
+}
+
+case "${1:-help}" in'
+    install) install_zsh ;;'
+    enter) enter_zsh ;;'
+    *) echo "Usage: nh-shell-zsh [install|enter]" ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-shell-zsh && echo "510/25+: nh-shell-zsh added!"

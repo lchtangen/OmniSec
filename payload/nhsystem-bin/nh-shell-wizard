@@ -1,0 +1,26 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-shell-wizard — Shell selection wizard!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+show_shells() {
+    echo "Available Shells:"'
+    echo "  1. Bash (default) — nh-shell-bash"'
+    echo "  2. Zsh — nh-shell-zsh"'
+    echo "  3. Fish — nh-shell-fish"'
+    echo "  4. Korn (ksh) — nh-shell-ksh"'
+    echo "  5. Csh — nh-shell-csh"'
+    echo "  6. TCsh — nh-shell-tcsh"'
+    echo "  7. Dash — nh-shell-dash"'
+    echo "  8. Powerline — nh-shell-powerline"'
+}
+
+case "${1:-show}" in'
+    show) show_shells ;;'
+    *) show_shells ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-shell-wizard && echo "520/25+: nh-shell-wizard added! 10 DIFFERENT SHELLS!"

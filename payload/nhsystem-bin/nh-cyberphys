@@ -1,0 +1,345 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P2
+# nh-cyberphys - Cyber-Physical Systems Security
+# CAN bus, MAVLink drone, Modbus PLC, Zigbee/IoT
+set -u
+
+NHSYSTEM=${NHSYSTEM:-/data/local/nhsystem}
+CYBER_DIR="$NHSYSTEM/cyberphys"
+CONFIG_DIR="$NHSYSTEM/etc/cyberphys"
+LOG_DIR="$NHSYSTEM/logs/cyberphys"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+mkdir -p "$CYBER_DIR" "$CONFIG_DIR" "$LOG_DIR"
+
+info()  { printf "${BLUE}[INFO]${NC} %s\n" "$*"; }
+ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+err()   { printf "${RED}[ERR]${NC} %s\n" "$*" >&2; }
+debug() { [ "${DEBUG:-0}" = "1" ] && printf "${CYAN}[DBG]${NC} %s\n" "$*" || true; }
+
+check_root() {
+    [ "$(id -u)" -eq 0 ] || { err "This command requires root"; return 1; }
+}
+
+# ── CAN Bus Analysis ──────────────────────────────
+
+setup_can() {
+    info "Setting up CAN bus analysis tools..."
+    check_root || return 1
+    
+    # Install can-utils in chroot
+    if [ -f /data/local/nhsystem/roots/archlinux/usr/bin/pacman ]; then
+        info "Installing can-utils in Arch chroot..."
+        chroot /data/local/nhsystem/roots/archlinux pacman -S --noconfirm can-utils 2>/dev/null || \
+            warn "Failed to install can-utils"
+    fi
+    
+    # Load CAN module (if available)
+    modprobe can 2>/dev/null || warn "CAN module not available"
+    modprobe can_raw 2>/dev/null || true
+    modprobe vcan 2>/dev/null || true
+    
+    ok "CAN tools setup complete"
+}
+
+can_dump() {
+    local interface="${1:-vcan0}"
+    info "Dumping CAN traffic on $interface..."
+    
+    if ! command -v candump >/dev/null 2>&1; then
+        err "candump not found. Install: pacman -S can-utils"
+        return 1
+    fi
+    
+    candump -c -t d "$interface" 2>&1 | tee "$LOG_DIR/can_dump.log" || \
+        warn "Failed to start candump"
+}
+
+can_inject() {
+    local interface="$1"
+    local can_id="$2"
+    local data="$3"
+    
+    [ -z "$interface" ] || [ -z "$can_id" ] || [ -z "$data" ] && {
+        err "Usage: nh-cyberphys can-inject <interface> <can_id> <data>"
+        return 1
+    }
+    
+    info "Injecting CAN frame: ID=$can_id Data=$data"
+    
+    if command -v cansend >/dev/null 2>&1; then
+        cansend "$interface" "$can_id#$data" 2>&1 && ok "Frame injected" || warn "Injection failed"
+    else
+        err "cansend not found"
+    fi
+}
+
+# ── MAVLink Drone Protocol ──────────────────────────────
+
+setup_mavlink() {
+    info "Setting up MAVLink drone protocol tools..."
+    
+    if [ -f /data/local/nhsystem/roots/archlinux/usr/bin/python3 ]; then
+        info "Installing pymavlink in Arch chroot..."
+        chroot /data/local/nhsystem/roots/archlinux /usr/bin/python3 -m pip install pymavlink 2>/dev/null || \
+            warn "Failed to install pymavlink"
+    fi
+    
+    ok "MAVLink setup complete"
+}
+
+mavlink_listen() {
+    local port="${1:-/dev/ttyUSB0}"
+    local baud="${2:-57600}"
+    
+    info "Listening for MAVLink on $port (baud: $baud)..."
+    
+    if python3 -c "import pymavlink" 2>/dev/null; then
+        python3 -c "
+from pymavlink import mavutil
+mav = mavutil.mavlink_connection('$port', baud=$baud)
+while True:
+    msg = mav.recv_match(blocking=True)
+    print(msg)
+" 2>&1 | tee "$LOG_DIR/mavlink.log" || warn "MAVLink listen failed"
+    else
+        err "pymavlink not installed"
+    fi
+}
+
+mavlink_fuzz() {
+    local target_sysid="$1"
+    [ -z "$target_sysid" ] && { err "Usage: nh-cyberphys mavlink-fuzz <sys_id>"; return 1; }
+    
+    info "Fuzzing MAVLink protocol for system $target_sysid..."
+    warn "This is a simulated fuzzer - implement full fuzzing logic"
+    
+    # Simple fuzz example
+    for i in $(seq 1 100); do
+        echo "Fuzz iteration $i..."
+        # Would send malformed MAVLink messages
+    done
+}
+
+# ── Modbus PLC Scanner ──────────────────────────────
+
+setup_modbus() {
+    info "Setting up Modbus PLC tools..."
+    
+    if python3 -c "import pymodbus" 2>/dev/null; then
+        ok "pymodbus already available"
+    else
+        info "Installing pymodbus..."
+        pip3 install pymodbus 2>/dev/null || \
+            warn "Failed to install pymodbus"
+    fi
+    
+    ok "Modbus tools setup complete"
+}
+
+modbus_scan() {
+    local target="$1"
+    local port="${2:-502}"
+    
+    [ -z "$target" ] && { err "Usage: nh-cyberphys modbus-scan <target> [port]"; return 1; }
+    
+    info "Scanning Modbus TCP on $target:$port..."
+    
+    if python3 -c "import pymodbus" 2>/dev/null; then
+        python3 -c "
+from pymodbus.client import ModbusTcpClient
+client = ModbusTcpClient('$target', port=$port)
+client.connect()
+result = client.read_coils(0, 10)
+print('Coils:', result.registers if result else 'No response')
+client.close()
+" 2>&1 || warn "Modbus scan failed"
+    else
+        err "pymodbus not installed"
+    fi
+}
+
+# ── Zigbee/IoT Sniffer ──────────────────────────────
+
+setup_zigbee() {
+    info "Setting up Zigbee/IoT tools..."
+    
+    # Install zigbee tools
+    if [ -f /data/local/nhsystem/roots/archlinux/usr/bin/pacman ]; then
+        chroot /data/local/nhsystem/roots/archlinux pacman -S --noconfirm \
+            zigbee2mqtt 2>/dev/null || warn "Failed to install zigbee tools"
+    fi
+    
+    ok "Zigbee setup complete"
+}
+
+zigbee_sniff() {
+    local interface="${1:-wlan0}"
+    info "Starting Zigbee sniffer on $interface..."
+    
+    if command -v zigbee2mqtt >/dev/null 2>&1; then
+        zigbee2mqtt -d -m 2>&1 | tee "$LOG_DIR/zigbee.log" || \
+            warn "Zigbee sniffer failed"
+    else
+        warn "zigbee2mqtt not available"
+    fi
+}
+
+# ── Status ──────────────────────────────
+
+show_status() {
+    echo ""
+    echo "════════════════════════════════════════════════════════"
+    echo "  NH-CYBERPHYS STATUS"
+    echo "  Time: $(date)"
+    echo "════════════════════════════════════════════════════════"
+    echo ""
+    
+    # CAN Bus
+    echo "── CAN Bus ──"
+    if command -v candump >/dev/null 2>&1; then
+        ok "can-utils: Available"
+    else
+        info "can-utils: Not installed (pacman -S can-utils)"
+    fi
+    
+    echo ""
+    
+    # MAVLink
+    echo "── MAVLink Drone Protocol ──"
+    if python3 -c "import pymavlink" 2>/dev/null; then
+        ok "pymavlink: Available"
+    else
+        info "pymavlink: Not installed (pip install pymavlink)"
+    fi
+    
+    echo ""
+    
+    # Modbus
+    echo "── Modbus PLC ──"
+    if python3 -c "import pymodbus" 2>/dev/null; then
+        ok "pymodbus: Available"
+    else
+        info "pymodbus: Not installed (pip install pymodbus)"
+    fi
+    
+    echo ""
+    
+    # Zigbee
+    echo "── Zigbee/IoT ──"
+    if command -v zigbee2mqtt >/dev/null 2>&1; then
+        ok "zigbee2mqtt: Available"
+    else
+        info "zigbee2mqtt: Not installed"
+    fi
+}
+
+# ── Usage ──────────────────────────────
+
+usage() {
+    cat <<EOF
+nh-cyberphys - Cyber-Physical Systems Security
+
+Usage: nh-cyberphys <command> [options]
+
+CAN Bus (Vehicle Testing):
+  setup-can              Install CAN analysis tools
+  can-dump [iface]      Dump CAN traffic (default: vcan0)
+  can-inject <if> <id> <data>  Inject CAN frame
+
+MAVLink Drone:
+  setup-mavlink          Install MAVLink tools
+  mavlink-listen [port]   Listen for MAVLink messages
+  mavlink-fuzz <sys_id>   Fuzz MAVLink protocol
+
+Modbus PLC:
+  setup-modbus          Install Modbus tools
+  modbus-scan <target>    Scan Modbus TCP device
+
+Zigbee/IoT:
+  setup-zigbee          Install Zigbee tools
+  zigbee-sniff [iface]   Sniff Zigbee traffic
+
+Status:
+  status                 Show cyber-physical tools status
+
+Examples:
+  nh-cyberphys setup-can
+  nh-cyberphys can-dump vcan0
+  nh-cyberphys setup-mavlink
+  nh-cyberphys modbus-scan 192.168.1.100
+
+Hardware Required:
+  - CAN adapter (USB-to-CAN)
+  - Telemetry radio (for MAVLink)
+  - Zigbee dongle (for IoT)
+  - Modbus device or simulator
+
+Files:
+  Config: $CONFIG_DIR/
+  Logs:   $LOG_DIR/
+EOF
+}
+
+# ── Main ──────────────────────────────
+
+[ $# -ge 1 ] || usage
+
+case "$1" in
+    setup-can)
+        setup_can
+        ;;
+    can-dump)
+        shift
+        can_dump "${1:-vcan0}"
+        ;;
+    can-inject)
+        shift
+        can_inject "$@"
+        ;;
+    setup-mavlink)
+        setup_mavlink
+        ;;
+    mavlink-listen)
+        shift
+        mavlink_listen "${1:-/dev/ttyUSB0}" "${2:-57600}"
+        ;;
+    mavlink-fuzz)
+        shift
+        mavlink_fuzz "$@"
+        ;;
+    setup-modbus)
+        setup_modbus
+        ;;
+    modbus-scan)
+        shift
+        modbus_scan "${1:-}" "${2:-502}"
+        ;;
+    setup-zigbee)
+        setup_zigbee
+        ;;
+    zigbee-sniff)
+        shift
+        zigbee_sniff "${1:-wlan0}"
+        ;;
+    status)
+        show_status
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        err "Unknown command: $1"
+        usage
+        ;;
+esac

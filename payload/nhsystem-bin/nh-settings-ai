@@ -1,0 +1,31 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-settings-ai — AI settings!
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+AI_CONFIG="/data/local/nhsystem/etc/ai.conf"
+
+show_ai_settings() {
+    echo "AI Settings:"
+    echo "  Model: $(grep MODEL= "$AI_CONFIG" 2>/dev/null | cut -d= -f2 || echo "llama3.2:3b")"
+    echo "  Ollama Host: $(grep OLLAMA_HOST= "$AI_CONFIG" 2>/dev/null | cut -d= -f2 || echo "127.0.0.1:11434")"
+    echo "  System Prompt: $(grep SYSTEM_PROMPT= "$AI_CONFIG" 2>/dev/null | cut -d= -f2- || echo "default")"
+}
+
+set_model() {
+    local model="${1:-llama3.2:3b}"
+    echo "[*] Setting AI model to: $model"
+    mkdir -p "$(dirname "$AI_CONFIG")"
+    sed -i "s|MODEL=.*|MODEL=$model|" "$AI_CONFIG" 2>/dev/null || echo "MODEL=$model" >> "$AI_CONFIG"
+}
+
+case "${1:-show}" in
+    show) show_ai_settings ;;
+    model) set_model "${2:-}" ;;
+    *) show_ai_settings ;;
+esac
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-settings-ai && echo "502/25+: nh-settings-ai added!"

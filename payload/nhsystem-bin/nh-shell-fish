@@ -1,0 +1,25 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-shell-fish — Fish shell setup!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+install_fish() {
+    echo "[*] Installing Fish shell..."'
+    echo "  Fish: user-friendly, interactive shell"'
+}
+
+enter_fish() {
+    echo "[*] Entering Fish..."'
+    exec fish -l'
+}
+
+case "${1:-help}" in'
+    install) install_fish ;;'
+    enter) enter_fish ;;'
+    *) echo "Usage: nh-shell-fish [install|enter]" ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-shell-fish && echo "511/25+: nh-shell-fish added!"

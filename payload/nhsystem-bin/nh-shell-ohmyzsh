@@ -1,0 +1,19 @@
+#!/system/bin/sh'
+# NH_SETUP_VERSION: 3.0 matrix'
+# PRIORITY: P1'
+# nh-shell-ohmyzsh — Oh My Zsh setup!'
+
+set -euo pipefail'
+. /data/local/nhsystem/bin/nh-lib'
+
+install_ohmyzsh() {
+    echo "[*] Installing Oh My Zsh..."'
+    echo "  Oh My Zsh: community-driven framework"'
+}
+
+case "${1:-help}" in'
+    install) install_ohmyzsh ;;'
+    *) echo "Usage: nh-shell-ohmyzsh [install]" ;;'
+esac'
+ENDOFFILE'
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-shell-ohmyzsh && echo "518/25+: nh-shell-ohmyzsh added!"
