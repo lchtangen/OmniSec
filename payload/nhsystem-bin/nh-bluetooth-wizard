@@ -1,0 +1,22 @@
+#!/system/bin/sh"
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P1"
+# nh-bluetooth-wizard — Bluetooth pentest wizard!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+show_menu() {
+    echo "Bluetooth Pentest Options:"
+    echo "  1. Scan devices"
+    echo "  2. Pair with device"
+    echo "  3. Sniff traffic"
+    echo "  4. Blueborne test"
+    echo "  5. BadBluetooth attack"
+}
+
+case "${1:-menu}" in
+    menu) show_menu ;;
+    scan) echo "[*] Scanning..." ;;
+    *) show_menu ;;
+esac

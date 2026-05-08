@@ -1,0 +1,53 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-color-pro — Colorized proot launcher with advanced options.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+# Colors
+RED="\033[31m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+BLUE="\033[34m"
+MAGENTA="\033[35m"
+CYAN="\033[36m"
+WHITE="\033[37m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+show_banner() {
+    echo ""
+    echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════╗${RESET}"
+    echo -e "${BOLD}${WHITE}   NetHunter Matrix — Color Proot Launcher   ${RESET}"
+    echo -e "${BOLD}${CYAN}╚══════════════════════════════════════════╝${RESET}"
+    echo ""
+}
+
+list_distros() {
+    show_banner
+    echo -e "${BOLD}${YELLOW}Available Chroots:${RESET}"
+    echo ""
+    for d in /data/local/nhsystem/roots/*/; do
+        [ -d "$d" ] || continue
+        local name=$(basename "$d")
+        echo -e "  ${GREEN}▶${RESET} ${BOLD}$name${RESET}  ${CYAN}($(ls "$d" | wc -l) files)${RESET}"
+    done
+    echo ""
+}
+
+launch_proot() {
+    local distro="${1:-}"
+    [ -z "$distro" ] && { list_distros; exit 1; }
+    local root="/data/local/nhsystem/roots/$distro"
+    [ -d "$root" ] || { echo "Distro not found: $distro"; exit 1; }
+    
+    echo -e "${GREEN}[*]${RESET} Launching ${BOLD}$distro${RESET} in proot mode..."
+    proot -0 -r "$root" -w / -l /bin/bash
+}
+
+case "${1:-list}" in
+    list) list_distros ;;
+    *) launch_proot "${1:-}" ;;
+esac

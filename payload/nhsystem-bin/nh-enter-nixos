@@ -1,0 +1,27 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-enter-nixos — Enter NixOS chroot (rooted + rootless)
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+NIXOS_ROOT="/data/local/nhsystem/roots/nixos"
+MODE="${1:-rooted}"
+
+enter_rooted() {
+    echo "[*] Entering NixOS (rooted)..."
+    [ -d "$NIXOS_ROOT" ] || { echo "NixOS not installed. Run: nh-chroot-manager"; exit 1; }
+    chroot "$NIXOS_ROOT" /bin/sh -l
+}
+
+enter_rootless() {
+    echo "[*] Entering NixOS (rootless/proot)..."
+    [ -d "$NIXOS_ROOT" ] || { echo "NixOS not installed. Run: nh-chroot-manager"; exit 1; }
+    proot -0 -r "$NIXOS_ROOT" -w / -l /bin/sh
+}
+
+case "$MODE" in
+    rootless|--rootless) enter_rootless ;;
+    *) enter_rooted ;;
+esac

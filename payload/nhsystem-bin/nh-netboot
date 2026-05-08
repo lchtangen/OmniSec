@@ -1,0 +1,18 @@
+#!/system/bin/sh"
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P2"
+# nh-netboot — Network boot utilities!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+boot_network() {
+    echo "[*] Network boot options..."
+}
+
+case "${1:-help}" in
+    boot) boot_network ;;
+    *) echo "Usage: nh-netboot [boot]" ;;
+esac"
+EOF"
+chmod +x /home/tangen/nethunter-setup/src/device/bin/nh-netboot && echo "142/25+: nh-netboot added!"

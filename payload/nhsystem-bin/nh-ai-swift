@@ -1,0 +1,18 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-swift — AI Swift code generation!
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+generate_swift() {
+    local desc="${1:-iOS app}"
+    echo "[AI] Generating Swift: $desc"
+    nh-ai "Generate Swift code: $desc" 2>/dev/null || echo "Swift template"
+}
+
+case "${1:-help}" in
+    gen) generate_swift "${2:-}" ;;
+    *) echo "Usage: nh-ai-swift [gen <desc>]" ;;
+esac

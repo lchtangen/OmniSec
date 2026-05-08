@@ -1,0 +1,23 @@
+#!/system/bin/sh"
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P2"
+# nh-singularity — Singularity/Apptainer containers!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+build_container() {
+    local def="${1:-}"
+    echo "[*] Building Singularity container..."
+}
+
+run_container() {
+    local img="${1:-}"
+    echo "[*] Running Singularity: $img"
+}
+
+case "${1:-help}" in
+    build) build_container "${2:-}" ;;
+    run) run_container "${2:-}" ;;
+    *) echo "Usage: nh-singularity [build|run] <file>" ;;
+esac

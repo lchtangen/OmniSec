@@ -1,0 +1,27 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-enter-fedora — Enter Fedora chroot (rooted + rootless)
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+FEDORA_ROOT="/data/local/nhsystem/roots/fedora"
+MODE="${1:-rooted}"
+
+enter_rooted() {
+    echo "[*] Entering Fedora (rooted)..."
+    [ -d "$FEDORA_ROOT" ] || { echo "Fedora not installed. Run: nh-chroot-manager"; exit 1; }
+    chroot "$FEDORA_ROOT" /bin/bash -l
+}
+
+enter_rootless() {
+    echo "[*] Entering Fedora (rootless/proot)..."
+    [ -d "$FEDORA_ROOT" ] || { echo "Fedora not installed. Run: nh-chroot-manager"; exit 1; }
+    proot -0 -r "$FEDORA_ROOT" -w / -l /bin/bash
+}
+
+case "$MODE" in
+    rootless|--rootless) enter_rootless ;;
+    *) enter_rooted ;;
+esac

@@ -1,0 +1,26 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-enter-almalinux — Enter AlmaLinux chroot.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+ALMALINUX_ROOT="/data/local/nhsystem/roots/almalinux"
+MODE="${1:-rooted}"
+
+enter_rooted() {
+    echo "[*] Entering AlmaLinux (rooted)..."
+    [ -d "$ALMALINUX_ROOT" ] || { echo "AlmaLinux not installed. Run: nh-chroot-manager"; exit 1; }
+    chroot "$ALMALINUX_ROOT" /bin/bash -l
+}
+
+enter_rootless() {
+    echo "[*] Entering AlmaLinux (rootless/proot)..."
+    proot -0 -r "$ALMALINUX_ROOT" -w / -l /bin/bash
+}
+
+case "$MODE" in
+    rootless|--rootless) enter_rootless ;;
+    *) enter_rooted ;;
+esac

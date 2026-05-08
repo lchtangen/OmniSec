@@ -1,0 +1,18 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-typescript — AI TypeScript code generation!
+
+set -euo pipefail;
+. /data/local/nhsystem/bin/nh-lib"
+
+generate_ts() {
+    local desc="${1:-web app}"
+    echo "[AI] Generating TypeScript: $desc"
+    nh-ai "Generate TypeScript code: $desc" 2>/dev/null || echo "TS template"
+}
+
+case "${1:-help}" in
+    gen) generate_ts "${2:-}" ;;
+    *) echo "Usage: nh-ai-typescript [gen <desc>]" ;;
+esac

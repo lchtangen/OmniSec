@@ -1,0 +1,18 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-java — AI Java code generation!
+
+set -euo pipefail;
+. /data/local/nhsystem/bin/nh-lib"
+
+generate_java() {
+    local desc="${1:-Android app}"
+    echo "[AI] Generating Java: $desc"
+    nh-ai "Generate Java code: $desc" 2>/dev/null || echo "Java template"
+}
+
+case "${1:-help}" in
+    gen) generate_java "${2:-}" ;;
+    *) echo "Usage: nh-ai-java [gen <desc>]" ;;
+esac

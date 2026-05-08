@@ -1,0 +1,23 @@
+#!/system/bin/sh"
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P1"
+# nh-ai-docker — AI Docker image generator!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+generate_dockerfile() {
+    local desc="${1:-pentest environment}"
+    echo "[AI] Generating Dockerfile: $desc"
+    nh-ai "Create a Dockerfile for: $desc" 2>/dev/null || echo "FROM kalilinux/kali-rolling"
+}
+
+build_image() {
+    echo "[AI] Building Docker image..."
+}
+
+case "${1:-help}" in
+    generate) generate_dockerfile "${2:-}" ;;
+    build) build_image ;;
+    *) echo "Usage: nh-ai-docker [generate <desc>|build]" ;;
+esac

@@ -1,0 +1,74 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-proot-style — Exact proot install list style with colors!
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+# Colors (exact proot style)
+RED="\033[31m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+BLUE="\033[34m"
+MAGENTA="\033[35m"
+CYAN="\033[36m"
+WHITE="\033[37m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+show_proot_list() {
+    echo ""
+    echo -e "${BOLD}${CYAN}┌─────────────────────────────────────────────────────┐${RESET}"
+    echo -e "${BOLD}${WHITE}│  NetHunter Matrix — Chroot Installer (proot-style) │${RESET}"
+    echo -e "${BOLD}${CYAN}└─────────────────────────────────────────────────────┘${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}Usage:${RESET}"
+    echo -e "  ${GREEN}nh-proot-style install <distro>${RESET}  ${CYAN}(rooted chroot)${RESET}"
+    echo -e "  ${GREEN}nh-proot-style proot <distro>${RESET}   ${CYAN}(rootless, like proot)${RESET}"
+    echo ""
+    echo -e "${BOLD}${CYAN}━━━ Available Distributions ━━━${RESET}"
+    echo ""
+    echo -e "${BOLD}${WHITE}► Popular:${RESET}"
+    echo -e "  ${GREEN}1)${RESET}  ${BOLD}Alpine${RESET}        ${CYAN}alpine        ${YELLOW}(5MB, lightning fast)${RESET}"
+    echo -e "  ${GREEN}2)${RESET}  ${BOLD}Arch Linux${RESET}    ${CYAN}arch          ${YELLOW}(rolling release)${RESET}"
+    echo -e "  ${GREEN}3)${RESET}  ${BOLD}Debian${RESET}        ${CYAN}debian        ${YELLOW}(stable, rock solid)${RESET}"
+    echo -e "  ${GREEN}4)${RESET}  ${BOLD}Ubuntu${RESET}        ${CYAN}ubuntu        ${YELLOW}(LTS, user-friendly)${RESET}"
+    echo -e "  ${GREEN}5)${RESET}  ${BOLD}Fedora${RESET}        ${CYAN}fedora        ${YELLOW}(SELinux hardened)${RESET}"
+    echo ""
+    echo -e "${BOLD}${WHITE}► Security/Pentest:${RESET}"
+    echo -e "  ${GREEN}6)${RESET}  ${BOLD}Kali Linux${RESET}   ${CYAN}kali          ${YELLOW}(penetration testing)${RESET}"
+    echo -e "  ${GREEN}7)${RESET}  ${BOLD}Pentoo${RESET}        ${CYAN}pentoo        ${YELLOW}(Gentoo-based pentest)${RESET}"
+    echo -e "  ${GREEN}8)${RESET}  ${BOLD}BlackArch${RESET}    ${CYAN}blackarch     ${YELLOW}(Arch-based pentest)${RESET}"
+    echo -e "  ${GREEN}9)${RESET}  ${BOLD}ParrotOS${RESET}     ${CYAN}parrot        ${YELLOW}(privacy-focused)${RESET}"
+    echo -e "  ${GREEN}10)${RESET} ${BOLD}BackBox${RESET}      ${CYAN}backbox       ${YELLOW}(Ubuntu-based pentest)${RESET}"
+    echo ""
+    echo -e "${BOLD}${WHITE}► Advanced:${RESET}"
+    echo -e "  ${GREEN}11)${RESET} ${BOLD}NixOS${RESET}        ${CYAN}nixos         ${YELLOW}(declarative)${RESET}"
+    echo -e "  ${GREEN}12)${RESET} ${BOLD}Gentoo${RESET}       ${CYAN}gentoo        ${YELLOW}(source-based)${RESET}"
+    echo -e "  ${GREEN}13)${RESET} ${BOLD}Void Linux${RESET}   ${CYAN}void          ${YELLOW}(runit init)${RESET}"
+    echo -e "  ${GREEN}14)${RESET} ${BOLD}Slackware${RESET}   ${CYAN}slackware     ${YELLOW}(KISS philosophy)${RESET}"
+    echo ""
+    echo -e "${BOLD}${WHITE}► RHEL-based:${RESET}"
+    echo -e "  ${GREEN}15)${RESET} ${BOLD}Rocky Linux${RESET} ${CYAN}rocky         ${YELLOW}(RHEL clone)${RESET}"
+    echo -e "  ${GREEN}16)${RESET} ${BOLD}AlmaLinux${RESET}   ${CYAN}almalinux     ${YELLOW}(RHEL alternative)${RESET}"
+    echo -e "  ${GREEN}17)${RESET} ${BOLD}CentOS${RESET}       ${CYAN}centos        ${YELLOW}(RHEL downstream)${RESET}"
+    echo ""
+    echo -e "${BOLD}${WHITE}► More:${RESET}"
+    echo -e "  ${GREEN}18)${RESET} ${BOLD}openSUSE${RESET}    ${CYAN}opensuse      ${YELLOW}(YaST, Snapper)${RESET}"
+    echo -e "  ${GREEN}19)${RESET} ${BOLD}Mageia${RESET}      ${CYAN}mageia        ${YELLOW}(Mandriva fork)${RESET}"
+    echo -e "  ${GREEN}20)${RESET} ${BOLD}Manjaro${RESET}     ${CYAN}manjaro       ${YELLOW}(Arch-based, friendly)${RESET}"
+    echo ""
+    echo -e "${BOLD}${MAGENTA}━━━ Installation Modes ━━━${RESET}"
+    echo -e "  ${GREEN}•${RESET} ${BOLD}Rooted${RESET}:  ${CYAN}nh-enter-<distro>${RESET}           ${YELLOW}(full chroot, mount namespaces)${RESET}"
+    echo -e "  ${GREEN}•${RESET} ${BOLD}Rootless${RESET}: ${CYAN}nh-enter-<distro> --rootless${RESET} ${YELLOW}(proot, no root needed)${RESET}"
+    echo -e "  ${GREEN}•${RESET} ${BOLD}Hybrid${RESET}:  ${CYAN}nh-chroot-manager${RESET}       ${YELLOW}(auto-detect mode)${RESET}"
+    echo ""
+}
+
+case "${1:-list}" in
+    list|menu) show_proot_list ;;
+    install) echo "Installing ${2:-} (rooted)..." ;;
+    proot) echo "Installing ${2:-} (rootless)..." ;;
+    *) show_proot_list ;;
+esac

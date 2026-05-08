@@ -1,0 +1,22 @@
+#!/system/bin/sh"
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P1"
+# nh-wifi-wizard — WiFi pentest wizard!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+show_menu() {
+    echo "WiFi Pentest Options:"
+    echo "  1. Scan networks"
+    echo "  2. Capture handshakes"
+    echo "  3. Deauth attack"
+    echo "  4. Evil Twin setup"
+    echo "  5. WPA3 transition test"
+}
+
+case "${1:-menu}" in
+    menu) show_menu ;;
+    scan) echo "[*] Scanning..." ;;
+    *) show_menu ;;
+esac

@@ -1,0 +1,18 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-javascript — AI JavaScript code generation!
+
+set -euo pipefail;
+. /data/local/nhsystem/bin/nh-lib"
+
+generate_js() {
+    local desc="${1:-web app}"
+    echo "[AI] Generating JavaScript: $desc"
+    nh-ai "Generate JavaScript code: $desc" 2>/dev/null || echo "JS template"
+}
+
+case "${1:-help}" in
+    gen) generate_js "${2:-}" ;;
+    *) echo "Usage: nh-ai-javascript [gen <desc>]" ;;
+esac

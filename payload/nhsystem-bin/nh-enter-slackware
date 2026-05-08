@@ -1,0 +1,26 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-enter-slackware — Enter Slackware chroot.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+SLACKWARE_ROOT="/data/local/nhsystem/roots/slackware"
+MODE="${1:-rooted}"
+
+enter_rooted() {
+    echo "[*] Entering Slackware (rooted)..."
+    [ -d "$SLACKWARE_ROOT" ] || { echo "Slackware not installed. Run: nh-chroot-manager"; exit 1; }
+    chroot "$SLACKWARE_ROOT" /bin/bash -l
+}
+
+enter_rootless() {
+    echo "[*] Entering Slackware (rootless/proot)..."
+    proot -0 -r "$SLACKWARE_ROOT" -w / -l /bin/bash
+}
+
+case "$MODE" in
+    rootless|--rootless) enter_rootless ;;
+    *) enter_rooted ;;
+esac

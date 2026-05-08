@@ -1,0 +1,18 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-python — AI Python code generation!
+
+set -euo pipefail;
+. /data/local/nhsystem/bin/nh-lib"
+
+generate_python() {
+    local desc="${1:-security script}"
+    echo "[AI] Generating Python: $desc"
+    nh-ai "Generate Python code: $desc" 2>/dev/null || echo "Python template"
+}
+
+case "${1:-help}" in
+    gen) generate_python "${2:-}" ;;
+    *) echo "Usage: nh-ai-python [gen <desc>]" ;;
+esac

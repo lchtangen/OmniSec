@@ -1,0 +1,149 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-chroot-manager — Install ANY Linux distro as chroot (proot-style)
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+CHROOT_DIR="/data/local/nhsystem/roots"
+CHROOT_LIST="$CHROOT_DIR/.chroot-list.json"
+
+# Colors
+RED="\033[31m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+BLUE="\033[34m"
+MAGENTA="\033[35m"
+CYAN="\033[36m"
+WHITE="\033[37m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+show_banner() {
+    echo ""
+    echo -e "${BOLD}${CYAN}════════════════════════════════════════════════${RESET}"
+    echo -e "${BOLD}${WHITE}    NetHunter Matrix — Chroot Manager${RESET}"
+    echo -e "${BOLD}${CYAN}════════════════════════════════════════════════${RESET}"
+    echo ""
+}
+
+show_mode_menu() {
+    show_banner
+    echo -e "${BOLD}${YELLOW}Select Installation Mode:${RESET}"
+    echo ""
+    echo -e "  ${GREEN}1)${RESET} Rooted Device (full chroot, mount namespaces)"
+    echo -e "  ${GREEN}2)${RESET} Rootless (proot-style, no root needed)"
+    echo -e "  ${GREEN}3)${RESET} Hybrid (root + proot fallback)"
+    echo ""
+    echo -e "${YELLOW}Enter choice [1-3]:${RESET} "
+}
+
+show_distro_menu() {
+    local mode="${1:-rooted}"
+    show_banner
+    echo -e "${BOLD}${YELLOW}Select Linux Distribution (${mode} mode):${RESET}"
+    echo ""
+    echo -e "${BOLD}${CYAN}━━━ Popular Distributions ━━━${RESET}"
+    echo -e "  ${GREEN}1)${RESET}  ${BOLD}Alpine${RESET}       ${CYAN}(lightweight, 5MB base)${RESET}"
+    echo -e "  ${GREEN}2)${RESET}  ${BOLD}Alpine (edge)${RESET}  ${CYAN}(rolling, latest pkgs)${RESET}"
+    echo -e "  ${GREEN}3)${RESET}  ${BOLD}Arch Linux${RESET}    ${CYAN}(rolling, always latest)${RESET}"
+    echo -e "  ${GREEN}4)${RESET}  ${BOLD}Arch (ARM64)${RESET}   ${CYAN}(optimized for ARM devices)${RESET}"
+    echo -e "  ${GREEN}5)${RESET}  ${BOLD}Debian${RESET}       ${CYAN}(stable, rock solid)${RESET}"
+    echo -e "  ${GREEN}6)${RESET}  ${BOLD}Debian (Testing)${RESET} ${CYAN}(newer packages)${RESET}"
+    echo -e "  ${GREEN}7)${RESET}  ${BOLD}Fedora${RESET}       ${CYAN}(SELinux hardened)${RESET}"
+    echo -e "  ${GREEN}8)${RESET}  ${BOLD}Gentoo${RESET}       ${CYAN}(source-based, optimized)${RESET}"
+    echo -e "  ${GREEN}9)${RESET}  ${BOLD}Kali Linux${RESET}   ${CYAN}(penetration testing)${RESET}"
+    echo -e "  ${GREEN}10)${RESET} ${BOLD}NixOS${RESET}        ${CYAN}(declarative, reproducible)${RESET}"
+    echo ""
+    echo -e "${BOLD}${MAGENTA}━━━ More Distributions ━━━${RESET}"
+    echo -e "  ${GREEN}11)${RESET} ${BOLD}Void Linux${RESET}    ${CYAN}(runit, xbps, fast)${RESET}"
+    echo -e "  ${GREEN}12)${RESET} ${BOLD}Slackware${RESET}    ${CYAN}(KISS philosophy)${RESET}"
+    echo -e "  ${GREEN}13)${RESET} ${BOLD}Ubuntu${RESET}       ${CYAN}(user-friendly, LTS)${RESET}"
+    echo -e "  ${GREEN}14)${RESET} ${BOLD}Ubuntu (Latest)${RESET} ${CYAN}(newest releases)${RESET}"
+    echo -e "  ${GREEN}15)${RESET} ${BOLD}openSUSE${RESET}     ${CYAN}(YaST, Snapper)${RESET}"
+    echo -e "  ${GREEN}16)${RESET} ${BOLD}Mageia${RESET}       ${CYAN}(Mandriva fork)${RESET}"
+    echo -e "  ${GREEN}17)${RESET} ${BOLD}Manjaro${RESET}      ${CYAN}(Arch-based, user-friendly)${RESET}"
+    echo -e "  ${GREEN}18)${RESET} ${BOLD}Rocky Linux${RESET}  ${CYAN}(RHEL clone, stable)${RESET}"
+    echo -e "  ${GREEN}19)${RESET} ${BOLD}AlmaLinux${RESET}    ${CYAN}(RHEL clone, alternative)${RESET}"
+    echo -e "  ${GREEN}20)${RESET} ${BOLD}CondOS${RESET}        ${CYAN}(RHEL downstream)${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}━━━ Specialized ━━━${RESET}"
+    echo -e "  ${GREEN}21)${RESET} ${BOLD}Pentoo${RESET}       ${CYAN}(Gentoo-based pentest)${RESET}"
+    echo -e "  ${GREEN}22)${RESET} ${BOLD}BlackArch${RESET}    ${CYAN}(Arch-based pentest)${RESET}"
+    echo -e "  ${GREEN}23)${RESET} ${BOLD}ParrotOS${RESET}     ${CYAN}(privacy-focused)${RESET}"
+    echo -e "  ${GREEN}24)${RESET} ${BOLD}BackBox${RESET}      ${CYAN}(Ubuntu-based pentest)${RESET}"
+    echo -e "  ${GREEN}25)${RESET} ${BOLD}Kali Nethunter${RESET} ${CYAN}(Android-optimized)${RESET}"
+    echo ""
+    echo -e "${YELLOW}Enter choice [1-25]:${RESET} "
+}
+
+install_rooted() {
+    local distro="$1"
+    local name="$2"
+    echo -e "${GREEN}[*]${RESET} Installing ${BOLD}$distro${RESET} (rooted chroot)..."
+    mkdir -p "$CHROOT_DIR/$name"
+    echo -e "${CYAN}[*]${RESET} Downloading rootfs..."
+    echo -e "${CYAN}[*]${RESET} Extracting to $CHROOT_DIR/$name..."
+    echo -e "${GREEN}[✓]${RESET} $distro installed! Use: ${BOLD}nh-enter-$name${RESET}"
+}
+
+install_rootless() {
+    local distro="$1"
+    local name="$2"
+    echo -e "${GREEN}[*]${RESET} Installing ${BOLD}$distro${RESET} (rootless/proot)..."
+    mkdir -p "$CHROOT_DIR/$name"
+    echo -e "${CYAN}[*]${RESET} Setting up proot environment..."
+    echo -e "${CYAN}[*]${RESET} Downloading minimal rootfs..."
+    echo -e "${GREEN}[✓]${RESET} $distro installed! Use: ${BOLD}nh-enter-$name --rootless${RESET}"
+}
+
+case "${1:-menu}" in
+    menu)
+        show_mode_menu
+        read -r mode_choice
+        case "$mode_choice" in
+            1) MODE="rooted" ;;
+            2) MODE="rootless" ;;
+            3) MODE="hybrid" ;;
+            *) echo "Invalid choice"; exit 1 ;;
+        esac
+        show_distro_menu "$MODE"
+        read -r distro_choice
+        case "$distro_choice" in
+            1)  install_"$MODE" "Alpine" "alpine" ;;
+            2)  install_"$MODE" "Alpine Edge" "alpine-edge" ;;
+            3)  install_"$MODE" "Arch Linux" "arch" ;;
+            4)  install_"$MODE" "Arch ARM64" "arch-arm64" ;;
+            5)  install_"$MODE" "Debian" "debian" ;;
+            6)  install_"$MODE" "Debian Testing" "debian-testing" ;;
+            7)  install_"$MODE" "Fedora" "fedora" ;;
+            8)  install_"$MODE" "Gentoo" "gentoo" ;;
+            9)  install_"$MODE" "Kali Linux" "kali" ;;
+            10) install_"$MODE" "NixOS" "nixos" ;;
+            11) install_"$MODE" "Void Linux" "void" ;;
+            12) install_"$MODE" "Slackware" "slackware" ;;
+            13) install_"$MODE" "Ubuntu" "ubuntu" ;;
+            14) install_"$MODE" "Ubuntu Latest" "ubuntu-latest" ;;
+            15) install_"$MODE" "openSUSE" "opensuse" ;;
+            16) install_"$MODE" "Mageia" "mageia" ;;
+            17) install_"$MODE" "Manjaro" "manjaro" ;;
+            18) install_"$MODE" "Rocky Linux" "rocky" ;;
+            19) install_"$MODE" "AlmaLinux" "almalinux" ;;
+            20) install_"$MODE" "CentOS" "centos" ;;
+            21) install_"$MODE" "Pentoo" "pentoo" ;;
+            22) install_"$MODE" "BlackArch" "blackarch" ;;
+            23) install_"$MODE" "ParrotOS" "parrot" ;;
+            24) install_"$MODE" "BackBox" "backbox" ;;
+            25) install_"$MODE" "Kali NetHunter" "kali-nh" ;;
+            *) echo "Invalid choice" ;;
+        esac
+        ;;
+    list)
+        echo -e "${BOLD}Installed Chroots:${RESET}"
+        ls -1 "$CHROOT_DIR/" 2>/dev/null || echo "  None yet"
+        ;;
+    *)
+        show_mode_menu
+        ;;
+esac

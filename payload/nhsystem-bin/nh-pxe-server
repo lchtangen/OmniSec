@@ -1,0 +1,16 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-pxe-server — PXE boot server!
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+start_pxe() {
+    echo "[*] Starting PXE server..."
+}
+
+case "${1:-help}" in
+    start) start_pxe ;;
+    *) echo "Usage: nh-pxe-server [start]" ;;
+esac

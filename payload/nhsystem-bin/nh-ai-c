@@ -1,0 +1,18 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-c — AI C code generation!
+
+set -euo pipefail;
+. /data/local/nhsystem/bin/nh-lib"
+
+generate_c() {
+    local desc="${1:-system tool}"
+    echo "[AI] Generating C: $desc"
+    nh-ai "Generate C code: $desc" 2>/dev/null || echo "C template"
+}
+
+case "${1:-help}" in
+    gen) generate_c "${2:-}" ;;
+    *) echo "Usage: nh-ai-c [gen <desc>]" ;;
+esac

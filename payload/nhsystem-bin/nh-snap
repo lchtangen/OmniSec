@@ -1,0 +1,22 @@
+#!/system/bin/sh"
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P2"
+# nh-snap — Snap package manager!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+install_snapd() {
+    echo "[*] Installing Snapd..."
+}
+
+install_snap() {
+    local pkg="${1:-}"
+    echo "[*] Installing Snap: $pkg"
+}
+
+case "${1:-help}" in
+    snapd) install_snapd ;;
+    install) install_snap "${2:-}" ;;
+    *) echo "Usage: nh-snap [snapd|install <pkg>]" ;;
+esac

@@ -1,0 +1,27 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-enter-alpine — Enter Alpine Linux chroot (rooted + rootless)
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+ALPINE_ROOT="/data/local/nhsystem/roots/alpine"
+MODE="${1:-rooted}"  # rooted or rootless
+
+enter_rooted() {
+    echo "[*] Entering Alpine Linux (rooted)..."
+    [ -d "$ALPINE_ROOT" ] || { echo "Alpine not installed. Run: nh-chroot-manager"; exit 1; }
+    chroot "$ALPINE_ROOT" /bin/sh -l
+}
+
+enter_rootless() {
+    echo "[*] Entering Alpine Linux (rootless/proot)..."
+    [ -d "$ALPINE_ROOT" ] || { echo "Alpine not installed. Run: nh-chroot-manager"; exit 1; }
+    proot -0 -r "$ALPINE_ROOT" -w / -l /bin/sh
+}
+
+case "$MODE" in
+    rootless|--rootless) enter_rootless ;;
+    *) enter_rooted ;;
+esac

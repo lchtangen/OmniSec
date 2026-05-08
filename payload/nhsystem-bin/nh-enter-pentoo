@@ -1,0 +1,26 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-enter-pentoo — Enter Pentoo (Gentoo-based pentest) chroot.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+PENTOO_ROOT="/data/local/nhsystem/roots/pentoo"
+MODE="${1:-rooted}"
+
+enter_rooted() {
+    echo "[*] Entering Pentoo Linux (rooted)..."
+    [ -d "$PENTOO_ROOT" ] || { echo "Pentoo not installed. Run: nh-chroot-manager"; exit 1; }
+    chroot "$PENTOO_ROOT" /bin/bash -l
+}
+
+enter_rootless() {
+    echo "[*] Entering Pentoo (rootless/proot)..."
+    proot -0 -r "$PENTOO_ROOT" -w / -l /bin/bash
+}
+
+case "$MODE" in
+    rootless|--rootless) enter_rootless ;;
+    *) enter_rooted ;;
+esac

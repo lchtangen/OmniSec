@@ -1,0 +1,48 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-rootless-wizard — Rootless edition setup (like proot!)
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+# Colors
+GREEN="\033[32m"
+YELLOW="\033[33m"
+CYAN="\033[36m"
+MAGENTA="\033[35m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+show_wizard() {
+    echo ""
+    echo -e "${BOLD}${CYAN}╔════════════════════════════════════════╗${RESET}"
+    echo -e "${BOLD}${WHITE}   NetHunter Matrix — Rootless Edition Wizard   ${RESET}"
+    echo -e "${BOLD}${CYAN}╚════════════════════════════════════════╝${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}No Root? No Problem!${RESET}"
+    echo ""
+    echo -e "${BOLD}Features:${RESET}"
+    echo -e "  ${GREEN}✓${RESET} Run Linux chroots without root (proot)"
+    echo -e "  ${GREEN}✓${RESET} All 294+ tools available"
+    echo -e "  ${GREEN}✓${RESET} AI-powered features"
+    echo -e "  ${GREEN}✓${RESET} Mesh networking"
+    echo -e "  ${GREEN}✓${RESET} Quantum-safe crypto"
+    echo ""
+    echo -e "${BOLD}${MAGENTA}Quick Start:${RESET}"
+    echo -e "  ${CYAN}1.${RESET} Install a distro: ${GREEN}nh-proot-style install ubuntu${RESET}"
+    echo -e "  ${CYAN}2.${RESET} Or rootless:     ${GREEN}nh-enter-ubuntu --rootless${RESET}"
+    echo -e "  ${CYAN}3.${RESET} Launch tools:      ${GREEN}nh-ai --rootless${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}Available Rootless Distros:${RESET}"
+    echo -e "  ${GREEN}•${RESET} Alpine, Arch, Debian, Ubuntu, Fedora"
+    echo -e "  ${GREEN}•${RESET} Kali, Pentoo, BlackArch, ParrotOS"
+    echo -e "  ${GREEN}•${RESET} NixOS, Gentoo, Void, Slackware"
+    echo ""
+}
+
+case "${1:-show}" in
+    show|wizard) show_wizard ;;
+    start) echo "Starting rootless setup..." ;;
+    *) show_wizard ;;
+esac

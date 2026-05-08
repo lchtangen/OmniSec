@@ -1,0 +1,27 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-enter-debian — Enter Debian chroot (rooted + rootless)
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+DEBIAN_ROOT="/data/local/nhsystem/roots/debian"
+MODE="${1:-rooted}"
+
+enter_rooted() {
+    echo "[*] Entering Debian (rooted)..."
+    [ -d "$DEBIAN_ROOT" ] || { echo "Debian not installed. Run: nh-chroot-manager"; exit 1; }
+    chroot "$DEBIAN_ROOT" /bin/bash -l
+}
+
+enter_rootless() {
+    echo "[*] Entering Debian (rootless/proot)..."
+    [ -d "$DEBIAN_ROOT" ] || { echo "Debian not installed. Run: nh-chroot-manager"; exit 1; }
+    proot -0 -r "$DEBIAN_ROOT" -w / -l /bin/bash
+}
+
+case "$MODE" in
+    rootless|--rootless) enter_rootless ;;
+    *) enter_rooted ;;
+esac

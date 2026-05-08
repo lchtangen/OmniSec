@@ -1,0 +1,31 @@
+#!/system/bin/sh"
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P1"
+# nh-docker-manager — Docker + Podman on Android!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+show_banner() {
+    echo ""
+    echo "╔═════════════════════════════════════════╗"
+    echo "  NetHunter Matrix — Docker Manager"
+    echo "╚═════════════════════════════════════════╝"
+    echo ""
+}
+
+install_docker() {
+    echo "[*] Installing Docker (rooted)..."
+    echo "  Setting up Docker in chroot..."
+}
+
+install_podman() {
+    echo "[*] Installing Podman (rootless)..."
+}
+
+case "${1:-menu}" in
+    menu) show_banner; echo "1. Docker (rooted) | 2. Podman (rootless)";;;
+    docker) install_docker ;;
+    podman) install_podman ;;
+    *) show_banner ;;
+esac

@@ -1,0 +1,18 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-cpp — AI C++ code generation!
+
+set -euo pipefail;
+. /data/local/nhsystem/bin/nh-lib"
+
+generate_cpp() {
+    local desc="${1:-performance tool}"
+    echo "[AI] Generating C++: $desc"
+    nh-ai "Generate C++ code: $desc" 2>/dev/null || echo "C++ template"
+}
+
+case "${1:-help}" in
+    gen) generate_cpp "${2:-}" ;;
+    *) echo "Usage: nh-ai-cpp [gen <desc>]" ;;
+esac

@@ -1,0 +1,27 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-enter-ubuntu — Enter Ubuntu chroot (rooted + rootless)
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+UBUNTU_ROOT="/data/local/nhsystem/roots/ubuntu"
+MODE="${1:-rooted}"
+
+enter_rooted() {
+    echo "[*] Entering Ubuntu (rooted)..."
+    [ -d "$UBUNTU_ROOT" ] || { echo "Ubuntu not installed. Run: nh-chroot-manager"; exit 1; }
+    chroot "$UBUNTU_ROOT" /bin/bash -l
+}
+
+enter_rootless() {
+    echo "[*] Entering Ubuntu (rootless/proot)..."
+    [ -d "$UBUNTU_ROOT" ] || { echo "Ubuntu not installed. Run: nh-chroot-manager"; exit 1; }
+    proot -0 -r "$UBUNTU_ROOT" -w / -l /bin/bash
+}
+
+case "$MODE" in
+    rootless|--rootless) enter_rootless ;;
+    *) enter_rooted ;;
+esac

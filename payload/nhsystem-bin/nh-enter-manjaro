@@ -1,0 +1,26 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-enter-manjaro — Enter Manjaro chroot.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+MANJARO_ROOT="/data/local/nhsystem/roots/manjaro"
+MODE="${1:-rooted}"
+
+enter_rooted() {
+    echo "[*] Entering Manjaro (rooted)..."
+    [ -d "$MANJARO_ROOT" ] || { echo "Manjaro not installed. Run: nh-chroot-manager"; exit 1; }
+    chroot "$MANJARO_ROOT" /bin/bash -l
+}
+
+enter_rootless() {
+    echo "[*] Entering Manjaro (rootless/proot)..."
+    proot -0 -r "$MANJARO_ROOT" -w / -l /bin/bash
+}
+
+case "$MODE" in
+    rootless|--rootless) enter_rootless ;;
+    *) enter_rooted ;;
+esac

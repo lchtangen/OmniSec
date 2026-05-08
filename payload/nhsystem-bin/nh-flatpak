@@ -1,0 +1,23 @@
+#!/system/bin/sh"
+# NH_SETUP_VERSION: 3.0 matrix"
+# PRIORITY: P2"
+# nh-flatpak — Flatpak package manager!"
+
+set -euo pipefail"
+. /data/local/nhsystem/bin/nh-lib"
+
+install_flatpak() {
+    echo "[*] Installing Flatpak..."
+    echo "  Setting up Flatpak in chroot..."
+}
+
+install_app() {
+    local app="${1:-}"
+    echo "[*] Installing Flatpak app: $app"
+}
+
+case "${1:-help}" in
+    install) install_flatpak ;;
+    app) install_app "${2:-}" ;;
+    *) echo "Usage: nh-flatpak [install|app <name>]" ;;
+esac

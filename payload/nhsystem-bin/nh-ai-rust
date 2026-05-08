@@ -1,0 +1,18 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-rust — AI Rust code generation!
+
+set -euo pipefail;
+. /data/local/nhsystem/bin/nh-lib"
+
+generate_rust() {
+    local desc="${1:-secure tool}"
+    echo "[AI] Generating Rust: $desc"
+    nh-ai "Generate Rust code: $desc" 2>/dev/null || echo "Rust template"
+}
+
+case "${1:-help}" in
+    gen) generate_rust "${2:-}" ;;
+    *) echo "Usage: nh-ai-rust [gen <desc>]" ;;
+esac

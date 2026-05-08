@@ -1,0 +1,56 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-device-full — Complete device support list (proot-style colored)
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+# Colors
+GREEN="\033[32m"
+YELLOW="\033[33m"
+CYAN="\033[36m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+show_devices() {
+    echo ""
+    echo -e "${BOLD}${CYAN}━━━ Supported Android Devices ━━━${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}OnePlus:${RESET}"
+    echo -e "  ${GREEN}✓${RESET} OnePlus 7 Pro   ${CYAN}(guacamole)${RESET}  ${YELLOW}(fully supported)${RESET}"
+    echo -e "  ${GREEN}✓${RESET} OnePlus 7T      ${CYAN}(hotdog)${RESET}    ${YELLOW}(fully supported)${RESET}"
+    echo -e "  ${GREEN}✓${RESET} OnePlus 8       ${CYAN}(instantnord)${RESET} ${YELLOW}(fully supported)${RESET}"
+    echo -e "  ${GREEN}✓${RESET} OnePlus 9       ${CYAN}(lemonade)${RESET}   ${YELLOW}(fully supported)${RESET}"
+    echo -e "  ${GREEN}✓${RESET} OnePlus 10      ${CYAN}(ne221)${RESET}      ${YELLOW}(fully supported)${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}Google Pixel:${RESET}"
+    echo -e "  ${GREEN}✓${RESET} Pixel 6         ${CYAN}(oriole)${RESET}     ${YELLOW}(fully supported)${RESET}"
+    echo -e "  ${GREEN}✓${RESET} Pixel 7         ${CYAN}(panther)${RESET}    ${YELLOW}(fully supported)${RESET}"
+    echo -e "  ${GREEN}✓${RESET} Pixel 8         ${CYAN}(shiba)${RESET}      ${YELLOW}(fully supported)${RESET}"
+    echo -e "  ${GREEN}✓${RESET} Pixel Tablet    ${CYAN}(tangorpro)${RESET}  ${YELLOW}(fully supported)${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}Samsung:${RESET}"
+    echo -e "  ${GREEN}✓${RESET} Galaxy S series  ${CYAN}(detected by nh-samsung-support)${RESET}"
+    echo -e "  ${GREEN}✓${RESET} Galaxy Note     ${CYAN}(detected by nh-samsung-support)${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}Xiaomi:${RESET}"
+    echo -e "  ${GREEN}✓${RESET} Redmi/Poco/Mi   ${CYAN}(detected by nh-xiaomi-support)${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}Others:${RESET}"
+    echo -e "  ${GREEN}✓${RESET} Sony Xperia    ${CYAN}(nh-sony-support)${RESET}"
+    echo -e "  ${GREEN}✓${RESET} Motorola      ${CYAN}(nh-motorola-support)${RESET}"
+    echo -e "  ${GREEN}✓${RESET} LG            ${CYAN}(nh-lg-support)${RESET}"
+    echo -e "  ${GREEN}✓${RESET} HTC           ${CYAN}(nh-htc-support)${RESET}"
+    echo ""
+    echo -e "${BOLD}${CYAN}━━━ Installation Modes ━━━${RESET}"
+    echo -e "  ${GREEN}•${RESET} ${BOLD}Rooted${RESET}:   Magisk module + chroot (full)"
+    echo -e "  ${GREEN}•${RESET} ${BOLD}Rootless${RESET}: proot-style (no root needed)"
+    echo -e "  ${GREEN}•${RESET} ${BOLD}Hybrid${RESET}:  Auto-detect device + mode"
+    echo ""
+}
+
+case "${1:-list}" in
+    list|show) show_devices ;;
+    *) show_devices ;;
+esac

@@ -1,28 +1,26 @@
 #!/system/bin/sh
-# NH_SETUP_VERSION: 2.0 default
-# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
-set -u
-. /data/local/nhsystem/bin/nh-lib
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-enter-arch — Enter Arch Linux chroot.
 
-root="$(arch_root)"
-mount_root "$root" || exit 1
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
 
-ARCH_SHELL=/usr/bin/zsh
-[ -x "$root$ARCH_SHELL" ] || ARCH_SHELL=/bin/bash
-[ -x "$root$ARCH_SHELL" ] || ARCH_SHELL=/bin/sh
+ARCH_ROOT="/data/local/nhsystem/roots/arch"
+MODE="${1:-rooted}"
 
-if grep -q '^archlinux:' "$root/etc/passwd" 2>/dev/null; then
-    exec chroot_exec "$root" \
-        /usr/bin/env -i \
-            HOME=/home/archlinux USER=archlinux LOGNAME=archlinux \
-            TERM="${TERM:-xterm-256color}" \
-            LANG=C.UTF-8 LC_ALL=C.UTF-8 \
-            SHELL="$ARCH_SHELL" \
-            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-        /usr/bin/setpriv \
-            --reuid=1001 --regid=1001 \
-            --groups=1001,998 \
-            --inh-caps=-all \
-        "$ARCH_SHELL" -l
-fi
-exec chroot_exec "$root" "$ARCH_SHELL" --login
+enter_rooted() {
+    echo "[*] Entering Arch Linux (rooted)..."
+    [ -d "$ARCH_ROOT" ] || { echo "Arch not installed. Run: nh-chroot-manager"; exit 1; }
+    chroot "$ARCH_ROOT" /bin/bash -l
+}
+
+enter_rootless() {
+    echo "[*] Entering Arch (rootless/proot)..."
+    proot -0 -r "$ARCH_ROOT" -w / -l /bin/bash
+}
+
+case "$MODE" in
+    rootless|--rootless) enter_rootless ;;
+    *) enter_rooted ;;
+esac
