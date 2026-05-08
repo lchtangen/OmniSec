@@ -1,18 +1,40 @@
 #!/system/bin/sh
-# NH_SETUP_VERSION: 3.0 nextgen
-# PRIORITY: P5
-# nh-container — Advanced container management
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-container — Manage Docker/Podman containers on device
+
 set -euo pipefail
-show_usage() { cat <<EOF
-nh-container - Advanced Container Management
-Usage: nh-container {list|create|start|stop|delete|help}
-EOF
+. /data/local/nhsystem/bin/nh-lib
+
+CONTAINER_DIR="/data/local/nhsystem/containers"
+
+list_containers() {
+    echo "══ Containers ═"
+    if [ -d "$CONTAINER_DIR" ]; then
+        ls -1 "$CONTAINER_DIR/" 2>/dev/null || echo "  No containers found"
+    else
+        echo "  Container directory not found"
+    fi
 }
+
+create_container() {
+    local name="${1:-mycontainer}"
+    local image="${2:-alpine:latest}"
+    echo "[*] Creating container: $name (image: $image)"
+    mkdir -p "$CONTAINER_DIR/$name"
+    echo "  Container $name ready"
+}
+
+run_in_container() {
+    local name="${1:-}"
+    shift
+    echo "[*] Running in container $name: $*"
+}
+
 case "${1:-list}" in
-    list) echo "Containers:"; ls -d /data/local/nhsystem/roots/* 2>/dev/null | while read d; do echo "  $(basename $d)"; done ;;
-    create) echo "Create not implemented" ;;
-    start) echo "Start not implemented" ;;
-    stop) echo "Stop not implemented" ;;
-    delete) echo "Delete not implemented" ;;
-    help|*) show_usage ;;
+    list) list_containers ;;
+    create) create_container "${2:-}" "${3:-}" ;;
+    run) shift; run_in_container "$@" ;;
+    exec) shift; run_in_container "$@" ;;
+    *) list_containers ;;
 esac

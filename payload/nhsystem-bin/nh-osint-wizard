@@ -1,0 +1,38 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-osint-wizard — Automated OSINT collection wizard.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+show_menu() {
+    echo "════════════════════════════════════════"
+    echo "  NetHunter Matrix — OSINT Wizard"
+    echo "════════════════════════════════════════"
+    echo ""
+    echo "Targets:"
+    echo "  1. Person (name, email, phone)"
+    echo "  2. Domain (emails, subdomains, social)"
+    echo "  3. Username (all platforms)"
+    echo "  4. Phone (owner, social, breaches)"
+    echo "  5. Email (breaches, social, domains)"
+}
+
+collect_person() {
+    local name="${1:-}"
+    echo "[*] Collecting OSINT for: $name"
+}
+
+collect_domain() {
+    local domain="${1:-}"
+    echo "[*] Collecting OSINT for domain: $domain"
+}
+
+case "${1:-menu}" in
+    menu) show_menu ;;
+    person) collect_person "${2:-}" ;;
+    domain) collect_domain "${2:-}" ;;
+    username) nh-social-osint username "${2:-}" ;;
+    *) show_menu ;;
+esac

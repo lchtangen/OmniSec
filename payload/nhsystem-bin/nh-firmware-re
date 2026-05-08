@@ -1,0 +1,25 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-firmware-re — Firmware reverse engineering.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+analyze_fw() {
+    local fw="${1:-}"
+    [ -f "$fw" ] || { echo "Usage: nh-firmware-re <firmware>"; exit 1; }
+    echo "[*] Analyzing firmware: $fw"
+    echo "  Architecture: $(file "$fw" | cut -d: -f2)"
+    echo "  Strings: $(strings "$fw" | wc -l) found"
+}
+
+extract_fs() {
+    echo "[*] Extracting filesystem from firmware..."
+}
+
+case "${1:-help}" in
+    analyze) analyze_fw "${2:-}" ;;
+    extract) extract_fs ;;
+    *) echo "Usage: nh-firmware-re [analyze|extract] <firmware>" ;;
+esac

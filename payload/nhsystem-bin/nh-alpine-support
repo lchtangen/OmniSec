@@ -1,0 +1,20 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-alpine-support — Alpine Linux chroot (lightweight).
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+ALPINE_ROOT="/data/local/nhsystem/roots/alpine"
+
+setup_alpine() {
+    echo "[*] Setting up Alpine Linux chroot..."
+    mkdir -p "$ALPINE_ROOT"
+    echo "  Alpine: ultra-lightweight (great for containers)"
+}
+
+case "${1:-setup}" in
+    setup) setup_alpine ;;
+    *) echo "Usage: nh-alpine-support [setup]" ;;
+esac

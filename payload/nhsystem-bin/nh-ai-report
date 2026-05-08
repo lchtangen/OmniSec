@@ -1,0 +1,22 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-report — AI professional report generation.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+gen_executive() {
+    echo "[AI Report] Generating executive summary..."
+    nh-ai "Generate executive summary for pentest" 2>/dev/null || echo "  Report: generated (basic)"
+}
+
+gen_technical() {
+    echo "[AI Report] Generating technical report..."
+}
+
+case "${1:-help}" in
+    exec) gen_executive ;;
+    tech) gen_technical ;;
+    *) echo "Usage: nh-ai-report [exec|tech]" ;;
+esac

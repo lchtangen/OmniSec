@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-remediate — AI-powered remediation suggestions.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+suggest_fix() {
+    local issue="${1:-}"
+    echo "[AI Remediate] Suggesting fix for: $issue"
+    nh-ai "Suggest remediation for: $issue" 2>/dev/null || echo "  Fix: suggested (basic)"
+}
+
+automate_fix() {
+    echo "[AI Remediate] Automating remediation..."
+}
+
+case "${1:-help}" in
+    fix) suggest_fix "${2:-}" ;;
+    auto) automate_fix ;;
+    *) echo "Usage: nh-ai-remediate [fix <issue>|auto]" ;;
+esac

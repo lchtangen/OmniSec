@@ -1,0 +1,36 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-incident-response — Automated incident response.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+show_ir_menu() {
+    echo "═════════════════════════════════════════"
+    echo "  NetHunter Matrix — Incident Response"
+    echo "═════════════════════════════════════════"
+    echo ""
+    echo "Phases:"
+    echo "  1. Detection (alerts, logs)"
+    echo "  2. Containment (isolate, block)"
+    echo "  3. Eradication (clean, remove)"
+    echo "  4. Recovery (restore, patch)"
+    echo "  5. Lessons learned (report)"
+}
+
+run_ir() {
+    local incident="${1:-test}"
+    echo "[IR] Incident response: $incident"
+    echo "  Phase 1: Detection - collecting logs..."
+    echo "  Phase 2: Containment - isolating..."
+    echo "  Phase 3: Eradication - removing threats..."
+    echo "  Phase 4: Recovery - restoring..."
+    echo "  Phase 5: Report - generating..."
+}
+
+case "${1:-menu}" in
+    menu) show_ir_menu ;;
+    run) run_ir "${2:-}" ;;
+    *) show_ir_menu ;;
+esac

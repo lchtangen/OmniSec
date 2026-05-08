@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-motorola-support — Motorola device support.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+detect_motorola() {
+    local model=$(getprop ro.product.model 2>/dev/null || echo "Unknown")
+    if echo "$model" | grep -qi motorola; then
+        echo "[*] Motorola detected: $model"
+        return 0
+    else
+        echo "  Not a Motorola device"
+        return 1
+    fi
+}
+
+case "${1:-detect}" in
+    detect) detect_motorola ;;
+    *) echo "Usage: nh-motorola-support [detect]" ;;
+esac

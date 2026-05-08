@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-deepweb-crawler — Deep web crawler for intel.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+crawl_tor() {
+    echo "[*] Crawling Tor hidden services..."
+    echo "  Checking: .onion sites, paste bins, forums"
+    echo "  Results: 0 new indicators (simulated)"
+}
+
+crawl_i2p() {
+    echo "[*] Crawling I2P network..."
+}
+
+case "${1:-help}" in
+    tor) crawl_tor ;;
+    i2p) crawl_i2p ;;
+    *) echo "Usage: nh-deepweb-crawler [tor|i2p]" ;;
+esac

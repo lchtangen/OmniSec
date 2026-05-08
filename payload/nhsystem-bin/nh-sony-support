@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-sony-support — Sony Xperia device support.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+detect_sony() {
+    local model=$(getprop ro.product.model 2>/dev/null || echo "Unknown")
+    if echo "$model" | grep -qi sony; then
+        echo "[*] Sony Xperia detected: $model"
+        return 0
+    else
+        echo "  Not a Sony device"
+        return 1
+    fi
+}
+
+case "${1:-detect}" in
+    detect) detect_sony ;;
+    *) echo "Usage: nh-sony-support [detect]" ;;
+esac

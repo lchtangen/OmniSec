@@ -1,0 +1,20 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-gentoo-support — Gentoo Linux chroot support.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+GENTOO_ROOT="/data/local/nhsystem/roots/gentoo"
+
+setup_gentoo() {
+    echo "[*] Setting up Gentoo Linux chroot..."
+    mkdir -p "$GENTOO_ROOT"
+    echo "  Gentoo: source-based, highly customizable"
+}
+
+case "${1:-setup}" in
+    setup) setup_gentoo ;;
+    *) echo "Usage: nh-gentoo-support [setup]" ;;
+esac

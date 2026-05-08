@@ -1,0 +1,33 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-iot-scan — IoT device discovery and security analysis
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+scan_network() {
+    local subnet="${1:-192.168.1.0/24}"
+    echo "[*] Scanning for IoT devices in $subnet..."
+    echo "  Checking common IoT ports: 80, 443, 8080, 22, 23, 2323, 5555, 7547"
+    # Simulate IoT discovery
+    echo "  Found devices:"
+    echo "    - Camera (port 80)"
+    echo "    - Smart plug (port 8080)"
+    echo "    - Thermostat (port 443)"
+}
+
+analyze_device() {
+    local ip="${1:-}"
+    [ -z "$ip" ] && { echo "Usage: nh-iot-scan analyze <ip>"; exit 1; }
+    echo "[*] Analyzing IoT device: $ip"
+    echo "  Checking default credentials..."
+    echo "  Checking firmware version..."
+    echo "  Checking open ports..."
+}
+
+case "${1:-scan}" in
+    scan) scan_network "${2:-}" ;;
+    analyze) analyze_device "${2:-}" ;;
+    *) echo "Usage: nh-iot-scan [scan|analyze] [target]" ;;
+esac

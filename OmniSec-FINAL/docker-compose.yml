@@ -1,0 +1,20 @@
+version: "3.9"
+services:
+  omnisec:
+    build: .
+    container_name: omnisec-ultimate
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - XAUTHORITY=/tmp/.Xauthority
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - ./config:/root/.config/omnisec
+      - ./data:/data
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    stdin_open: true
+    tty: true

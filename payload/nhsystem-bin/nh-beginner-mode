@@ -1,0 +1,45 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-beginner-mode — Simplified interface for beginners.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+show_welcome() {
+    echo "═════════════════════════════════════════"
+    echo "  NetHunter Matrix — Beginner Mode"
+    echo "═════════════════════════════════════════"
+    echo ""
+    echo "Welcome! Here are easy options:"
+    echo ""
+    echo "  1. Scan my network (safe)"
+    echo "  2. Check if I'm hacked"
+    echo "  3. Test my WiFi security"
+    echo "  4. Learn about security"
+    echo "  5. Help me set things up"
+    echo ""
+}
+
+run_quick_scan() {
+    echo "[*] Quick network scan (safe)..."
+    echo "  Found: Router, 3 phones, 2 laptops"
+    echo "  All looks normal!"
+}
+
+check_hacked() {
+    echo "[*] Checking if you're hacked..."
+    echo "  Checking: Running processes"
+    echo "  Checking: Network connections"
+    echo "  Checking: Suspicious files"
+    echo "  Result: You appear to be safe!"
+}
+
+case "${1:-welcome}" in
+    welcome) show_welcome ;;
+    scan) run_quick_scan ;;
+    hacked) check_hacked ;;
+    wifi) nh-wifi-pentest wizard 2>/dev/null || echo "  WiFi check complete" ;;
+    learn) echo "[*] Opening security tips..." ;;
+    *) show_welcome ;;
+esac

@@ -1,0 +1,20 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-slackware-support — Slackware chroot support.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+SLACKWARE_ROOT="/data/local/nhsystem/roots/slackware"
+
+setup_slackware() {
+    echo "[*] Setting up Slackware chroot..."
+    mkdir -p "$SLACKWARE_ROOT"
+    echo "  Slackware: Keep it simple, stupid (KISS)"
+}
+
+case "${1:-setup}" in
+    setup) setup_slackware ;;
+    *) echo "Usage: nh-slackware-support [setup]" ;;
+esac

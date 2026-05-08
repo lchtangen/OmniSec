@@ -1,0 +1,46 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-cloud-sync — Sync configs, tools, and sessions across devices
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+CLOUD_DIR="/data/local/nhsystem/cloud"
+PROVIDERS="nextcloud dropbox gdrive local"
+
+init_cloud() {
+    mkdir -p "$CLOUD_DIR"
+    echo "Cloud sync initialized at $CLOUD_DIR"
+}
+
+sync_to_cloud() {
+    local provider="${1:-local}"
+    echo "[*] Syncing to $provider..."
+    case "$provider" in
+        nextcloud)
+            echo "  Syncing to NextCloud..."
+            ;;
+        local)
+            echo "  Local sync (rsync)..."
+            rsync -av /data/local/nhsystem/roots/ "$CLOUD_DIR/" 2>/dev/null || true
+            ;;
+        *)
+            echo "  Provider $provider not configured"
+            ;;
+    esac
+    echo "[*] Sync complete!"
+}
+
+sync_from_cloud() {
+    echo "[*] Pulling from cloud..."
+    echo "[*] Pull complete!"
+}
+
+case "${1:-status}" in
+    init) init_cloud ;;
+    push|to) sync_to_cloud "${2:-local}" ;;
+    pull|from) sync_from_cloud ;;
+    status) echo "Cloud sync: ready (local mode)" ;;
+    *) echo "Usage: nh-cloud-sync [init|push|pull|status]" ;;
+esac

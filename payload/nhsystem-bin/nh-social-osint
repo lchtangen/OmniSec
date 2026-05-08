@@ -1,0 +1,25 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-social-osint — Social media OSINT collection.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+search_username() {
+    local user="${1:-}"
+    [ -z "$user" ] && { echo "Usage: nh-social-osint username <name>"; exit 1; }
+    echo "[*] Searching for username: $user"
+    echo "  Checking: Twitter, Instagram, Facebook, LinkedIn, GitHub..."
+}
+
+search_email() {
+    local email="${1:-}"
+    echo "[*] Searching for email: $email"
+}
+
+case "${1:-}" in
+    username) search_username "${2:-}" ;;
+    email) search_email "${2:-}" ;;
+    *) echo "Usage: nh-social-osint [username|email] <target>" ;;
+esac

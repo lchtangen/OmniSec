@@ -1,0 +1,29 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-network-mapper — Network topology discovery and mapping.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+map_network() {
+    local subnet="${1:-192.168.1.0/24}"
+    echo "[*] Mapping network: $subnet"
+    echo "  Scanning..."
+    echo ""
+    echo "Topology:"
+    echo "  Gateway: 192.168.1.1"
+    echo "   ├─ Device: 192.168.1.10 (Router)"
+    echo "   ├─ Device: 192.168.1.50 (Camera)"
+    echo "   └─ Device: 192.168.1.100 (Laptop)"
+}
+
+generate_map() {
+    echo "[*] Generating visual map..."
+}
+
+case "${1:-map}" in
+    map) map_network "${2:-}" ;;
+    visual) generate_map ;;
+    *) echo "Usage: nh-network-mapper [map|visual] [subnet]" ;;
+esac

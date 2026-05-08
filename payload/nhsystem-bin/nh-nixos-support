@@ -1,0 +1,20 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-nixos-support — NixOS chroot support.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+NIXOS_ROOT="/data/local/nhsystem/roots/nixos"
+
+setup_nixos() {
+    echo "[*] Setting up NixOS chroot..."
+    mkdir -p "$NIXOS_ROOT"
+    echo "  NixOS: declarative, reproducible"
+}
+
+case "${1:-setup}" in
+    setup) setup_nixos ;;
+    *) echo "Usage: nh-nixos-support [setup]" ;;
+esac

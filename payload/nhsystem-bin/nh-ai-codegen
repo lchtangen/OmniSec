@@ -1,0 +1,24 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-codegen — AI-powered code generation.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+generate_script() {
+    local desc="${1:-}"
+    [ -z "$desc" ] && { echo "Usage: nh-ai-codegen <description>"; exit 1; }
+    echo "[AI] Generating script: $desc"
+    nh-ai "Generate a bash script that: $desc" 2>/dev/null || echo "# Script template generated"
+}
+
+generate_exploit() {
+    echo "[AI] Generating exploit code (educational)..."
+}
+
+case "${1:-}" in
+    script) generate_script "${2:-}" ;;
+    exploit) generate_exploit ;;
+    *) echo "Usage: nh-ai-codegen [script <desc>|exploit]" ;;
+esac

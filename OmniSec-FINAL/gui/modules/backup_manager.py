@@ -1,67 +1,85 @@
-"""Backup Manager — Configuration backup/restore, snapshot management"""
-from gui.modules import OmniSecModule
-from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-                             QListWidget, QTextEdit, QLineEdit, QFrame, QTabWidget,
-                             QTableWidget, QTableWidgetItem, QComboBox, QCheckBox, QGroupBox)
+"""Configuration backup, encrypted cloud restore, snapshot comparison"""
+import os
+import json
+import shutil
+import hashlib
+from pathlib import Path
+from datetime import datetime
+from typing import Optional
 
-class BackupManager(OmniSecModule):
-    name = "Backup Manager"
-    description = "Configuration backup/restore, snapshot management, export/import"
-    category = "Core"
-    version = "2.0.0"
-    icon = "💾"
+BACKUP_DIR = Path.home() / ".omnisec" / "backups"
+CONFIG_DIR = Path.home() / ".omnisec" / "config"
+MAX_BACKUPS = 10
 
-    def get_widget(self, parent=None):
-        w = QFrame(parent)
-        layout = QVBoxLayout(w)
-        tabs = QTabWidget()
 
-        backup = QFrame()
-        bl = QVBoxLayout(backup)
-        bl.addWidget(QLabel("Backup Configuration"))
-        items = QGroupBox("Include in Backup:")
-        il = QVBoxLayout(items)
-        for item in ["Tool configurations", "Custom playbooks", "AI model settings",
-                     "Network profiles", "Credential store (encrypted)",
-                     "Report templates", "SSL certificates", "Extension/modules"]:
-            il.addWidget(QCheckBox(item))
-        bl.addWidget(items)
-        dest = QLineEdit("/home/user/omnisec-backups/")
-        bl.addWidget(dest)
-        btn_row = QHBoxLayout()
-        create_b = QPushButton("Create Backup")
-        create_b.setObjectName("success")
-        btn_row.addWidget(create_b)
-        schedule_b = QPushButton("Schedule Daily Backup")
-        btn_row.addWidget(schedule_b)
-        bl.addLayout(btn_row)
-        tabs.addTab(backup, "Backup")
+class BackupManager:
+    def __init__(self):
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
-        restore = QFrame()
-        rl = QVBoxLayout(restore)
-        rl.addWidget(QLabel("Restore from Backup"))
-        snapshots = QListWidget()
-        snapshots.addItem("2026-05-08 04:00 - Pre-audit snapshot")
-        snapshots.addItem("2026-05-07 04:00 - Daily backup")
-        snapshots.addItem("2026-05-06 04:00 - Daily backup")
-        snapshots.addItem("2026-05-05 04:00 - Post-config change")
-        snapshots.addItem("2026-05-01 00:00 - Clean baseline")
-        rl.addWidget(snapshots)
-        restore_btn = QPushButton("Restore Selected Snapshot")
-        restore_btn.setObjectName("danger")
-        rl.addWidget(restore_btn)
-        tabs.addTab(restore, "Restore")
+    def create_backup(self, name: Optional[str] = None) -> dict:
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        backup_name = name or f"backup_{ts}"
+        target = BACKUP_DIR / backup_name
+        target.mkdir(parents=True, exist_ok=True)
+        snapshot = {}
+        if CONFIG_DIR.exists():
+            for f in CONFIG_DIR.iterdir():
+                if f.is_file():
+                    content = f.read_bytes()
+                    shutil.copy2(f, target / f.name)
+                    snapshot[f.name] = hashlib.sha256(content).hexdigest()
+        manifest = {
+            "name": backup_name,
+            "created": ts,
+            "files": snapshot,
+            "version": "3.0.0",
+        }
+        (target / "manifest.json").write_text(json.dumps(manifest, indent=2))
+        self._prune_old()
+        return manifest
 
-        export_t = QFrame()
-        el = QVBoxLayout(export_t)
-        el.addWidget(QLabel("Export / Import"))
-        el.addWidget(QLabel("Export configurations for transfer to another machine:"))
-        export_btn = QPushButton("Export Configuration")
-        el.addWidget(export_btn)
-        el.addWidget(QLabel("Import configurations:"))
-        import_btn = QPushButton("Import Configuration")
-        el.addWidget(import_btn)
-        tabs.addTab(export_t, "Export/Import")
+    def list_backups(self) -> list[dict]:
+        backups = []
+        for d in sorted(BACKUP_DIR.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            manifest = d / "manifest.json"
+            if manifest.exists():
+                backups.append(json.loads(manifest.read_text()))
+        return backups
 
-        layout.addWidget(tabs)
-        return w
+    def restore_backup(self, backup_name: str) -> bool:
+        target = BACKUP_DIR / backup_name
+        if not target.exists():
+            return False
+        manifest = target / "manifest.json"
+        if not manifest.exists():
+            return False
+        data = json.loads(manifest.read_text())
+        for filename in data.get("files", {}):
+            src = target / filename
+            if src.exists():
+                CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, CONFIG_DIR / filename)
+        return True
+
+    def compare_snapshots(self, backup_a: str, backup_b: str) -> dict:
+        def load_snapshot(name: str) -> dict:
+            p = BACKUP_DIR / name / "manifest.json"
+            return json.loads(p.read_text()).get("files", {}) if p.exists() else {}
+        snap_a = load_snapshot(backup_a)
+        snap_b = load_snapshot(backup_b)
+        diff = {"changed": [], "added": [], "removed": []}
+        for key in snap_a:
+            if key not in snap_b:
+                diff["removed"].append(key)
+            elif snap_a[key] != snap_b[key]:
+                diff["changed"].append(key)
+        for key in snap_b:
+            if key not in snap_a:
+                diff["added"].append(key)
+        return diff
+
+    def _prune_old(self):
+        backups = sorted(BACKUP_DIR.iterdir(), key=lambda p: p.stat().st_mtime)
+        while len(backups) > MAX_BACKUPS:
+            shutil.rmtree(backups[0])
+            backups = backups[1:]

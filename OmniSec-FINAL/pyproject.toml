@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omnisec-ultimate"
+version = "3.0.0"
+description = "AI-native, offline-only cybersecurity platform"
+readme = "README.md"
+authors = [{ name = "OmniSec Team", email = "team@omnisec.io" }]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+keywords = ["security", "cybersecurity", "pentesting", "hacking", "privacy"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Security",
+    "Topic :: System :: Networking",
+]
+dependencies = [
+    "PyQt6>=6.5.0",
+    "pycryptodome>=3.19.0",
+    "rich>=13.0.0",
+    "psutil>=5.9.0",
+    "requests>=2.31.0",
+    "matplotlib>=3.7.0",
+    "qrcode>=7.4.0",
+    "pillow>=10.0.0",
+    "platformdirs>=3.0.0",
+]
+
+[project.urls]
+Homepage = "https://omnisec.io"
+Repository = "https://github.com/omnisec-io/armored"
+Documentation = "https://docs.omnisec.io"
+"Bug Tracker" = "https://github.com/omnisec-io/armored/issues"
+Donate = "https://omnisec.io/donate"
+
+[project.scripts]
+omnisec = "omnisec_desktop.main:cli"
+omnisec-gui = "omnisec_desktop.main:gui"
+
+[tool.setuptools.packages.find]
+include = ["omnisec_desktop*", "gui*", "security*", "i18n*"]

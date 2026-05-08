@@ -69,8 +69,7 @@ class ReverseEngineering(OmniSecModule):
         sl.addWidget(str_btn)
         s_list = QListWidget()
         for s in ["/bin/sh", "Password: ", "Flag: ", "http://c2-server.com/beacon",
-                  "Decryption key: ", "Anti-debug detected", "Wrong password"]
-:
+                  "Decryption key: ", "Anti-debug detected", "Wrong password"]:
             s_list.addItem(s)
         sl.addWidget(s_list)
         tabs.addTab(strings, "Strings")

@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-rfid — RFID security testing.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+scan_rfid() {
+    echo "[*] Scanning for RFID cards..."
+    echo "  Frequencies: 125kHz, 13.56MHz"
+    echo "  Found: 0 cards (simulated)"
+}
+
+bruteforce() {
+    echo "[*] RFID brute force (educational)..."
+}
+
+case "${1:-scan}" in
+    scan) scan_rfid ;;
+    brute) bruteforce ;;
+    *) echo "Usage: nh-rfid [scan|brute]" ;;
+esac

@@ -1,0 +1,26 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-crypto-cracker — Find cryptographic weaknesses.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+scan_weak_crypto() {
+    local target="${1:-}"
+    [ -z "$target" ] && { echo "Usage: nh-crypto-cracker scan <target>"; exit 1; }
+    echo "[*] Scanning for weak cryptography on: $target"
+    echo "  Checking: SSL/TLS versions, cipher suites, certificates"
+    echo "  Weak: RC4, MD5, SHA1, DES, 512-bit RSA"
+}
+
+test_certificate() {
+    local domain="${1:-}"
+    echo "[*] Testing certificate for: $domain"
+}
+
+case "${1:-}" in
+    scan) scan_weak_crypto "${2:-}" ;;
+    cert) test_certificate "${2:-}" ;;
+    *) echo "Usage: nh-crypto-cracker [scan|cert] <target>" ;;
+esac

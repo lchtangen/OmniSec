@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-chat — Interactive AI chat interface.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+chat_with_ai() {
+    echo "[AI Chat] Type 'quit' to exit"
+    while true; do
+        echo -n "You: "
+        read -r input
+        [ "$input" = "quit" ] && break
+        nh-ai "$input" 2>/dev/null || echo "  AI: Install ollama for full chat"
+    done
+}
+
+case "${1:-interactive}" in
+    interactive) chat_with_ai ;;
+    quick) nh-ai "${2:-Hello}" 2>/dev/null || echo "AI: Quick mode (basic)" ;;
+    *) echo "Usage: nh-ai-chat [interactive|quick <msg>]" ;;
+esac

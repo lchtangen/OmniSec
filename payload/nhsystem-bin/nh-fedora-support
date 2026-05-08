@@ -1,0 +1,20 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-fedora-support — Fedora chroot support.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+FEDORA_ROOT="/data/local/nhsystem/roots/fedora"
+
+setup_fedora() {
+    echo "[*] Setting up Fedora chroot..."
+    mkdir -p "$FEDORA_ROOT"
+    echo "  Fedora rootfs: ready for installation"
+}
+
+case "${1:-setup}" in
+    setup) setup_fedora ;;
+    *) echo "Usage: nh-fedora-support [setup]" ;;
+esac

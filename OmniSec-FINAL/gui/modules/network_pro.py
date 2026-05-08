@@ -50,7 +50,7 @@ class NetworkPro(OmniSecModule):
             pcap_text.append(f"{random.choice(['TCP','UDP','ARP','DNS'])} "
                            f"{random.randint(1000,9999)} → {random.randint(1000,9999)} "
                            f"{random.choice(['10.0.0.1','10.0.0.5','8.8.8.8'])} "
-                           f"[{random.choice(['SYN','ACK','PSH','FIN'])}]"))
+                           f"[{random.choice(['SYN','ACK','PSH','FIN'])}]")
         pl.addWidget(pcap_text)
         start_cap = QPushButton("Start Capture")
         pl.addWidget(start_cap)

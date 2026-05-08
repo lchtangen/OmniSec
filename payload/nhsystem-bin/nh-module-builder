@@ -1,0 +1,36 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-module-builder — Create custom NetHunter modules.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+MODULE_DIR="/data/local/nhsystem/modules"
+
+create_module() {
+    local name="${1:-mymodule}"
+    local mod_dir="$MODULE_DIR/$name"
+    echo "[*] Creating module: $name"
+    mkdir -p "$mod_dir"/{bin,lib,etc,share}
+    
+    cat > "$mod_dir/bin/$name" <<MODEND
+#!/system/bin/sh
+# Module: $name
+echo "Running module: $name"
+# Add your module code here
+MODEND
+    chmod +x "$mod_dir/bin/$name"
+    echo "  Module created: $mod_dir"
+}
+
+list_modules() {
+    echo "══ Modules ═"
+    ls -1 "$MODULE_DIR/" 2>/dev/null || echo "  No modules yet"
+}
+
+case "${1:-list}" in
+    create) create_module "${2:-}" ;;
+    list) list_modules ;;
+    *) echo "Usage: nh-module-builder [create <name>|list]" ;;
+esac

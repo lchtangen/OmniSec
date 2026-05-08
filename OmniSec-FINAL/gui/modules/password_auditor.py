@@ -42,8 +42,8 @@ class PasswordAuditor(OmniSecModule):
         results.append("[CRACK] Loaded 14,000,000 passwords")
         results.append("[CRACK] Testing hash: $2y$10$...")
         results.append("[FOUND] password123 (0.2s)")
-        results.append("[FOUND] admin2024 (1.4s)")")
-        results.append("[FOUND] letmein! (3.7s)")")
+        results.append("[FOUND] admin2024 (1.4s)")
+        results.append("[FOUND] letmein! (3.7s)")
         cl.addWidget(results)
         tabs.addTab(crack, "Hash Cracker")
 

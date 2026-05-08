@@ -1,0 +1,22 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-pivot — AI lateral movement and pivoting.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+find_pivots() {
+    echo "[AI Pivot] Finding pivot points..."
+    nh-ai "Find pivot points in this network" 2>/dev/null || echo "  Pivots: 0 found (basic)"
+}
+
+suggest_path() {
+    echo "[AI Pivot] Suggesting attack paths..."
+}
+
+case "${1:-help}" in
+    find) find_pivots ;;
+    suggest) suggest_path ;;
+    *) echo "Usage: nh-ai-pivot [find|suggest]" ;;
+esac

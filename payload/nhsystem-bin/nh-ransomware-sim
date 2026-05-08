@@ -1,0 +1,30 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P3
+# nh-ransomware-sim — Ransomware simulation (safe, educational).
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+simulate_attack() {
+    echo "[*] Ransomware Simulation Mode (SAFE - Educational Only)"
+    echo "  Step 1: Initial access (phishing simulation)"
+    echo "  Step 2: Lateral movement (simulated)"
+    echo "  Step 3: File encryption (simulated - no real encryption)"
+    echo "  Step 4: Ransom note (displayed)"
+    echo ""
+    echo "══════════════════════════════════════════"
+    echo "  YOUR FILES HAVE BEEN ENCRYPTED! (SIMULATED)"
+    echo "  This is a simulation for educational purposes."
+    echo "══════════════════════════════════════════"
+}
+
+recovery_demo() {
+    echo "[*] Demonstrating recovery techniques..."
+}
+
+case "${1:-simulate}" in
+    simulate) simulate_attack ;;
+    recover) recovery_demo ;;
+    *) echo "Usage: nh-ransomware-sim [simulate|recover]" ;;
+esac

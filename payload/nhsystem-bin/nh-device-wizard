@@ -1,0 +1,42 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-device-wizard — Interactive device setup wizard
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+show_banner() {
+    echo "════════════════════════════════════════════════"
+    echo "  NetHunter Matrix — Device Setup Wizard"
+    echo "════════════════════════════════════════════════"
+    echo ""
+}
+
+detect_device() {
+    local model=$(getprop ro.product.model 2>/dev/null || echo "Unknown")
+    local codename=$(getprop ro.product.device 2>/dev/null || echo "unknown")
+    local android=$(getprop ro.build.version.release 2>/dev/null || echo "Unknown")
+    echo "  Detected: $model ($codename)"
+    echo "  Android: $android"
+    echo "  ABI: $(uname -m)"
+}
+
+setup_device() {
+    show_banner
+    detect_device
+    echo ""
+    echo "Available setups:"
+    echo "  1. Full NetHunter (Kali + Arch)"
+    echo "  2. Light (Kali only)"
+    echo "  3. Developer (Arch only)"
+    echo "  4. Custom (choose components)"
+    echo ""
+    echo "Select [1-4]: "
+}
+
+case "${1:-}" in
+    auto) detect_device ;;
+    setup) setup_device ;;
+    *) show_banner; detect_device; echo ""; setup_device ;;
+esac

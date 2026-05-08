@@ -1,0 +1,21 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-arch-support — Arch Linux ARM chroot support.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+ARCH_ROOT="/data/local/nhsystem/roots/arch"
+
+setup_arch() {
+    echo "[*] Setting up Arch Linux ARM chroot..."
+    mkdir -p "$ARCH_ROOT"
+    echo "  Arch Linux ARM: ready for installation"
+    echo "  Use: nh-mount arch"
+}
+
+case "${1:-setup}" in
+    setup) setup_arch ;;
+    *) echo "Usage: nh-arch-support [setup]" ;;
+esac

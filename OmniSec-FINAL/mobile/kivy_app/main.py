@@ -488,3 +488,395 @@ class OmniSecMobileApp(MDApp):
 
 if __name__ == "__main__":
     OmniSecMobileApp().run()
+
+# Extra screens appended below
+
+class ToolsScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        layout.add_widget(Label(text="TOOL DATABASE", font_size=sp(18), bold=True,
+                               color=get_color_from_hex(NEON_GREEN), size_hint_y=0.06))
+        search = TextInput(multiline=False, hint_text="Search 161 tools...",
+                          background_color=get_color_from_hex(CYBER_SURFACE),
+                          foreground_color=get_color_from_hex(NEON_CYAN), font_size=sp(12), size_hint_y=0.06)
+        layout.add_widget(search)
+        scroll = ScrollView()
+        grid = GridLayout(cols=1, spacing=dp(4), size_hint_y=None)
+        grid.bind(minimum_height=grid.setter("height"))
+        categories = {"NETWORK": ["nmap","masscan","zmap","netcat","tcpdump","responder"],
+                      "EXPLOIT": ["metasploit","searchsploit","msfvenom","beef","empire"],
+                      "WEB": ["burpsuite","sqlmap","nikto","gobuster","ffuf","wpscan"],
+                      "WIRELESS": ["aircrack-ng","kismet","reaver","wifite"],
+                      "CRYPTO": ["hashcat","john","rsactftool"],
+                      "PRIVACY": ["nh-privacy","nh-crypt","nh-anon","nh-forensic"]}
+        for cat, tools in categories.items():
+            grid.add_widget(Label(text=f"[ {cat} ]", font_size=sp(10), bold=True,
+                                color=get_color_from_hex(NEON_YELLOW), size_hint_y=None, height=dp(24)))
+            for tool in tools:
+                card = NeonCard(neon_color=NEON_CYAN, size_hint_y=None, height=dp(36))
+                card.add_widget(Label(text=tool, font_size=sp(11), color=get_color_from_hex(TEXT_PRIMARY)))
+                grid.add_widget(card)
+        scroll.add_widget(grid)
+        layout.add_widget(scroll)
+        back = MDRectangleFlatButton(text="< BACK", size_hint_y=0.06, theme_text_color="Custom",
+                                    text_color=get_color_from_hex(NEON_CYAN), line_color=get_color_from_hex(NEON_CYAN))
+        back.bind(on_release=lambda x: setattr(self.manager, "current", "dashboard"))
+        layout.add_widget(back)
+        self.add_widget(layout)
+
+class ScanScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        layout.add_widget(Label(text="NETWORK SCANNER", font_size=sp(18), bold=True,
+                               color=get_color_from_hex(NEON_YELLOW), size_hint_y=0.06))
+        self.output = ScrollView()
+        self.out_container = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
+        self.out_container.bind(minimum_height=self.out_container.setter("height"))
+        self.out_container.add_widget(Label(text="Ready. Tap SCAN.", font_size=sp(11),
+                                          color=get_color_from_hex(NEON_GREEN), size_hint_y=None, height=dp(24)))
+        self.output.add_widget(self.out_container)
+        layout.add_widget(self.output)
+        self.prog = MDProgressBar(value=0, size_hint_y=0.03)
+        layout.add_widget(self.prog)
+        scan_btn = MDRectangleFlatButton(text="SCAN", size_hint_y=0.08, theme_text_color="Custom",
+                                        text_color=get_color_from_hex(NEON_RED), line_color=get_color_from_hex(NEON_RED))
+        scan_btn.bind(on_release=self.run_scan)
+        layout.add_widget(scan_btn)
+        back = MDRectangleFlatButton(text="< BACK", size_hint_y=0.06, theme_text_color="Custom",
+                                    text_color=get_color_from_hex(NEON_CYAN), line_color=get_color_from_hex(NEON_CYAN))
+        back.bind(on_release=lambda x: setattr(self.manager, "current", "dashboard"))
+        layout.add_widget(back)
+        self.add_widget(layout)
+
+    def run_scan(self, *args):
+        self.out_container.clear_widgets()
+        self.prog.value = 0
+        steps = ["Resolving 10.0.0.0/24...","Host discovery...",
+                 "Found 3 live hosts","Ports: 22,80,443 on 10.0.0.1",
+                 "Ports: 445,139 on 10.0.0.5","Service detection complete",
+                 "Scan complete -- OFFLINE SECURE"]
+        def update(i):
+            if i < len(steps):
+                self.out_container.add_widget(Label(text=steps[i], font_size=sp(10),
+                    color=get_color_from_hex(NEON_GREEN), size_hint_y=None, height=dp(20)))
+                self.prog.value = int((i+1)/len(steps)*100)
+                Clock.schedule_once(lambda dt: update(i+1), 0.4)
+        Clock.schedule_once(lambda dt: update(0), 0.5)
+
+class ExploitScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        layout.add_widget(Label(text="EXPLOIT BUILDER", font_size=sp(18), bold=True,
+                               color=get_color_from_hex(NEON_RED), size_hint_y=0.06))
+        layout.add_widget(Label(text="Target:"))
+        target = TextInput(text="10.0.0.5:445", font_size=sp(12),
+                          background_color=get_color_from_hex(CYBER_SURFACE),
+                          foreground_color=get_color_from_hex(NEON_GREEN))
+        layout.add_widget(target)
+        layout.add_widget(Label(text="Exploit:"))
+        exp_list = QListWidget()
+        for e in ["MS17-010 EternalBlue", "EternalRomance", "BlueKeep",
+                  "SMBGhost", "PrintNightmare"]:
+            exp_list.addItem(e)
+        layout.add_widget(exp_list)
+        run_btn = MDRectangleFlatButton(text="RUN EXPLOIT", size_hint_y=0.08,
+                                        theme_text_color="Custom", text_color=get_color_from_hex(NEON_RED),
+                                        line_color=get_color_from_hex(NEON_RED))
+        layout.add_widget(run_btn)
+        back = MDRectangleFlatButton(text="< BACK", size_hint_y=0.06, theme_text_color="Custom",
+                                    text_color=get_color_from_hex(NEON_CYAN), line_color=get_color_from_hex(NEON_CYAN))
+        back.bind(on_release=lambda x: setattr(self.manager, "current", "dashboard"))
+        layout.add_widget(back)
+        self.add_widget(layout)
+
+class WirelessScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        layout.add_widget(Label(text="WIRELESS TOOLS", font_size=sp(18), bold=True,
+                               color=get_color_from_hex(NEON_CYAN), size_hint_y=0.06))
+        tabs = TabbedPanel(do_default_tab=False)
+        tabs2 = TabbedPanelHeader(text="WiFi")
+        wl = BoxLayout(orientation="vertical")
+        wl.add_widget(Label(text="Scanning... 6 networks found"))
+        w_table = QListWidget()
+        for net in ["Corporate (WPA2) -45dBm", "Guest (Open) -62dBm",
+                    "IoT (WPA2) -55dBm", "Admin-5G (WPA2) -50dBm"]:
+            w_table.addItem(net)
+        wl.addWidget(w_table)
+        tabs2.content = wl
+        tabs.add_widget(tabs2)
+        bt_tab = TabbedPanelHeader(text="Bluetooth")
+        bl = BoxLayout(orientation="vertical")
+        bl.add_widget(Label(text="4 devices found"))
+        tabs3 = QListWidget()
+        for d in ["iPhone 15", "Galaxy Buds2", "Smart Watch", "Laptop"]:
+            tabs3.addItem(d)
+        bl.addWidget(tabs3)
+        bt_tab.content = bl
+        tabs.add_widget(bt_tab)
+        layout.add_widget(tabs)
+        back = MDRectangleFlatButton(text="< BACK", size_hint_y=0.06, theme_text_color="Custom",
+                                    text_color=get_color_from_hex(NEON_CYAN), line_color=get_color_from_hex(NEON_CYAN))
+        back.bind(on_release=lambda x: setattr(self.manager, "current", "dashboard"))
+        layout.add_widget(back)
+        self.add_widget(layout)
+
+class CryptoScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        layout.add_widget(Label(text="CRYPTO TOOLS", font_size=sp(18), bold=True,
+                               color=get_color_from_hex(NEON_MAGENTA), size_hint_y=0.06))
+        tabs = TabbedPanel(do_default_tab=False)
+        enc_tab = TabbedPanelHeader(text="Encrypt")
+        el = BoxLayout(orientation="vertical")
+        el.add_widget(Label(text="Text to encrypt:"))
+        txt = TextInput(text="Secret message here", font_size=sp(12),
+                       background_color=get_color_from_hex(CYBER_SURFACE),
+                       foreground_color=get_color_from_hex(NEON_GREEN))
+        el.add_widget(txt)
+        el.add_widget(Label(text="Algorithm: AES-256-GCM"))
+        enc_btn = MDRectangleFlatButton(text="ENCRYPT", size_hint_y=0.08,
+                                        theme_text_color="Custom", text_color=get_color_from_hex(NEON_GREEN),
+                                        line_color=get_color_from_hex(NEON_GREEN))
+        el.add_widget(enc_btn)
+        enc_tab.content = el
+        tabs.add_widget(enc_tab)
+        hash_tab = TabbedPanelHeader(text="Hash")
+        hl = BoxLayout(orientation="vertical")
+        hl.add_widget(Label(text="Input:"))
+        hi = TextInput(text="hello", font_size=sp(12),
+                      background_color=get_color_from_hex(CYBER_SURFACE),
+                      foreground_color=get_color_from_hex(NEON_GREEN))
+        hl.add_widget(hi)
+        hl.add_widget(Label(text="SHA256: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"))
+        hash_tab.content = hl
+        tabs.add_widget(hash_tab)
+        layout.add_widget(tabs)
+        back = MDRectangleFlatButton(text="< BACK", size_hint_y=0.06, theme_text_color="Custom",
+                                    text_color=get_color_from_hex(NEON_CYAN), line_color=get_color_from_hex(NEON_CYAN))
+        back.bind(on_release=lambda x: setattr(self.manager, "current", "dashboard"))
+        layout.add_widget(back)
+        self.add_widget(layout)
+
+class VulnScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        layout.add_widget(Label(text="VULNERABILITY DB", font_size=sp(18), bold=True,
+                               color=get_color_from_hex(NEON_YELLOW), size_hint_y=0.06))
+        search = TextInput(multiline=False, hint_text="Search CVE...", font_size=sp(12),
+                          background_color=get_color_from_hex(CYBER_SURFACE),
+                          foreground_color=get_color_from_hex(NEON_CYAN))
+        layout.add_widget(search)
+        vuln_list = QListWidget()
+        for v in ["CVE-2021-44228 Log4j (10.0)", "CVE-2022-22965 Spring4Shell (9.8)",
+                  "CVE-2023-44487 HTTP/2 (7.5)", "CVE-2024-1708 ScreenConnect (9.1)"]:
+            vuln_list.addItem(v)
+        layout.add_widget(vuln_list)
+        detail = QListWidget()
+        detail.addItem("Details: Apache Log4j RCE")
+        detail.addItem("Affects: All versions 2.0-2.14.1")
+        detail.addItem("Exploit: Available (Metasploit)")
+        layout.add_widget(detail)
+        back = MDRectangleFlatButton(text="< BACK", size_hint_y=0.06, theme_text_color="Custom",
+                                    text_color=get_color_from_hex(NEON_CYAN), line_color=get_color_from_hex(NEON_CYAN))
+        back.bind(on_release=lambda x: setattr(self.manager, "current", "dashboard"))
+        layout.add_widget(back)
+        self.add_widget(layout)
+
+class ReportScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        layout.add_widget(Label(text="REPORT GENERATOR", font_size=sp(18), bold=True,
+                               color=get_color_from_hex(NEON_GREEN), size_hint_y=0.06))
+        layout.add_widget(Label(text="Report Type:"))
+        rtype = QListWidget()
+        for r in ["Pentest Report", "Vulnerability Assessment",
+                  "Compliance Report", "Executive Summary"]:
+            rtype.addItem(r)
+        layout.add_widget(rtype)
+        gen_btn = MDRectangleFlatButton(text="GENERATE REPORT", size_hint_y=0.08,
+                                        theme_text_color="Custom", text_color=get_color_from_hex(NEON_GREEN),
+                                        line_color=get_color_from_hex(NEON_GREEN))
+        layout.add_widget(gen_btn)
+        status = Label(text="Report generated: pentest_report_2026.pdf")
+        layout.add_widget(status)
+        back = MDRectangleFlatButton(text="< BACK", size_hint_y=0.06, theme_text_color="Custom",
+                                    text_color=get_color_from_hex(NEON_CYAN), line_color=get_color_from_hex(NEON_CYAN))
+        back.bind(on_release=lambda x: setattr(self.manager, "current", "dashboard"))
+        layout.add_widget(back)
+        self.add_widget(layout)
+
+class SettingsScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        layout.add_widget(Label(text="SETTINGS", font_size=sp(18), bold=True,
+                               color=get_color_from_hex(NEON_CYAN), size_hint_y=0.06))
+        scroll = ScrollView()
+        grid = GridLayout(cols=1, spacing=dp(8), size_hint_y=None)
+        grid.bind(minimum_height=grid.setter("height"))
+        sections = [
+            ("Security", ["Offline-Only Mode", "Post-Quantum Crypto", "Ghost Mode", "Auto-encrypt"]),
+            ("AI", ["Local LLM", "Auto-suggest", "Chain-of-Thought"]),
+            ("Network", ["Mesh Networking", "Auto-discover", "DNS-over-Mesh"]),
+        ]
+        for section, items in sections:
+            grid.add_widget(Label(text=f"[ {section} ]", font_size=sp(11), bold=True,
+                                 color=get_color_from_hex(NEON_MAGENTA), size_hint_y=None, height=dp(30)))
+            for item in items:
+                card = NeonCard(neon_color=NEON_CYAN, size_hint_y=None, height=dp(40))
+                cl = BoxLayout(orientation="horizontal")
+                cl.add_widget(Label(text=item, font_size=sp(11), color=get_color_from_hex(TEXT_PRIMARY)))
+                btn = MDRectangleFlatButton(text="ON", size_hint=(None,1), width=dp(60),
+                                           theme_text_color="Custom", text_color=get_color_from_hex(NEON_GREEN),
+                                           line_color=get_color_from_hex(NEON_GREEN))
+                cl.add_widget(btn)
+                card.add_widget(cl)
+                grid.add_widget(card)
+        scroll.add_widget(grid)
+        layout.add_widget(scroll)
+        back = MDRectangleFlatButton(text="< BACK", size_hint_y=0.06, theme_text_color="Custom",
+                                    text_color=get_color_from_hex(NEON_CYAN), line_color=get_color_from_hex(NEON_CYAN))
+        back.bind(on_release=lambda x: setattr(self.manager, "current", "dashboard"))
+        layout.add_widget(back)
+        self.add_widget(layout)
+
+class OSINTScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        layout.add_widget(Label(text="OSINT RECON", font_size=sp(18), bold=True,
+                               color=get_color_from_hex(NEON_CYAN), size_hint_y=0.06))
+        target = TextInput(text="target-company.com", font_size=sp(12),
+                          background_color=get_color_from_hex(CYBER_SURFACE),
+                          foreground_color=get_color_from_hex(NEON_GREEN))
+        layout.add_widget(target)
+        results = QListWidget()
+        for r in ["DNS Records: 12 found", "Subdomains: 4 found (dev, admin, mail, api)",
+                  "Email addresses: 23 exposed", "LinkedIn employees: 47",
+                  "GitHub repos: 3 (1 private leaked)"]:
+            results.addItem(r)
+        layout.add_widget(results)
+        run_btn = MDRectangleFlatButton(text="RUN OSINT", size_hint_y=0.08,
+                                        theme_text_color="Custom", text_color=get_color_from_hex(NEON_CYAN),
+                                        line_color=get_color_from_hex(NEON_CYAN))
+        layout.add_widget(run_btn)
+        back = MDRectangleFlatButton(text="< BACK", size_hint_y=0.06, theme_text_color="Custom",
+                                    text_color=get_color_from_hex(NEON_CYAN), line_color=get_color_from_hex(NEON_CYAN))
+        back.bind(on_release=lambda x: setattr(self.manager, "current", "dashboard"))
+        layout.add_widget(back)
+        self.add_widget(layout)
+
+class ForensicScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        layout.add_widget(Label(text="FORENSICS LAB", font_size=sp(18), bold=True,
+                               color=get_color_from_hex(NEON_YELLOW), size_hint_y=0.06))
+        tabs = TabbedPanel(do_default_tab=False)
+        file_tab = TabbedPanelHeader(text="Files")
+        fl = BoxLayout(orientation="vertical")
+        fl.add_widget(Label(text="File Analysis:"))
+        for f in ["document.pdf (clean)", "image.jpg (stego detected)",
+                  "script.js (suspicious)", "dump.bin (encrypted)"]:
+            fl.add_widget(QLabel(f))
+        file_tab.content = fl
+        tabs.add_widget(file_tab)
+        mem_tab = TabbedPanelHeader(text="Memory")
+        ml = BoxLayout(orientation="vertical")
+        ml.add_widget(Label(text="Process Analysis:"))
+        for p in ["lsass.exe (credential dump)", "cmd.exe (unknown parent)",
+                  "powershell.exe (encoded cmd)"]:
+            ml.add_widget(QLabel(p))
+        mem_tab.content = ml
+        tabs.add_widget(mem_tab)
+        layout.add_widget(tabs)
+        back = MDRectangleFlatButton(text="< BACK", size_hint_y=0.06, theme_text_color="Custom",
+                                    text_color=get_color_from_hex(NEON_CYAN), line_color=get_color_from_hex(NEON_CYAN))
+        back.bind(on_release=lambda x: setattr(self.manager, "current", "dashboard"))
+        layout.add_widget(back)
+        self.add_widget(layout)
+
+class LogScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        layout.add_widget(Label(text="LOG ANALYZER", font_size=sp(18), bold=True,
+                               color=get_color_from_hex(NEON_GREEN), size_hint_y=0.06))
+        log_view = TextInput(multiline=True, font_size=sp(9),
+                            background_color=get_color_from_hex(CYBER_BLACK),
+                            foreground_color=get_color_from_hex(NEON_GREEN),
+                            text="May 8 10:23:45 server sshd: Accepted password for root\n"
+                                  "May 8 10:24:12 server sshd: Failed password for admin\n"
+                                  "May 8 10:25:30 server kernel: New USB device found\n"
+                                  "May 8 10:26:01 server sudo: session opened for user")
+        layout.add_widget(log_view)
+        analyze = MDRectangleFlatButton(text="ANALYZE LOGS", size_hint_y=0.08,
+                                        theme_text_color="Custom", text_color=get_color_from_hex(NEON_GREEN),
+                                        line_color=get_color_from_hex(NEON_GREEN))
+        layout.add_widget(analyze)
+        back = MDRectangleFlatButton(text="< BACK", size_hint_y=0.06, theme_text_color="Custom",
+                                    text_color=get_color_from_hex(NEON_CYAN), line_color=get_color_from_hex(NEON_CYAN))
+        back.bind(on_release=lambda x: setattr(self.manager, "current", "dashboard"))
+        layout.add_widget(back)
+        self.add_widget(layout)
+
+class AboutScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", spacing=dp(15), padding=dp(20))
+        layout.add_widget(Label(text="OMNISEC ULTIMATE", font_size=sp(24), bold=True,
+                               color=get_color_from_hex(NEON_CYAN), size_hint_y=0.1))
+        layout.add_widget(Label(text="v3.0.0", font_size=sp(14), color=get_color_from_hex(NEON_MAGENTA), size_hint_y=0.05))
+        info = ["161 security tools", "AI-native (local LLM)", "Offline-only architecture",
+                "Post-quantum crypto", "Mesh networking", "8 platform support",
+                "Open source (free forever)", "Zero telemetry / zero cloud"]
+        for line in info:
+            layout.add_widget(Label(text=f"✓ {line}", font_size=sp(11),
+                                   color=get_color_from_hex(TEXT_PRIMARY), size_hint_y=None, height=dp(25)))
+        layout.add_widget(Label(text="", size_hint_y=0.3))
+        back = MDRectangleFlatButton(text="< BACK", size_hint_y=0.06, theme_text_color="Custom",
+                                    text_color=get_color_from_hex(NEON_CYAN), line_color=get_color_from_hex(NEON_CYAN))
+        back.bind(on_release=lambda x: setattr(self.manager, "current", "dashboard"))
+        layout.add_widget(back)
+        self.add_widget(layout)
+
+
+# ─── Updated Mobile App ──────────────────────────────────────────────────
+class OmniSecMobileApp(MDApp):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.theme_cls.primary_palette = "Cyan"
+        self.theme_cls.accent_palette = "Pink"
+        self.theme_cls.theme_style = "Dark"
+        self.theme_cls.primary_hue = "A700"
+
+    def build(self):
+        Window.clearcolor = get_color_from_hex(CYBER_BLACK)
+        sm = ScreenManager(transition=SlideTransition(direction="left"))
+        sm.add_widget(DashboardScreen(name="dashboard"))
+        sm.add_widget(AIChatScreen(name="ai chat"))
+        sm.add_widget(ToolsScreen(name="tools"))
+        sm.add_widget(ScanScreen(name="scanner"))
+        sm.add_widget(ExploitScreen(name="exploit"))
+        sm.add_widget(WirelessScreen(name="wireless"))
+        sm.add_widget(CryptoScreen(name="crypto"))
+        sm.add_widget(VulnScreen(name="vuln"))
+        sm.add_widget(ReportScreen(name="report"))
+        sm.add_widget(SettingsScreen(name="settings"))
+        sm.add_widget(OSINTScreen(name="osint"))
+        sm.add_widget(ForensicScreen(name="forensic"))
+        sm.add_widget(LogScreen(name="logs"))
+        sm.add_widget(AboutScreen(name="about"))
+        sm.current = "dashboard"
+        return sm
+
+if __name__ == "__main__":
+    OmniSecMobileApp().run()

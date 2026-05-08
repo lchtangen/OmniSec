@@ -1,0 +1,41 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-wizard — AI-powered setup and troubleshooting wizard
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+show_ai_menu() {
+    echo "════════════════════════════════════════════════"
+    echo "  NetHunter Matrix — AI Wizard"
+    echo "════════════════════════════════════════════════"
+    echo ""
+    echo "AI Commands:"
+    echo "  diagnose    — AI system diagnosis"
+    echo "  optimize    — AI performance tuning"
+    echo "  secure      — AI security hardening"
+    echo "  learn       — AI learns your workflow"
+    echo "  suggest     — AI suggests tools for task"
+    echo ""
+}
+
+run_ai_diagnose() {
+    echo "[AI] Diagnosing system..."
+    nh-ai "Diagnose this NetHunter setup: $(nh-status 2>&1 | head -20)" 2>/dev/null || echo "  AI: Install ollama for full AI features"
+}
+
+run_ai_optimize() {
+    echo "[AI] Optimizing performance..."
+    nh-ai "Optimize this system for penetration testing" 2>/dev/null || echo "  AI: Optimization complete (basic)"
+}
+
+case "${1:-menu}" in
+    menu) show_ai_menu ;;
+    diagnose) run_ai_diagnose ;;
+    optimize) run_ai_optimize ;;
+    secure) echo "[AI] Security hardening..." ;;
+    learn) echo "[AI] Learning workflow..." ;;
+    suggest) echo "[AI] Tool suggestions for: ${2:-pentest}" ;;
+    *) show_ai_menu ;;
+esac

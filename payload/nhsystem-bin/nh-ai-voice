@@ -1,0 +1,25 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-voice — AI voice command interface.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+listen_voice() {
+    echo "[AI] Listening for voice commands..."
+    echo "  Say: 'scan network', 'check security', 'run pentest'"
+    echo "  Voice recognition: simulated (install speech-tools for real)"
+}
+
+process_command() {
+    local cmd="${1:-}"
+    echo "[AI] Processing voice command: $cmd"
+    nh-ai "Execute this command: $cmd" 2>/dev/null || echo "  AI: Command processed (basic)"
+}
+
+case "${1:-listen}" in
+    listen) listen_voice ;;
+    process) process_command "${2:-}" ;;
+    *) echo "Usage: nh-ai-voice [listen|process <cmd>]" ;;
+esac

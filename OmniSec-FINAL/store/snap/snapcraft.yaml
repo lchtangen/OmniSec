@@ -1,0 +1,52 @@
+name: omnisec-ultimate
+base: core22
+version: "3.0.0"
+summary: AI-native, offline-only cybersecurity platform
+description: |
+  OmniSec ULTIMATE is a complete cybersecurity platform with:
+  - 161 integrated security tools
+  - AI Copilot with local LLM
+  - Post-quantum cryptography
+  - Mesh networking
+  - 100% offline, zero telemetry
+
+grade: stable
+confinement: strict
+
+apps:
+  omnisec:
+    command: bin/omnisec
+    extensions: [kde-neon]
+    plugs:
+      - network
+      - network-observe
+      - network-control
+      - home
+      - removable-media
+      - desktop
+      - desktop-legacy
+      - x11
+      - wayland
+      - unity7
+      - opengl
+      - audio-playback
+      - process-control
+
+parts:
+  omnisec:
+    plugin: python
+    source: https://github.com/omnisec-io/armored.git
+    source-tag: v3.0.0
+    python-packages:
+      - PyQt6
+      - requests
+      - pycryptodome
+      - rich
+      - psutil
+    build-packages:
+      - python3-dev
+      - qt6-base-dev
+    stage-packages:
+      - python3-pyqt6
+      - libgl1-mesa-glx
+      - libxkbcommon0

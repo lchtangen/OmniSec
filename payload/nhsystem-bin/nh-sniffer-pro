@@ -1,0 +1,33 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-sniffer-pro — Advanced packet capture with AI analysis
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+capture_traffic() {
+    local interface="${1:-wlan0}"
+    local duration="${2:-60}"
+    local output="/data/local/nhsystem/captures/capture-$(date +%s).pcap"
+    mkdir -p /data/local/nhsystem/captures
+    echo "[*] Capturing traffic on $interface for ${duration}s..."
+    tcpdump -i "$interface" -w "$output" -c 1000 2>/dev/null &
+    local pid=$!
+    sleep "$duration"
+    kill $pid 2>/dev/null || true
+    echo "[*] Capture saved: $output"
+}
+
+ai_analyze() {
+    local pcap="${1:-}"
+    [ -f "$pcap" ] || { echo "Usage: nh-sniffer-pro analyze <pcap>"; exit 1; }
+    echo "[AI] Analyzing $pcap..."
+    nh-ai "Analyze this pcap file: $pcap" 2>/dev/null || echo "  Install ollama for AI analysis"
+}
+
+case "${1:-capture}" in
+    capture) capture_traffic "${2:-wlan0}" "${3:-60}" ;;
+    analyze) ai_analyze "${2:-}" ;;
+    *) echo "Usage: nh-sniffer-pro [capture|analyze]" ;;
+esac

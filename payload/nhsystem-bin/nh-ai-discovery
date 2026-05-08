@@ -1,0 +1,22 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-discovery — AI automated asset discovery.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+discover_assets() {
+    echo "[AI Discovery] Scanning for assets..."
+    nh-ai "Discover all assets in network 192.168.1.0/24" 2>/dev/null || echo "  Assets: 0 discovered (basic)"
+}
+
+map_attack_surface() {
+    echo "[AI Discovery] Mapping attack surface..."
+}
+
+case "${1:-help}" in
+    discover) discover_assets ;;
+    map) map_attack_surface ;;
+    *) echo "Usage: nh-ai-discovery [discover|map]" ;;
+esac

@@ -1,0 +1,24 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-virtualization — VM and container management on device.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+list_vms() {
+    echo "══ Virtual Machines ═"
+    echo "  No VMs (QEMU not installed)"
+}
+
+create_vm() {
+    local name="${1:-myvm}"
+    echo "[*] Creating VM: $name"
+    echo "  Use QEMU for ARM64 virtualization"
+}
+
+case "${1:-list}" in
+    list) list_vms ;;
+    create) create_vm "${2:-}" ;;
+    *) echo "Usage: nh-virtualization [list|create <name>]" ;;
+esac

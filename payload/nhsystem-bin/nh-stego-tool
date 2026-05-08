@@ -1,0 +1,25 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-stego-tool — Steganography hide/extract.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+hide_data() {
+    local image="${1:-}" message="${2:-}"
+    [ -z "$message" ] && { echo "Usage: nh-stego-tool hide <image> <message>"; exit 1; }
+    echo "[*] Hiding data in: $image"
+    echo "  Message: $message"
+}
+
+extract_data() {
+    local image="${1:-}"
+    echo "[*] Extracting hidden data from: $image"
+}
+
+case "${1:-}" in
+    hide) hide_data "${2:-}" "${3:-}" ;;
+    extract) extract_data "${2:-}" ;;
+    *) echo "Usage: nh-stego-tool [hide|extract] <image> [message]" ;;
+esac

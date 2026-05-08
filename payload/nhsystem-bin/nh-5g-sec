@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-5g-sec — 5G/LTE security testing.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+scan_5g() {
+    echo "[*] Scanning 5G/LTE..."
+    echo "  Checking: IMSI catchers, fake base stations"
+    echo "  Result: No threats detected (simulated)"
+}
+
+test_sim() {
+    echo "[*] Testing SIM security..."
+}
+
+case "${1:-scan}" in
+    scan) scan_5g ;;
+    sim) test_sim ;;
+    *) echo "Usage: nh-5g-sec [scan|sim]" ;;
+esac

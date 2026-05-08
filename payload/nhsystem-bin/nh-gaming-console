@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P3
+# nh-gaming-console — Gaming console security testing.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+scan_consoles() {
+    echo "[*] Scanning for gaming consoles..."
+    echo "  Checking: PlayStation, Xbox, Nintendo, Steam Deck"
+    echo "  Found: 0 consoles (simulated)"
+}
+
+test_jailbreak() {
+    echo "[*] Testing jailbreak possibilities..."
+}
+
+case "${1:-help}" in
+    scan) scan_consoles ;;
+    jailbreak) test_jailbreak ;;
+    *) echo "Usage: nh-gaming-console [scan|jailbreak]" ;;
+esac

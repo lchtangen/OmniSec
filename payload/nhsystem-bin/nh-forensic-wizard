@@ -1,0 +1,41 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-forensic-wizard — Digital forensics wizard
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+show_menu() {
+    echo "══════════════════════════════════════════"
+    echo "  NetHunter Matrix — Forensic Wizard"
+    echo "══════════════════════════════════════════"
+    echo ""
+    echo "Options:"
+    echo "  1. Quick image (ddrescue)"
+    echo "  2. Recover deleted files"
+    echo "  3. Analyze filesystem"
+    echo "  4. Extract artifacts"
+    echo "  5. Timeline generation"
+    echo "  6. Report generation"
+}
+
+quick_image() {
+    local device="${1:-/dev/block/sda}"
+    echo "[*] Creating forensic image of $device..."
+    echo "  Image would be saved to /data/local/nhsystem/forensics/"
+    mkdir -p /data/local/nhsystem/forensics
+}
+
+recover_files() {
+    echo "[*] Scanning for deleted files..."
+    echo "  Recovery tools: extundelete, testdisk, photorec"
+}
+
+case "${1:-menu}" in
+    menu) show_menu ;;
+    image) quick_image "${2:-}" ;;
+    recover) recover_files ;;
+    analyze) echo "[*] Analyzing filesystem..." ;;
+    *) show_menu ;;
+esac

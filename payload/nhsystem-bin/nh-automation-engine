@@ -1,0 +1,27 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-automation-engine — Task automation and scheduling.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+TASK_DIR="/data/local/nhsystem/automation/tasks"
+WORKFLOW_DIR="/data/local/nhsystem/automation/workflows"
+
+run_task() {
+    local task="${1:-}"
+    [ -z "$task" ] && { echo "Usage: nh-automation-engine run <task>"; exit 1; }
+    echo "[*] Running task: $task"
+}
+
+list_workflows() {
+    echo "══ Workflows ═"
+    ls -1 "$WORKFLOW_DIR/" 2>/dev/null || echo "  No workflows"
+}
+
+case "${1:-list}" in
+    run) run_task "${2:-}" ;;
+    workflows) list_workflows ;;
+    *) echo "Usage: nh-automation-engine [run <task>|workflows]" ;;
+esac

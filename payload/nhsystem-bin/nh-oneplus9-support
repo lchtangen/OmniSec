@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-oneplus9-support — OnePlus 9 series support.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+detect_oneplus9() {
+    local model=$(getprop ro.product.model 2>/dev/null || echo "Unknown")
+    if echo "$model" | grep -qiE "oneplus 9|lemonade"; then
+        echo "[*] OnePlus 9 series detected: $model"
+        return 0
+    else
+        echo "  Not a OnePlus 9 device"
+        return 1
+    fi
+}
+
+case "${1:-detect}" in
+    detect) detect_oneplus9 ;;
+    *) echo "Usage: nh-oneplus9-support [detect]" ;;
+esac

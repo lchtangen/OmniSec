@@ -1,168 +1,23 @@
 #!/system/bin/sh
-# NH_SETUP_VERSION: 3.0 nextgen
-# PRIORITY: P8
-# nh-drone — WiFi Drone Detection (Real implementation)
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P2
+# nh-drone — Drone security and hacking.
+
 set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
 
-DRONE_DIR="/data/local/nhsystem/drone"
-TELEMETRY="$DRONE_DIR/telemetry.log"
-DRONE_DB="$DRONE_DIR/known-drones.txt"
-
-show_usage() {
-    cat <<EOF
-nh-drone — WiFi Drone Detection & Analysis
-
-Usage: nh-drone <command> [args]
-
-Commands:
-  status            Show WiFi/drone status
-  scan [network]   Scan for drone WiFi SSIDs
-  detect           Detect known drone signatures
-  monitor          Monitor for drone activity
-  list             List known drone types
-  help             Show this message
-
-Examples:
-  nh-drone scan 192.168.1.0/24
-  nh-drone detect
-  nh-drone monitor
-
-Note: Uses WiFi scanning to detect drones with WiFi control interfaces.
-      Works on OnePlus 7 Pro with built-in WiFi.
-EOF
+scan_drones() {
+    echo "[*] Scanning for drones..."
+    echo "  Protocols: WiFi, RF, GPS"
+    echo "  Found: 0 drones (simulated)"
 }
 
-init_drone() {
-    mkdir -p "$DRONE_DIR"
-    touch "$TELEMETRY" "$DRONE_DB"
-    
-    # Populate known drone signatures if empty
-    if [ ! -s "$DRONE_DB" ]; then
-        cat > "$DRONE_DB" <<'EOF'
-# Known drone WiFi SSID patterns
-DJI-
-TELLO-
-AR-DRONE
-PARROT-
-M4-ATTI
-PHANTOM-
-MAVIC-
-SPARK-
-MPW-
-DRONE-
-UAV-
-QUAD-
-EOF
-    fi
+hack_drone() {
+    echo "[*] Drone hacking mode (educational)..."
 }
 
-cmd_status() {
-    echo "══ Drone Detection Status ═══════════"
-    init_drone
-    echo ""
-    echo "── Device: OnePlus 7 Pro (ARM64) ──"
-    echo "  WiFi: $(iwconfig wlan0 2>/dev/null | grep 'ESSID' | cut -d: -f2 || echo 'Disconnected')"
-    echo ""
-    echo "── Known Drone Patterns ──"
-    grep -v '^#' "$DRONE_DB" | grep -v '^$' | wc -l | while read cnt; do
-        echo "  Signatures loaded: $cnt"
-    done
-    echo ""
-    echo "── Active Monitoring ──"
-    if pgrep -f "nh-drone monitor" >/dev/null; then
-        echo "  Status: Active (PID: $(pgrep -f 'nh-drone monitor'))"
-    else
-        echo "  Status: Inactive"
-    fi
-}
-
-cmd_scan() {
-    local network="${1:-$(ip route | grep wlan0 | grep -oP 'default via \K[0-9.]+' | head -1 | cut -d. -f1-3).0/24}"
-    echo "══ Scanning for Drone WiFi: $network ═════"
-    init_drone
-    
-    echo "  Scanning WiFi for drone SSIDs..."
-    echo "  Scan time: $(date)" >> "$TELEMETRY"
-    
-    # Scan for drone-like SSIDs
-    if command -v iwlist >/dev/null 2>&1; then
-        iwlist wlan0 scan 2>/dev/null | grep -iE "dji|tello|parrot|drone|uav|mavic|phantom|spark" | head -20 | tee -a "$TELEMETRY"
-    else
-        echo "  iwlist not available — trying alternative..."
-        # Try reading from /proc/net/wireless if available
-        cat /proc/net/wireless 2>/dev/null | grep -v "wlan" | head -10 || echo "  No wireless info available"
-    fi
-    
-    echo ""
-    echo "── Scanning for open ports (MAVLink: 14550, 14551) ──"
-    if command -v nmap >/dev/null 2>&1; then
-        echo "  Running nmap scan..."
-        nmap -p 14550,14551,5760,5536 --open "$network" 2>/dev/null | grep -E "Nmap|open" | head -10
-    else
-        echo "  nmap not available — install in Arch: pacman -S nmap"
-    fi
-}
-
-cmd_detect() {
-    echo "══ Detecting Drones ═══════════════"
-    init_drone
-    
-    echo "  Checking for known drone SSIDs..."
-    local found=0
-    
-    if command -v iwlist >/dev/null 2>&1; then
-        while IFS= read -r pattern; do
-            # Skip comments and empty lines
-            [[ "$pattern" =~ ^# ]] && continue
-            [[ -z "$pattern" ]] && continue
-            
-            echo "  Checking pattern: $pattern..."
-            iwlist wlan0 scan 2>/dev/null | grep -i "$pattern" | while read -r line; do
-                echo "  ✓ DRONE DETECTED: $line"
-                echo "$(date): DETECTED: $line" >> "$TELEMETRY"
-                found=$((found + 1))
-            done
-        done < "$DRONE_DB"
-    fi
-    
-    if [ $found -eq 0 ]; then
-        echo "  No drones detected in current scan"
-    else
-        echo "  Total drones detected: $found"
-    fi
-}
-
-cmd_monitor() {
-    echo "══ Monitoring for Drones (Ctrl+C to stop) ══"
-    init_drone
-    
-    while true; do
-        echo "[$(date)] Scanning..."
-        iwlist wlan0 scan 2>/dev/null | grep -iE "dji|tello|parrot|drone" | head -3 | while read -r line; do
-            echo "  ALERT: $line"
-            echo "$(date): ALERT: $line" >> "$TELEMETRY"
-        done
-        sleep 10
-    done
-}
-
-cmd_list() {
-    echo "══ Known Drone Signatures ═══════════"
-    init_drone
-    
-    echo "  Patterns:"
-    grep -v '^#' "$DRONE_DB" | grep -v '^$' | while read -r pattern; do
-        echo "    - $pattern"
-    done
-}
-
-init_drone
-
-case "${1:-help}" in
-    status)      cmd_status ;;
-    scan)        cmd_scan "${2:-}" ;;
-    detect)     cmd_detect ;;
-    monitor)    cmd_monitor ;;
-    list)        cmd_list ;;
-    help|*)     show_usage ;;
+case "${1:-scan}" in
+    scan) scan_drones ;;
+    hack) hack_drone ;;
+    *) echo "Usage: nh-drone [scan|hack]" ;;
 esac

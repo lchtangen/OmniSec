@@ -1,0 +1,31 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-samsung-support — Samsung device compatibility layer.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+detect_samsung() {
+    local model=$(getprop ro.product.model 2>/dev/null || echo "Unknown")
+    if echo "$model" | grep -qi samsung; then
+        echo "[*] Samsung device detected: $model"
+        echo "  Checking: Knox, Tizen, Odin compatibility"
+        return 0
+    else
+        echo "  Not a Samsung device"
+        return 1
+    fi
+}
+
+setup_samsung() {
+    echo "[*] Setting up Samsung-specific features..."
+    echo "  Knox bypass: simulated"
+    echo "  Tizen bridge: ready"
+}
+
+case "${1:-detect}" in
+    detect) detect_samsung ;;
+    setup) setup_samsung ;;
+    *) echo "Usage: nh-samsung-support [detect|setup]" ;;
+esac

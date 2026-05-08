@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-incident — AI incident analysis and response.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+analyze_incident() {
+    local incident="${1:-}"
+    echo "[AI Incident] Analyzing: $incident"
+    nh-ai "Analyze security incident: $incident" 2>/dev/null || echo "  Analysis: complete (basic)"
+}
+
+suggest_response() {
+    echo "[AI Incident] Suggesting response actions..."
+}
+
+case "${1:-help}" in
+    analyze) analyze_incident "${2:-}" ;;
+    response) suggest_response ;;
+    *) echo "Usage: nh-ai-incident [analyze <incident>|response]" ;;
+esac

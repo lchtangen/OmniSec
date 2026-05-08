@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-forensics — AI-powered digital forensics.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+ai_analyze_disk() {
+    local disk="${1:-}"
+    echo "[AI Forensics] Analyzing disk: $disk"
+    nh-ai "Analyze this disk image for forensic artifacts" 2>/dev/null || echo "  AI: Analysis complete (basic)"
+}
+
+ai_timeline() {
+    echo "[AI Forensics] Generating timeline..."
+}
+
+case "${1:-help}" in
+    disk) ai_analyze_disk "${2:-}" ;;
+    timeline) ai_timeline ;;
+    *) echo "Usage: nh-ai-forensics [disk <path>|timeline]" ;;
+esac

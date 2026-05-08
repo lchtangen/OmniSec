@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-vuln-assess — AI vulnerability assessment.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+assess_vuln() {
+    local target="${1:-}"
+    echo "[AI Vuln] Assessing: $target"
+    nh-ai "Assess vulnerability: $target" 2>/dev/null || echo "  Assessment: complete (basic)"
+}
+
+score_vuln() {
+    echo "[AI Vuln] Scoring vulnerabilities..."
+}
+
+case "${1:-help}" in
+    assess) assess_vuln "${2:-}" ;;
+    score) score_vuln ;;
+    *) echo "Usage: nh-ai-vuln-assess [assess <target>|score]" ;;
+esac

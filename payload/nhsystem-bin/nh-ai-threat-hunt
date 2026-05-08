@@ -1,0 +1,23 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-ai-threat-hunt — AI-powered threat hunting.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib"
+
+hunt_threats() {
+    echo "[AI Threat Hunt] Hunting for threats..."
+    nh-ai "Hunt for threats in this log data" 2>/dev/null || echo "  Threats: 0 found (basic)"
+}
+
+analyze_logs() {
+    local logfile="${1:-}"
+    echo "[AI Threat Hunt] Analyzing logs: $logfile"
+}
+
+case "${1:-help}" in
+    hunt) hunt_threats ;;
+    logs) analyze_logs "${2:-}" ;;
+    *) echo "Usage: nh-ai-threat-hunt [hunt|logs <file>]" ;;
+esac

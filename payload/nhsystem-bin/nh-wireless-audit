@@ -1,0 +1,30 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 matrix
+# PRIORITY: P1
+# nh-wireless-audit — Complete wireless security audit.
+
+set -euo pipefail
+. /data/local/nhsystem/bin/nh-lib
+
+audit_wifi() {
+    echo "[*] Wireless audit starting..."
+    echo "  Checking: WPA3 support, WPS, hidden SSIDs, weak passwords"
+}
+
+audit_bluetooth() {
+    echo "[*] Bluetooth audit..."
+    nh-bluetooth-audit scan
+}
+
+audit_iot() {
+    echo "[*] IoT wireless audit..."
+    nh-iot-scan
+}
+
+case "${1:-all}" in
+    wifi) audit_wifi ;;
+    bt|bluetooth) audit_bluetooth ;;
+    iot) audit_iot ;;
+    all) audit_wifi; audit_bluetooth; audit_iot ;;
+    *) echo "Usage: nh-wireless-audit [wifi|bt|iot|all]" ;;
+esac
