@@ -1,0 +1,175 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-recover - Disaster recovery and system restore
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+NHWORK=$NHSYSTEM/workspaces/main
+RECOVERY_DIR=$NHSYSTEM/workspaces/main/backup
+RECOVERY_LOG=$NHSYSTEM/logs/recovery.log
+
+ensure_dirs() { mkdir -p "$RECOVERY_DIR" "$NHSYSTEM/logs"; }
+
+repair_chroot_mounts() {
+    echo "── Repairing Chroot Mounts ──"
+    local roots="$NHSYSTEM/roots/archlinux $NHSYSTEM/kali-arm64"
+    local fixed=0
+
+    for root in $roots; do
+        [ -d "$root/etc" ] || { echo "  Skipping $root (not found)"; continue; }
+
+        for d in proc sys dev dev/pts dev/shm run tmp; do
+            if ! grep -qs " $root/$d " /proc/mounts 2>/dev/null; then
+                mkdir -p "$root/$d" 2>/dev/null
+                fixed=$((fixed + 1))
+            fi
+        done
+    done
+
+    echo "  Mount points checked/fixed: $fixed"
+    echo "  Run: nh-mount arch  (to mount)"
+}
+
+repair_pacman() {
+    local root="$NHSYSTEM/roots/archlinux"
+    [ -d "$root" ] || { echo "  Arch rootfs not found"; return 1; }
+
+    echo "── Repairing Pacman ──"
+
+    # Remove lock
+    if [ -f "$root/var/lib/pacman/db.lck" ]; then
+        rm -f "$root/var/lib/pacman/db.lck"
+        echo "  Removed pacman lock"
+    fi
+
+    # Reinit keys
+    if [ ! -d "$root/etc/pacman.d/gnupg" ]; then
+        echo "  Reinitializing pacman keys..."
+        chroot_exec "$root" /bin/sh -c 'pacman-key --init 2>/dev/null; pacman-key --populate archlinuxarm 2>/dev/null' || true
+        echo "  Keys initialized"
+    fi
+
+    # Sync
+    chroot_exec "$root" /bin/sh -c 'pacman -Sy --noconfirm 2>/dev/null' && echo "  Pacman DB synced" || echo "  Sync failed"
+}
+
+repair_ssh() {
+    echo "── Repairing SSH ──"
+
+    local root="$NHSYSTEM/roots/archlinux"
+    if [ -d "$root" ]; then
+        if [ ! -f "$root/etc/ssh/ssh_host_ed25519_key" ]; then
+            chroot_exec "$root" /bin/sh -c 'ssh-keygen -A 2>/dev/null' && echo "  Arch SSH keys regenerated"
+        fi
+        chroot_exec "$root" /bin/sh -c 'mkdir -p /run/sshd; chmod 755 /run/sshd' 2>/dev/null
+    fi
+
+    # Fix permissions
+    [ -d "$root/root/.ssh" ] && chmod 700 "$root/root/.ssh" 2>/dev/null
+    [ -f "$root/root/.ssh/authorized_keys" ] && chmod 600 "$root/root/.ssh/authorized_keys" 2>/dev/null
+}
+
+repair_workspace() {
+    echo "── Repairing Workspace ──"
+    ensure_dirs
+
+    local dirs="projects notes backup config downloads snapshots canaries network/topology"
+    for d in $dirs; do
+        mkdir -p "$NHWORK/$d"
+    done
+    echo "  Workspace structure verified"
+}
+
+list_recovery_points() {
+    echo "── Recovery Points ──"
+    echo ""
+
+    # Check snapshots
+    local snap_dir="$NHWORK/snapshots"
+    if [ -d "$snap_dir" ]; then
+        local count=$(ls "$snap_dir"/*.tar.* 2>/dev/null | wc -l)
+        echo "  Snapshots: $count (in $snap_dir)"
+    fi
+
+    # Check backups
+    if [ -d "$RECOVERY_DIR" ]; then
+        local bcount=$(find "$RECOVERY_DIR" -maxdepth 2 -type d 2>/dev/null | wc -l)
+        echo "  Backup sets: $bcount"
+    fi
+
+    # Check logs
+    if ls "$NHSYSTEM/logs"/*.log 2>/dev/null >/dev/null; then
+        local lcount=$(ls "$NHSYSTEM/logs"/*.log 2>/dev/null | wc -l)
+        echo "  Log files: $lcount"
+    fi
+}
+
+full_recovery() {
+    echo "╔══ Full System Recovery ══╗"
+    echo "║  $(date)"
+    echo "╚═══════════════════════════╝"
+    echo ""
+
+    local step=0
+    local steps=5
+
+    step=$((step + 1))
+    echo "  [$step/$steps] Checking chroot mounts..."
+    repair_chroot_mounts
+
+    step=$((step + 1))
+    echo "  [$step/$steps] Repairing pacman..."
+    repair_pacman
+
+    step=$((step + 1))
+    echo "  [$step/$steps] Repairing SSH..."
+    repair_ssh
+
+    step=$((step + 1))
+    echo "  [$step/$steps] Repairing workspace..."
+    repair_workspace
+
+    step=$((step + 1))
+    echo "  [$step/$steps] Running nh-heal..."
+    nh-heal all 2>/dev/null
+
+    echo ""
+    echo "  Recovery complete"
+    echo "  Log: $RECOVERY_LOG"
+    echo "  $(date) FULL RECOVERY executed" >> "$RECOVERY_LOG"
+}
+
+usage() {
+    cat <<EOF
+nh-recover - Disaster recovery and system restore
+
+Usage: nh-recover <command>
+
+Commands:
+  full        Run full system recovery
+  mounts      Repair chroot mount points
+  pacman      Repair pacman database
+  ssh         Regenerate SSH keys + fix perms
+  workspace   Rebuild workspace structure
+  points      List available recovery points
+
+Examples:
+  nh-recover full
+  nh-recover mounts
+  nh-recover pacman
+  nh-recover points
+EOF
+    exit 1
+}
+
+ensure_dirs
+case "${1:-help}" in
+    full|all|repair) full_recovery ;;
+    mounts|chroot|mount) repair_chroot_mounts ;;
+    pacman|pkg) repair_pacman ;;
+    ssh|sshd) repair_ssh ;;
+    workspace|ws) repair_workspace ;;
+    points|list|status) list_recovery_points ;;
+    *) usage ;;
+esac

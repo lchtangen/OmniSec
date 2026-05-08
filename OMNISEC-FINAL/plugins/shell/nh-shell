@@ -1,0 +1,20 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# NetHunter default shell launcher — auto-selects best available environment
+# Used as the NetHunter terminal default command
+
+NHBIN=/data/local/nhsystem/bin
+
+# Try Kali first (preferred for security work)
+if [ -d /data/local/nhsystem/roots/kali-arm64/usr ]; then
+    exec "$NHBIN/nh-shell-kali"
+fi
+
+# Fall back to Arch
+if [ -d /data/local/nhsystem/roots/archlinux/usr ]; then
+    exec "$NHBIN/nh-shell-bash"
+fi
+
+# Nothing mounted — drop to emergency
+exec "$NHBIN/nh-shell-emergency"

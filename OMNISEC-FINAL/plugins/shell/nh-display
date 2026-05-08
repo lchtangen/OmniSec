@@ -1,0 +1,120 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-display - Display, brightness, and rotation management
+set -u
+
+get_brightness() {
+    local brightness="?"
+    for path in /sys/class/backlight/*/brightness /sys/class/leds/*:white/brightness; do
+        if [ -f "$path" ]; then
+            local max=$(cat "${path%/brightness}/max_brightness" 2>/dev/null || echo 255)
+            local cur=$(cat "$path" 2>/dev/null || echo 0)
+            local pct=$((cur * 100 / max))
+            brightness="${pct}%"
+            break
+        fi
+    done
+    echo "  Brightness: $brightness"
+}
+
+set_brightness() {
+    local level="$1"
+    # Strip % if present
+    level="${level%\%}"
+    # Validate
+    [ "$level" -ge 0 ] 2>/dev/null || { echo "  Invalid level (0-100)" >&2; exit 1; }
+    [ "$level" -le 100 ] 2>/dev/null || { echo "  Invalid level (0-100)" >&2; exit 1; }
+
+    for path in /sys/class/backlight/*/brightness /sys/class/leds/*:white/brightness; do
+        if [ -f "$path" ]; then
+            local max=$(cat "${path%/brightness}/max_brightness" 2>/dev/null || echo 255)
+            local val=$((level * max / 100))
+            echo "$val" > "$path" 2>/dev/null || true
+            echo "  Brightness set to: ${level}%"
+            return 0
+        fi
+    done
+    # Fallback via Termux
+    if command -v termux-brightness >/dev/null 2>&1; then
+        termux-brightness "$level" 2>/dev/null && echo "  Brightness set to: ${level}%" || \
+            echo "  Failed to set brightness"
+    else
+        echo "  No brightness control available" >&2
+        exit 1
+    fi
+}
+
+get_rotation() {
+    if command -v termux-sensor >/dev/null 2>&1; then
+        local rot=$(termux-sensor -s "Rotation Vector" -n 1 2>/dev/null | grep -o '"[0-9]"' | head -1)
+        case "$rot" in
+            "0") echo "  Rotation: Portrait" ;;
+            "1") echo "  Rotation: Landscape" ;;
+            "2") echo "  Rotation: Reverse Portrait" ;;
+            "3") echo "  Rotation: Reverse Landscape" ;;
+            *) echo "  Rotation: $rot" ;;
+        esac
+    else
+        echo "  Rotation sensor not available"
+    fi
+}
+
+set_autorotate() {
+    # Attempt to toggle auto-rotate via settings
+    if command -v settings >/dev/null 2>&1; then
+        local current=$(settings get system accelerometer_rotation 2>/dev/null || echo "1")
+        if [ "$current" = "0" ]; then
+            settings put system accelerometer_rotation 1 2>/dev/null
+            echo "  Auto-rotate: ON"
+        else
+            settings put system accelerometer_rotation 0 2>/dev/null
+            echo "  Auto-rotate: OFF"
+        fi
+    else
+        echo "  Cannot toggle auto-rotate (settings command not available)" >&2
+        exit 1
+    fi
+}
+
+info() {
+    echo "── Display Info ──"
+    get_brightness
+    get_rotation
+    # Resolution
+    local res=$(wm size 2>/dev/null | grep -o '[0-9]\+x[0-9]\+' | head -1)
+    [ -n "$res" ] && echo "  Resolution: $res"
+    local density=$(wm density 2>/dev/null | grep -o '[0-9]\+' | head -1)
+    [ -n "$density" ] && echo "  Density: ${density} dpi"
+}
+
+usage() {
+    cat <<EOF
+usage: nh-display <command> [args]
+
+Commands:
+  info                    Show display information
+  brightness              Show current brightness
+  brightness <0-100>      Set brightness level
+  autorotate              Toggle auto-rotation
+  rotation                Show current rotation
+
+Requires: Termux API for brightness (install: pkg install termux-api)
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    info) info ;;
+    brightness)
+        if [ $# -ge 2 ]; then
+            set_brightness "$2"
+        else
+            get_brightness
+        fi
+        ;;
+    autorotate) set_autorotate ;;
+    rotation) get_rotation ;;
+    *) usage ;;
+esac

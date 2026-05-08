@@ -1,0 +1,66 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-bench - Quick system benchmark suite
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+LOG=$NHSYSTEM/logs/bench-$(date +%Y%m%d-%H%M%S).log
+
+echo "══ NetHunter Benchmark Suite ══"
+echo "  Device: OnePlus 7 Pro (GM1911)"
+echo "  Android: 16 / LineageOS 23.2"
+echo "  Kernel: $(uname -r 2>/dev/null || echo 'unknown')"
+echo "  Date:   $(date '+%Y-%m-%d %H:%M:%S')"
+echo "  Log:    $LOG"
+echo ""
+exec > "$LOG" 2>&1
+
+# CPU benchmark (simple prime calculation)
+echo "── CPU (single-thread) ──"
+time_prim() {
+    local n=50000
+    local count=0
+    local i=2
+    while [ "$i" -le "$n" ]; do
+        local prime=1
+        local j=2
+        while [ "$j" -le $((i / 2)) ]; do
+            if [ $((i % j)) -eq 0 ]; then
+                prime=0
+                break
+            fi
+            j=$((j + 1))
+        done
+        [ "$prime" -eq 1 ] && count=$((count + 1))
+        i=$((i + 1))
+    done
+    echo "  primes up to $n: $count"
+}
+START=$(date +%s%N)
+time_prim
+END=$(date +%s%N)
+ELAPSED=$(( (END - START) / 1000000 ))
+echo "  time: ${ELAPSED}ms"
+
+# Memory
+echo ""
+echo "── Memory ──"
+free -m 2>/dev/null || cat /proc/meminfo 2>/dev/null | grep -E 'MemTotal|MemFree|MemAvailable'
+
+# Storage
+echo ""
+echo "── Storage ──"
+df -h /data /system 2>/dev/null
+
+# Network speed test (DNS resolution)
+echo ""
+echo "── Network (DNS) ──"
+START=$(date +%s%N)
+nslookup google.com 2>/dev/null || ping -c 1 -W 2 google.com 2>/dev/null || echo "  offline"
+END=$(date +%s%N)
+ELAPSED=$(( (END - START) / 1000000 ))
+echo "  DNS resolution: ${ELAPSED}ms"
+
+echo ""
+echo "══ Benchmark Complete ══"
+echo "  Results: $LOG"

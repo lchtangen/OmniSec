@@ -1,0 +1,191 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-docs - Built-in documentation browser and knowledge base
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+DOCS_DIR=$NHSYSTEM/etc/docs
+NHWORK=$NHSYSTEM/workspaces/main
+
+ensure_docs() {
+    mkdir -p "$DOCS_DIR"
+    if [ ! -f "$DOCS_DIR/.initialized" ]; then
+        cat > "$DOCS_DIR/quickstart.txt" <<'EOF'
+╔══════════════════════════════════════════╗
+║     NetHunter NextGen Quickstart        ║
+╚══════════════════════════════════════════╝
+
+ESSENTIAL COMMANDS:
+  nh-status          System health overview
+  nh-health          Deep diagnostic check
+  nh-wizard          Interactive setup wizard
+  nh-install         One-command installer
+  nh-services start  Start all services
+
+CHROOT MANAGEMENT:
+  nh-enter-arch      Enter Arch Linux chroot
+  nh-enter-kali      Enter Kali chroot
+  nh-mount           Mount chroot manually
+  nh-umount          Unmount chroot
+
+NETWORK:
+  nh-scan <target>   Port/network scan
+  nh-sniff start     Packet capture
+  nh-net             Network info
+  nh-vpn             VPN/WireGuard
+  nh-tunnel          SSH tunnel manager
+
+SECURITY:
+  nh-secure audit    Full security audit
+  nh-magisk          Magisk module manager
+  nh-market          Module marketplace
+  nh-heal            Auto-repair chroots
+
+DEVELOPMENT:
+  nh-dev             Dev environment
+  nh-init <type>     Project scaffold
+  nh-web             Web hacking tools
+  nh-ai chat         AI assistant
+EOF
+
+        cat > "$DOCS_DIR/architecture.txt" <<'EOF'
+╔══════════════════════════════════════════╗
+║     NetHunter NextGen Architecture      ║
+╚══════════════════════════════════════════╝
+
+LAYER 1: ANDROID HOST
+  - Magisk root (systemless)
+  - Termux userspace
+  - nh-* tools in /data/local/nhsystem/bin/
+  - Web dashboard (Python server)
+
+LAYER 2: CHROOT ENVIRONMENTS
+  - Arch Linux ARM64 (primary)
+    - Latest packages via pacman
+    - SSH on port 2222
+    - Full development toolchain
+  - Kali Linux ARM64 (secondary)
+    - Penetration testing distro
+    - SSH on port 22
+    - All Kali tools available
+
+LAYER 3: WORKSPACE
+  - Shared /workspace bind-mounted
+  - Projects, notes, configs
+  - Magisk module storage
+  - Capture/output files
+
+LAYER 4: SECURITY
+  - Magisk modules (Frida, certs)
+  - Firewall (iptables)
+  - SSH hardening
+  - Encrypted backups
+
+LAYER 5: AUTOMATION
+  - Service management (nh-services)
+  - Scheduled tasks (nh-cron)
+  - Event pipelines (nh-pipeline)
+  - Webhook integration
+EOF
+
+        cat > "$DOCS_DIR/troubleshooting.txt" <<'EOF'
+╔══════════════════════════════════════════╗
+║        Troubleshooting Guide            ║
+╚══════════════════════════════════════════╝
+
+PROBLEM: "pacman: not enough free disk space"
+  FIX:  nh-sweep mounts  # remount tmpfs cache
+  FIX:  nh-heal          # auto-repair routine
+
+PROBLEM: "chroot: failed to run command"
+  FIX:  nh-mount arch    # remount all bind mounts
+  FIX:  nh-heal arch     # fix common chroot issues
+
+PROBLEM: "SSH connection refused"
+  FIX:  nh-services start  # start all SSH daemons
+  FIX:  Check: ss -tlnp | grep -E '22|2222|8022'
+
+PROBLEM: "Permission denied"
+  FIX:  Run with: su -c <command>
+  FIX:  Check: id  (should be uid=0)
+
+PROBLEM: "Terminal shows 'command not found'"
+  FIX:  source /data/local/nhsystem/bin/nh-lib
+  FIX:  export PATH=/data/local/nhsystem/bin:$PATH
+
+PROBLEM: "Module download fails"
+  FIX:  Check internet: ping 1.1.1.1
+  FIX:  Check DNS: cat /etc/resolv.conf
+  FIX:  Try: nh-market update
+
+PROBLEM: "Web dashboard not loading"
+  FIX:  cd src/web && python3 server.py
+  FIX:  Check: http://localhost:8080
+EOF
+        touch "$DOCS_DIR/.initialized"
+    fi
+}
+
+list_docs() {
+    ensure_docs
+    echo "── Documentation Library ──"
+    echo ""
+    for f in "$DOCS_DIR"/*.txt; do
+        [ -f "$f" ] || continue
+        local name=$(basename "$f" .txt)
+        local lines=$(wc -l < "$f")
+        local size=$(ls -lh "$f" | awk '{print $5}')
+        echo "  $name  ($lines lines, $size)"
+    done
+    echo ""
+    echo "Usage: nh-docs read <topic>"
+}
+
+read_doc() {
+    local topic="$1"
+    local file="$DOCS_DIR/$topic.txt"
+    [ -f "$file" ] || file="$DOCS_DIR/${topic}.txt"
+    [ -f "$file" ] || { echo "Topic not found: $topic"; echo "Available: $(ls $DOCS_DIR/*.txt | xargs -n1 basename -a | sed 's/.txt//')"; exit 1; }
+    cat "$file"
+}
+
+search_docs() {
+    local term="$1"
+    ensure_docs
+    echo "── Search: '$term' ──"
+    echo ""
+    grep -rli "$term" "$DOCS_DIR"/*.txt 2>/dev/null | while read -r f; do
+        local name=$(basename "$f" .txt)
+        local matches=$(grep -c "$term" "$f" 2>/dev/null)
+        echo "  $name ($matches matches)"
+        grep -nh "$term" "$f" 2>/dev/null | head -3 | while read -r line; do
+            echo "    > $line"
+        done
+        echo ""
+    done
+}
+
+usage() {
+    cat <<EOF
+nh-docs - Built-in documentation browser
+
+Usage: nh-docs <command> [topic]
+
+Commands:
+  list              List available documentation
+  read <topic>      Read documentation topic
+  search <term>     Search documentation
+
+Topics: quickstart, architecture, troubleshooting
+EOF
+    exit 1
+}
+
+ensure_docs
+case "${1:-list}" in
+    list|ls) list_docs ;;
+    read|show|cat) shift; [ $# -ge 1 ] || usage; read_doc "$1" ;;
+    search|grep) shift; [ $# -ge 1 ] || usage; search_docs "$*" ;;
+    *) usage ;;
+esac

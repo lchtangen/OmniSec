@@ -1,0 +1,130 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-tunnel - SSH tunnel and proxy manager
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+TUNNEL_DIR=$NHSYSTEM/etc/tunnels
+TUNNEL_DB=$TUNNEL_DIR/profiles.conf
+
+ensure_db() {
+    mkdir -p $TUNNEL_DIR
+    [ -f $TUNNEL_DB ] || cat > $TUNNEL_DB <<'DB'
+# nh-tunnel profiles
+# Format: label|type|local_port|target_host|target_port|ssh_host|ssh_port|ssh_user
+# type: L=local, R=remote, D=dynamic
+proxy|D|9050|-|-|127.0.0.1|8022|u0_a171
+arch-ssh|L|2222|127.0.0.1|22|127.0.0.1|8022|u0_a171
+kali-vnc|L|5901|127.0.0.1|5901|127.0.0.1|8022|u0_a171
+DB
+}
+
+list_tunnels() {
+    ensure_db
+    echo "── Tunnel Profiles ──"
+    grep -v '^#' $TUNNEL_DB | while IFS='|' read -r label type lport target tport shost sport user; do
+        [ -z "$label" ] && continue
+        local type_str=""
+        case "$type" in
+            L) type_str="Local  ${lport} → ${target}:${tport}" ;;
+            R) type_str="Remote ${lport} → ${target}:${tport}" ;;
+            D) type_str="Dynamic SOCKS5 :${lport}" ;;
+        esac
+        printf "  %-15s %s (via %s@%s:%s)\n" "$label" "$type_str" "$user" "$shost" "$sport"
+    done
+}
+
+start_tunnel() {
+    local label="$1"
+    ensure_db
+    local entry=$(grep "^${label}|" $TUNNEL_DB)
+    [ -n "$entry" ] || { echo "  Tunnel not found: $label" >&2; exit 1; }
+
+    local type=$(echo "$entry" | cut -d'|' -f2)
+    local lport=$(echo "$entry" | cut -d'|' -f3)
+    local target=$(echo "$entry" | cut -d'|' -f4)
+    local tport=$(echo "$entry" | cut -d'|' -f5)
+    local shost=$(echo "$entry" | cut -d'|' -f6)
+    local sport=$(echo "$entry" | cut -d'|' -f7)
+    local user=$(echo "$entry" | cut -d'|' -f8)
+
+    local flag=""
+    case "$type" in
+        L) flag="-L ${lport}:${target}:${tport}" ;;
+        R) flag="-R ${lport}:${target}:${tport}" ;;
+        D) flag="-D ${lport}" ;;
+        *) echo "  Unknown type: $type" >&2; exit 1 ;;
+    esac
+
+    local pid_file=$TUNNEL_DIR/${label}.pid
+    if [ -f "$pid_file" ] && kill -0 $(cat "$pid_file") 2>/dev/null; then
+        echo "  Tunnel already running: $label (PID: $(cat $pid_file))"
+        return 0
+    fi
+
+    echo "  Starting tunnel: $label"
+    ssh -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=no \
+        -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+        $flag -N -p $sport ${user}@${shost} &
+    local pid=$!
+    echo $pid > "$pid_file"
+    echo "  PID: $pid"
+}
+
+stop_tunnel() {
+    local label="$1"
+    local pid_file=$TUNNEL_DIR/${label}.pid
+    if [ -f "$pid_file" ]; then
+        local pid=$(cat "$pid_file")
+        kill $pid 2>/dev/null || true
+        rm -f "$pid_file"
+        echo "  Tunnel stopped: $label"
+    else
+        echo "  Tunnel not running: $label"
+    fi
+}
+
+status_tunnel() {
+    echo "── Tunnel Status ──"
+    ensure_db
+    grep -v '^#' $TUNNEL_DB | while IFS='|' read -r label type rest; do
+        [ -z "$label" ] && continue
+        local pid_file=$TUNNEL_DIR/${label}.pid
+        if [ -f "$pid_file" ] && kill -0 $(cat "$pid_file") 2>/dev/null; then
+            echo "  ✓ $label (PID: $(cat $pid_file))"
+        else
+            echo "  ✗ $label (stopped)"
+        fi
+    done
+}
+
+usage() {
+    cat <<EOF
+usage: nh-tunnel <command> [args]
+
+Commands:
+  list                     List tunnel profiles
+  start <profile>         Start a tunnel
+  stop <profile>          Stop a tunnel
+  status                  Show tunnel status
+  add <label> <type> <lport> <target> <tport> <shost> <sport> <user>
+                           Add a tunnel profile
+
+Types: L=local, R=remote, D=dynamic (SOCKS)
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    list) list_tunnels ;;
+    start) shift; [ $# -ge 1 ] || usage; start_tunnel "$1" ;;
+    stop) shift; [ $# -ge 1 ] || usage; stop_tunnel "$1" ;;
+    status) status_tunnel ;;
+    add) shift; [ $# -ge 8 ] || usage
+        echo "$1|$2|$3|$4|$5|$6|$7|$8" >> $TUNNEL_DB
+        echo "  Tunnel added: $1"
+        ;;
+    *) usage ;;
+esac

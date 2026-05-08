@@ -1,0 +1,272 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# nh-privaudit - privacy exposure audit for Android + NetHunter
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+TAG="PRIVAUDIT"
+PASSED=0
+FAILED=0
+WARNS=0
+
+pass() { PASSED=$((PASSED+1)); printf "  [PASS] %s\n" "$*"; }
+fail() { FAILED=$((FAILED+1)); printf "  [FAIL] %s\n" "$*"; }
+warn() { WARNS=$((WARNS+1)); printf "  [WARN] %s\n" "$*"; }
+info() { printf "  [INFO] %s\n" "$*"; }
+
+check_file() {
+    [ -e "$1" ] && pass "$2: $1" || fail "$2: $1 missing"
+}
+
+check_no_file() {
+    [ ! -e "$1" ] && pass "$2: $1 absent (good)" || warn "$2: $1 exists (review)"
+}
+
+check_cmd() {
+    if command -v "$1" >/dev/null 2>&1; then
+        pass "command available: $1"
+    else
+        fail "command missing: $1"
+    fi
+}
+
+echo ""
+echo "== NetHunter Privacy Exposure Audit =="
+echo "== $NH_LABEL / $ARCH_LABEL / $KALI_LABEL =="
+echo "time   : $(date)"
+echo "device : $(getprop ro.product.model 2>/dev/null)"
+echo "android: $(getprop ro.build.version.release 2>/dev/null)"
+echo ""
+
+# ── 1. Microphone / Camera indicators ────────────────────────────────────────
+echo "── Microphone / Camera ──────────────────────────────────────────────────"
+
+# Check if microphone/camera indicators are enabled (Android 12+)
+INDICATOR_PROP=$(getprop persist.camera.indicator.enable 2>/dev/null)
+if [ -n "$INDICATOR_PROP" ]; then
+    if [ "$INDICATOR_PROP" = "1" ]; then
+        pass "Camera/mic indicator enabled"
+    else
+        warn "Camera/mic indicator not enabled"
+    fi
+else
+    info "Camera/mic indicator prop not found (Android <12 or unsupported)"
+fi
+
+# Check for active audio recordings
+if dumpsys media.audio_flinger 2>/dev/null | grep -q "record"; then
+    warn "Active audio recording detected"
+else
+    pass "No active audio recording"
+fi
+
+# Check camera devices
+for cam in /dev/video*; do
+    if [ -e "$cam" ]; then
+        info "Camera device found: $cam"
+    fi
+done
+
+echo ""
+
+# ── 2. Clipboard exposure ────────────────────────────────────────────────────
+echo "── Clipboard ────────────────────────────────────────────────────────────"
+
+# Check if clipboard service is running
+CLIPBOARD_DUMP=$(dumpsys clipboard 2>/dev/null)
+if [ -n "$CLIPBOARD_DUMP" ]; then
+    if echo "$CLIPBOARD_DUMP" | grep -qi "primary_clip"; then
+        warn "Clipboard has content (may contain sensitive data)"
+    else
+        pass "Clipboard appears empty"
+    fi
+else
+    info "Cannot access clipboard service (normal on newer Android)"
+fi
+
+echo ""
+
+# ── 3. Network leaks ─────────────────────────────────────────────────────────
+echo "── Network Leaks ────────────────────────────────────────────────────────"
+
+# Check for cleartext traffic (HTTP)
+HTTP_CONNS=$(ss -tn 2>/dev/null | grep ':80 ' || true)
+if [ -n "$HTTP_CONNS" ]; then
+    warn "Active HTTP (cleartext) connections detected"
+    echo "$HTTP_CONNS" | head -5
+else
+    pass "No cleartext HTTP connections"
+fi
+
+# Check for DNS leaks (using non-VPN DNS)
+DNS_SERVERS=$(getprop net.dns1 2>/dev/null)
+if [ -n "$DNS_SERVERS" ]; then
+    info "DNS server (may leak): $DNS_SERVERS"
+fi
+
+# Check for WebRTC leaks (if browser available)
+if command -v chromium-browser >/dev/null 2>&1 || command -v firefox >/dev/null 2>&1; then
+    warn "Browser installed - WebRTC leak check recommended manually"
+fi
+
+echo ""
+
+# ── 4. Location exposure ─────────────────────────────────────────────────────
+echo "── Location Exposure ────────────────────────────────────────────────────"
+
+# Check location services
+LOC_PROP=$(getprop ro.com.google.locationfeatures 2>/dev/null)
+GPS_PROP=$(getprop ro.boot.wificountrycode 2>/dev/null)
+info "Location props: loc=$LOC_PROP gps=$GPS_PROP"
+
+# Check for location apps
+for app in com.google.android.gms com.android.location.fused; do
+    if pm list packages 2>/dev/null | grep -q "$app"; then
+        warn "Location service app: $app"
+    fi
+done
+
+echo ""
+
+# ── 5. App permission audit ─────────────────────────────────────────────────
+echo "── App Permission Audit ─────────────────────────────────────────────────"
+
+# Check for apps with dangerous permissions
+DANGEROUS_PERMS="READ_SMS WRITE_SMS READ_CONTACTS WRITE_CONTACTS READ_CALL_LOG WRITE_CALL_LOG CAMERA RECORD_AUDIO ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE"
+
+for perm in $DANGEROUS_PERMS; do
+    PKGS=$(pm query-receivers --action android.permission.$perm 2>/dev/null | head -3 || true)
+    if [ -n "$PKGS" ]; then
+        info "Permission $perm: granted to packages"
+    fi
+done
+
+echo ""
+
+# ── 6. Sensitive files ───────────────────────────────────────────────────────
+echo "── Sensitive Files ──────────────────────────────────────────────────────"
+
+# Check for common sensitive files
+SENSITIVE_PATHS="
+/data/data/com.termux/files/home/.ssh
+/data/data/com.termux/files/home/.gnupg
+/data/data/com.termux/files/home/.password-store
+/sdcard/Download/private
+/sdcard/DCIM/.private
+"
+
+for p in $SENSITIVE_PATHS; do
+    if [ -d "$p" ] || [ -f "$p" ]; then
+        warn "Sensitive path exists: $p"
+    else
+        pass "Sensitive path absent: $p"
+    fi
+done
+
+echo ""
+
+# ── 7. Open ports ────────────────────────────────────────────────────────────
+echo "── Open Ports ───────────────────────────────────────────────────────────"
+
+PORTS=$(ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true)
+if [ -n "$PORTS" ]; then
+    echo "$PORTS" | grep -E 'LISTEN' | head -10
+    # Check for unexpected open ports
+    for port in 22 23 80 443 3306 5432 6379 8080 27017; do
+        if echo "$PORTS" | grep -q ":$port "; then
+            warn "Port $port open (review if unexpected)"
+        fi
+    done
+else
+    info "Cannot enumerate open ports"
+fi
+
+echo ""
+
+# ── 8. Running services ─────────────────────────────────────────────────────
+echo "── Running Services ─────────────────────────────────────────────────────"
+
+# Check for privacy-invasive services
+INVASIVE_SERVICES="analytics crash reporter tracking adb"
+
+for svc in $INVASIVE_SERVICES; do
+    if ps -A 2>/dev/null | grep -qi "$svc"; then
+        warn "Potential privacy-invasive process: $svc"
+    fi
+done
+
+echo ""
+
+# ── 9. Chroot privacy checks ────────────────────────────────────────────────
+echo "── Chroot Privacy ──────────────────────────────────────────────────────"
+
+AR="$(arch_root)"
+KR="$(kali_root)"
+
+for root in "$AR" "$KR"; do
+    if [ -d "$root" ]; then
+        label="Arch"
+        [ "$root" = "$KR" ] && label="Kali"
+        info "Checking $label chroot: $root"
+
+        # Check for SSH keys in chroot
+        if [ -f "$root/root/.ssh/id_rsa" ] || [ -f "$root/root/.ssh/id_ed25519" ]; then
+            warn "$label: SSH private key found in chroot"
+        else
+            pass "$label: No SSH private keys in chroot /root"
+        fi
+
+        # Check for history files
+        for hist in "$root/root/.bash_history" "$root/root/.zsh_history"; do
+            if [ -f "$hist" ]; then
+                warn "$label: Shell history found: $hist"
+            fi
+        done
+
+        # Check for git credentials
+        if [ -f "$root/root/.gitconfig" ] || [ -f "$root/root/.git-credentials" ]; then
+            warn "$label: Git credentials found"
+        fi
+    fi
+done
+
+echo ""
+
+# ── 10. Encryption status ───────────────────────────────────────────────────
+echo "── Encryption Status ───────────────────────────────────────────────────"
+
+# Check device encryption
+CRYPT_STATE=$(getprop ro.crypto.state 2>/dev/null)
+if [ "$CRYPT_STATE" = "encrypted" ]; then
+    pass "Device encrypted"
+else
+    warn "Device encryption state: ${CRYPT_STATE:-unknown}"
+fi
+
+# Check for encrypted storage
+if mount | grep -q "dm-"; then
+    pass "Encrypted storage mounted (dm-crypt)"
+else
+    info "No dm-crypt encrypted storage detected"
+fi
+
+echo ""
+
+# ── Summary ──────────────────────────────────────────────────────────────────
+echo "== Summary =="
+echo "  PASSED : $PASSED"
+echo "  FAILED : $FAILED"
+echo "  WARNING: $WARNS"
+echo ""
+
+if [ "$FAILED" -gt 0 ]; then
+    echo "Privacy issues found. Review [FAIL] and [WARN] items above."
+    exit 1
+elif [ "$WARNS" -gt 0 ]; then
+    echo "No critical failures, but review warnings."
+    exit 0
+else
+    echo "No privacy issues detected."
+    exit 0
+fi

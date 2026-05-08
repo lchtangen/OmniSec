@@ -1,0 +1,16 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-git — Git management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-git - Git Management
+Usage: nh-git {status|clone|pull|push|help}
+EOF
+}
+case "${1:-status}" in
+    status) git status 2>/dev/null || echo "Not a git repo" ;;
+    clone) git clone "$2" 2>/dev/null ;;
+    pull) git pull 2>/dev/null ;; push) git push 2>/dev/null ;;
+    help|*) show_usage ;;
+esac

@@ -1,0 +1,17 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-stress — Stress testing tool
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-stress - Stress Testing Tool
+Usage: nh-stress {cpu|mem|disk|all|help}
+EOF
+}
+case "${1:-all}" in
+    cpu) stress --cpu 4 2>/dev/null || echo "stress not available" ;;
+    mem) stress --vm 2 --vm-bytes 256M 2>/dev/null || echo "stress not available" ;;
+    disk) stress --hdd 2 2>/dev/null || echo "stress not available" ;;
+    all) stress --cpu 4 --vm 2 --vm-bytes 256M --hdd 2 2>/dev/null || echo "stress not available" ;;
+    help|*) show_usage ;;
+esac

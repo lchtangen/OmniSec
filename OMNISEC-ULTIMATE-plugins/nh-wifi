@@ -1,0 +1,104 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-wifi - Wi-Fi adapter diagnostics, external adapter manager, monitor mode
+set -u
+
+WIFI_IFACE=$(ip link show 2>/dev/null | grep -o 'wlan[0-9]*' | head -1)
+EXT_IFACE=$(ip link show 2>/dev/null | grep -oE 'wlx[0-9a-f]+' | head -1)
+MON_IFACE=""
+
+monitor_on() {
+    iface="${1:-$EXT_IFACE}"
+    [ -z "$iface" ] && { echo "no external adapter found"; exit 1; }
+
+    MON_IFACE="${iface}mon"
+    if iw dev "$MON_IFACE" info >/dev/null 2>&1; then
+        echo "monitor interface $MON_IFACE already exists"
+        return 0
+    fi
+
+    echo "enabling monitor mode on $iface..."
+    ip link set "$iface" down
+    iw dev "$iface" set type monitor 2>/dev/null || {
+        # Create virtual monitor interface
+        iw dev "$iface" interface add "$MON_IFACE" type monitor 2>/dev/null
+        ip link set "$MON_IFACE" up
+    }
+    ip link set "$iface" up
+    echo "monitor mode enabled: $(iw dev "$iface" info 2>/dev/null | grep -i type || echo 'check iwconfig')"
+}
+
+monitor_off() {
+    iface="${1:-$EXT_IFACE}"
+    [ -z "$iface" ] && { echo "no interface specified"; exit 1; }
+
+    MON_IFACE="${iface}mon"
+    iw dev "$MON_IFACE" del 2>/dev/null || true
+    ip link set "$iface" down
+    iw dev "$iface" set type managed 2>/dev/null || true
+    ip link set "$iface" up
+    echo "monitor mode disabled on $iface"
+}
+
+list_adapters() {
+    echo "── Wi-Fi Adapters ──"
+    for iface in $(ip link show 2>/dev/null | grep -oE '(wlan[0-9]*|wlx[0-9a-f]+|p2p[0-9]*)' | sort -u); do
+        STATE=$(ip -br link show "$iface" 2>/dev/null | awk '{print $2}')
+        DRIVER=$(cat "/sys/class/net/$iface/device/uevent" 2>/dev/null | grep DRIVER | cut -d= -f2 || echo "unknown")
+        BUS=$(cat "/sys/class/net/$iface/device/uevent" 2>/dev/null | grep PHYSDEVBUS | cut -d= -f2 || echo "unknown")
+        MODE=$(iw dev "$iface" info 2>/dev/null | grep -i type | awk '{print $2}' || echo "n/a")
+        EXTERNAL=""
+        echo "$iface" | grep -qE 'wlx' && EXTERNAL=" (USB)"
+        echo "  $iface$EXTERNAL: $STATE | driver=$DRIVER | bus=$BUS | mode=$MODE"
+    done
+}
+
+scan_networks() {
+    SCAN_IFACE="${EXT_IFACE:-$WIFI_IFACE}"
+    [ -z "$SCAN_IFACE" ] && { echo "no wireless interface"; exit 1; }
+    echo "scanning on $SCAN_IFACE..."
+    iw dev "$SCAN_IFACE" scan 2>/dev/null | grep -E 'SSID|signal|freq|Channel' | head -40 || echo "scan failed"
+}
+
+case "${1:-status}" in
+    status|list)
+        list_adapters
+        echo ""
+        [ -n "$WIFI_IFACE" ] && {
+            echo "── Connection ──"
+            iw dev "$WIFI_IFACE" link 2>/dev/null || iwconfig "$WIFI_IFACE" 2>/dev/null || true
+        }
+        ;;
+    scan)
+        scan_networks
+        ;;
+    monitor)
+        case "${2:-status}" in
+            on|start) monitor_on "${3:-}" ;;
+            off|stop) monitor_off "${3:-}" ;;
+            status)
+                for iface in $WIFI_IFACE $EXT_IFACE; do
+                    [ -z "$iface" ] && continue
+                    MODE=$(iw dev "$iface" info 2>/dev/null | grep -i type | awk '{print $2}')
+                    echo "  $iface: mode=$MODE"
+                done
+                ;;
+            *) echo "usage: nh-wifi monitor {on|off|status} [iface]" >&2; exit 2 ;;
+        esac
+        ;;
+    adapters)
+        # List USB Wi-Fi adapters via sysfs
+        for dev in /sys/bus/usb/devices/*/net/*; do
+            [ -d "$dev" ] || continue
+            IFACE=$(basename "$dev")
+            VENDOR=$(cat "$dev/../../idVendor" 2>/dev/null || echo "?")
+            PRODUCT=$(cat "$dev/../../idProduct" 2>/dev/null || echo "?")
+            DRIVER=$(cat "$dev/device/uevent" 2>/dev/null | grep DRIVER | cut -d= -f2 || echo "?")
+            echo "  $IFACE: USB $VENDOR:$PRODUCT driver=$DRIVER"
+        done
+        ;;
+    *)
+        echo "usage: nh-wifi {status|scan|monitor|adapters}" >&2
+        exit 2
+        ;;
+esac

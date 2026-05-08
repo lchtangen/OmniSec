@@ -1,0 +1,55 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-banner - Cyberpunk NetHunter ASCII banner
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+
+if command -v tput >/dev/null 2>&1; then
+    BOLD=$(tput bold)
+    GREEN=$(tput setaf 2)
+    CYAN=$(tput setaf 6)
+    MAGENTA=$(tput setaf 5)
+    YELLOW=$(tput setaf 3)
+    RED=$(tput setaf 1)
+    RESET=$(tput sgr0)
+else
+    BOLD=""; GREEN=""; CYAN=""; MAGENTA=""; YELLOW=""; RED=""; RESET=""
+fi
+
+echo "${RED}███╗   ██╗███████╗████████╗██╗  ██╗██╗   ██╗███╗   ██╗████████╗${RESET}"
+echo "${RED}████╗  ██║██╔════╝╚══██╔══╝██║  ██║██║   ██║████╗  ██║╚══██╔══╝${RESET}"
+echo "${RED}██╔██╗ ██║█████╗     ██║   ███████║██║   ██║██╔██╗ ██║   ██║${RESET}"
+echo "${RED}██║╚██╗██║██╔══╝     ██║   ██╔══██║██║   ██║██║╚██╗██║   ██║${RESET}"
+echo "${RED}██║ ╚████║███████╗   ██║   ██║  ██║╚██████╔╝██║ ╚████║   ██║${RESET}"
+echo "${RED}╚═╝  ╚═══╝╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝${RESET}"
+echo ""
+
+echo "${CYAN}███████╗███████╗████████╗██╗   ██╗██████╗${RESET}"
+echo "${CYAN}██╔════╝██╔════╝╚══██╔══╝██║   ██║██╔══██╗${RESET}"
+echo "${CYAN}███████╗█████╗     ██║   ██║   ██║██████╔╝${RESET}"
+echo "${CYAN}╚════██║██╔══╝     ██║   ██║   ██║██╔═══╝${RESET}"
+echo "${CYAN}███████║███████╗   ██║   ╚██████╔╝██║${RESET}"
+echo "${CYAN}╚══════╝╚══════╝   ╚═╝    ╚═════╝ ╚═╝${RESET}"
+echo ""
+
+echo "${GREEN}╔══════════════════════════════════════════════════════════╗${RESET}"
+printf "${GREEN}║${RESET}  ${YELLOW}OnePlus 7 Pro${RESET} ${MAGENTA}GM1911${RESET}  "
+printf "${CYAN}Android 16${RESET}  ${GREEN}LineageOS 23.2${RESET}\n"
+printf "${GREEN}║${RESET}  ${YELLOW}Kernel${RESET} $(uname -r 2>/dev/null || echo '?')"
+printf "  ${CYAN}AArch64${RESET}\n"
+printf "${GREEN}║${RESET}  ${MAGENTA}NetHunter NextGen${RESET}  "
+printf "${YELLOW}v2.0${RESET}  ${CYAN}full${RESET}\n"
+printf "${GREEN}╚══════════════════════════════════════════════════════════╝${RESET}"
+echo ""
+
+# System stats sidebar
+echo "  ${CYAN}⚡${RESET} ${BOLD}System${RESET}"
+CAP=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "?")
+TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo "?")
+LOAD=$(cat /proc/loadavg 2>/dev/null | awk '{print $1", "$2", "$3}' || echo "?")
+RAM=$(free -m 2>/dev/null | grep Mem | awk '{print $3"MB / "$2"MB"}' || echo "?")
+echo "  ${YELLOW}  Battery:${RESET} ${CAP}%"
+echo "  ${YELLOW}  SoC Temp:${RESET} $((TEMP / 1000))°C"
+echo "  ${YELLOW}  Load:${RESET} ${LOAD}"
+echo "  ${YELLOW}  Memory:${RESET} ${RAM}"

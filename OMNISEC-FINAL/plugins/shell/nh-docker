@@ -1,0 +1,17 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-docker — Docker management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-docker - Docker Management
+Usage: nh-docker {status|ps|images|run|help}
+EOF
+}
+case "${1:-status}" in
+    status) docker info 2>/dev/null || echo "Docker not running" ;;
+    ps) docker ps 2>/dev/null || echo "Docker not available" ;;
+    images) docker images 2>/dev/null ;;
+    run) docker run "$2" 2>/dev/null ;;
+    help|*) show_usage ;;
+esac

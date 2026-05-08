@@ -1,0 +1,126 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P7
+# nh-blockchain — Blockchain Threat Reputation
+set -euo pipefail
+
+BC_DIR="/data/local/nhsystem/blockchain"
+CHAIN_FILE="$BC_DIR/chain.json"
+
+show_usage() {
+    cat <<EOF
+nh-blockchain — Blockchain Threat Reputation
+
+Usage: nh-blockchain <command> [args]
+
+Commands:
+  init             Initialize local blockchain
+  add <hash> <reputation>  Add threat reputation entry
+  verify <hash>   Verify IoC reputation
+  list             List blockchain entries
+  mine             Mine new block (simulate)
+  help             Show this message
+
+Note: Simulated blockchain for educational/demo purposes.
+EOF
+}
+
+init_blockchain() {
+    mkdir -p "$BC_DIR"
+    if [ ! -f "$CHAIN_FILE" ]; then
+        echo '{"chain":[{"index":0,"hash":"genesis","data":"Genesis Block","prev":"0"}],"length":1}' > "$CHAIN_FILE"
+    fi
+}
+
+cmd_init() {
+    echo "══ Initializing Blockchain ═══════════"
+    init_blockchain
+    echo "  Blockchain initialized at: $CHAIN_FILE"
+}
+
+cmd_add() {
+    local hash="${2:-}"
+    local rep="${3:-0}"
+    [ -z "$hash" ] && { echo "Usage: nh-blockchain add <hash> <reputation>"; exit 1; }
+    
+    echo "══ Adding Reputation Entry ═══════════"
+    init_blockchain
+    
+    python3 -c "
+import json, sys, hashlib
+with open('$CHAIN_FILE') as f:
+    chain = json.load(f)
+
+new_block = {
+    'index': len(chain['chain']),
+    'hash': '$hash',
+    'reputation': $rep,
+    'timestamp': '$TIMESTAMP'
+}
+
+# Simple hash
+block_str = json.dumps(new_block, sort_keys=True)
+new_block['hash'] = hashlib.sha256(block_str.encode()).hexdigest()
+
+chain['chain'].append(new_block)
+chain['length'] += 1
+
+with open('$CHAIN_FILE', 'w') as f:
+    json.dump(chain, f, indent=2)
+
+print('  Added block', len(chain['chain'])-1)
+" 2>/dev/null || echo "  Failed to add block (python3 required)"
+}
+
+cmd_verify() {
+    local hash="${2:-}"
+    [ -z "$hash" ] && { echo "Usage: nh-blockchain verify <hash>"; exit 1; }
+    
+    echo "══ Verifying Reputation ═══════════"
+    init_blockchain
+    
+    python3 -c "
+import json, sys
+with open('$CHAIN_FILE') as f:
+    chain = json.load(f)
+
+for block in chain['chain'][1:]:
+    if block.get('hash') == '$hash':
+        print(f\"  Found: Reputation {block.get('reputation', 0)}\")
+        sys.exit(0)
+
+print('  Hash not found in blockchain')
+" 2>/dev/null || echo "  Verification failed"
+}
+
+cmd_list() {
+    echo "══ Blockchain Entries ═══════════════"
+    init_blockchain
+    
+    python3 -c "
+import json
+with open('$CHAIN_FILE') as f:
+    chain = json.load(f)
+print(f\"  Total blocks: {chain['length']}\")
+for block in chain['chain'][1:5]:
+    print(f\"  Block {block['index']}: {block.get('hash', '')[:16]}... rep={block.get('reputation', 0)}\")
+" 2>/dev/null || echo "  No entries yet"
+}
+
+cmd_mine() {
+    echo "══ Mining New Block ═════════════════"
+    echo "  Mining... (simulated)"
+    sleep 2
+    echo "  Block mined! (simulation)"
+}
+
+init_blockchain
+
+case "${1:-help}" in
+    init)      cmd_init ;;
+    add)       cmd_add "$@" ;;
+    verify)    cmd_verify "$@" ;;
+    list)      cmd_list ;;
+    mine)      cmd_mine ;;
+    help|*)    show_usage ;;
+esac

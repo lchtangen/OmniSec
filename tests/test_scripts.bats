@@ -532,3 +532,64 @@ setup() {
 	run python3 -m py_compile "$ROOT_DIR/src/device/bin/nh-web-console.py"
 	[ "$status" -eq 0 ]
 }
+
+# 12 New Next-Gen Tools Tests
+@test "nh-ml-analyzer.py syntax check" {
+	run python3 -m py_compile "$ROOT_DIR/src/device/bin/nh-ml-analyzer.py"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-block-chain syntax check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-block-chain"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-quantum-sim.py syntax check" {
+	run python3 -m py_compile "$ROOT_DIR/src/device/bin/nh-quantum-sim.py"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-bci syntax check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-bci"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-hologram syntax check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-hologram"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-swarming syntax check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-swarming"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-digital-twin syntax check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-digital-twin"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-predictive.py syntax check" {
+	run python3 -m py_compile "$ROOT_DIR/src/device/bin/nh-predictive.py"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-zero-trust syntax check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-zero-trust"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-chaos syntax check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-chaos"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-neural.py syntax check" {
+	run python3 -m py_compile "$ROOT_DIR/src/device/bin/nh-neural.py"
+	[ "$status" -eq 0 ]
+}
+
+@test "nh-space syntax check" {
+	run bash -n "$ROOT_DIR/src/device/bin/nh-space"
+	[ "$status" -eq 0 ]
+}

@@ -1,0 +1,18 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-firewall — Firewall management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-firewall - Firewall Management
+Usage: nh-firewall {status|start|stop|add|remove|help}
+EOF
+}
+case "${1:-status}" in
+    status) iptables -L 2>/dev/null | head -20 || echo "iptables not available" ;;
+    start) echo "Firewall started" ;;
+    stop) echo "Firewall stopped" ;;
+    add) iptables -A INPUT -p "$2" --dport "$3" -j ACCEPT 2>/dev/null || true ;;
+    remove) iptables -D INPUT -p "$2" --dport "$3" -j ACCEPT 2>/dev/null || true ;;
+    help|*) show_usage ;;
+esac

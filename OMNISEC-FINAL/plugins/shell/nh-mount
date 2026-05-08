@@ -1,0 +1,22 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+case "${1:-all}" in
+    kali)
+        mount_root "$(kali_root)"
+        ;;
+    arch)
+        mount_root "$(arch_root)"
+        ;;
+    all)
+        [ -d "$(kali_root)" ] && mount_root "$(kali_root)"
+        [ -d "$(arch_root)" ] && mount_root "$(arch_root)"
+        ;;
+    *)
+        echo "usage: nh-mount [all|kali|arch]" >&2
+        exit 2
+        ;;
+esac

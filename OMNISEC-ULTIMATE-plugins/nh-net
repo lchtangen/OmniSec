@@ -1,0 +1,43 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-net - Network diagnostics toolkit
+set -u
+
+echo "══ Network Diagnostics ══"
+echo ""
+
+echo "── Interfaces ──"
+ip -br addr show 2>/dev/null | grep -v '^lo'
+
+echo ""
+echo "── Routing ──"
+ip route show 2>/dev/null
+
+echo ""
+echo "── DNS ──"
+getprop net.dns1 2>/dev/null || echo "  dns1: not set"
+getprop net.dns2 2>/dev/null || echo "  dns2: not set"
+getprop net.dns3 2>/dev/null || echo "  dns3: not set"
+
+echo ""
+echo "── Active Connections ──"
+ss -tlnp 2>/dev/null | head -20
+
+echo ""
+echo "── ARP Cache ──"
+cat /proc/net/arp 2>/dev/null | head -10
+
+echo ""
+echo "── Wireless Info ──"
+WIFI_IFACE=$(ip link show 2>/dev/null | grep -o 'wlan[0-9]*' | head -1)
+if [ -n "$WIFI_IFACE" ] && [ -d "/sys/class/net/$WIFI_IFACE/wireless" ]; then
+    iw dev "$WIFI_IFACE" link 2>/dev/null || iwconfig "$WIFI_IFACE" 2>/dev/null || echo "  wireless info not available"
+fi
+
+echo ""
+echo "── Bandwidth (quick rx/tx) ──"
+for iface in $(ip -br link show 2>/dev/null | grep -v '^lo' | awk '{print $1}'); do
+    RX=$(cat "/sys/class/net/$iface/statistics/rx_bytes" 2>/dev/null)
+    TX=$(cat "/sys/class/net/$iface/statistics/tx_bytes" 2>/dev/null)
+    [ -n "$RX" ] && [ -n "$TX" ] && printf "  %-8s RX: %s bytes  TX: %s bytes\n" "$iface:" "$RX" "$TX"
+done

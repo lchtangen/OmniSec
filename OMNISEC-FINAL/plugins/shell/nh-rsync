@@ -1,0 +1,15 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-rsync — Rsync management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-rsync - Rsync Management
+Usage: nh-rsync {sync|daemon|help}
+EOF
+}
+case "${1:-sync}" in
+    sync) rsync -avz "$2" "$3" 2>/dev/null ;;
+    daemon) rsync --daemon 2>/dev/null & ;;
+    help|*) show_usage ;;
+esac

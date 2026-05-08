@@ -1,0 +1,225 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-pipeline - Multi-step automation pipeline builder
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+PIPELINE_DIR=$NHSYSTEM/etc/pipelines
+NHWORK=$NHSYSTEM/workspaces/main
+
+ensure_dirs() { mkdir -p "$PIPELINE_DIR" "$NHWORK/pipelines"; }
+
+init_pipelines() {
+    ensure_dirs
+    if [ ! -f "$PIPELINE_DIR/.initialized" ]; then
+
+        cat > "$PIPELINE_DIR/recon-pipeline.txt" <<'PIPE'
+# Reconnaissance Pipeline
+# Runs: passive recon -> active scan -> service enum -> report
+PIPE_NAME=recon-pipeline
+PIPE_DESC="Full reconnaissance automation"
+
+STEP_1_NAME="Passive Recon"
+STEP_1_CMD="nh-scan local && nh-topo neighbors"
+STEP_1_ONFAIL=stop
+
+STEP_2_NAME="Network Scan"
+STEP_2_CMD="nh-topo scan"
+STEP_2_ONFAIL=continue
+
+STEP_3_NAME="Port Scan Gateway"
+STEP_3_CMD="nh-topo ports \$(ip route | grep default | awk '{print \$3}')"
+STEP_3_ONFAIL=continue
+
+STEP_4_NAME="Generate Report"
+STEP_4_CMD="nh-topo map && echo 'Recon complete - see topology map'"
+STEP_4_ONFAIL=continue
+PIPE
+
+        cat > "$PIPELINE_DIR/security-pipeline.txt" <<'PIPE'
+# Security Hardening Pipeline
+# Runs: audit -> firewall -> sshharden -> backup
+PIPE_NAME=security-pipeline
+PIPE_DESC="Full security hardening automation"
+
+STEP_1_NAME="Security Audit"
+STEP_1_CMD="nh-secure audit"
+STEP_1_ONFAIL=stop
+
+STEP_2_NAME="Configure Firewall"
+STEP_2_CMD="nh-secure firewall"
+STEP_2_ONFAIL=continue
+
+STEP_3_NAME="Harden SSH"
+STEP_3_CMD="nh-secure ssh"
+STEP_3_ONFAIL=continue
+
+STEP_4_NAME="Generate Keys"
+STEP_4_CMD="nh-secure keygen ed25519"
+STEP_4_ONFAIL=continue
+
+STEP_5_NAME="Backup Config"
+STEP_5_CMD="nh-secure backup"
+STEP_5_ONFAIL=continue
+PIPE
+
+        cat > "$PIPELINE_DIR/maintenance-pipeline.txt" <<'PIPE'
+# Maintenance Pipeline
+# Runs: heal -> update -> sweep -> report
+PIPE_NAME=maintenance-pipeline
+PIPE_DESC="System maintenance automation"
+
+STEP_1_NAME="Health Check & Repair"
+STEP_1_CMD="nh-heal all"
+STEP_1_ONFAIL=continue
+
+STEP_2_NAME="Update Packages"
+STEP_2_CMD="nh-update"
+STEP_2_ONFAIL=continue
+
+STEP_3_NAME="Clean System"
+STEP_3_CMD="nh-sweep all"
+STEP_3_ONFAIL=continue
+
+STEP_4_NAME="Status Report"
+STEP_4_CMD="nh-status && echo 'Maintenance complete'"
+STEP_4_ONFAIL=continue
+PIPE
+
+        touch "$PIPELINE_DIR/.initialized"
+    fi
+}
+
+list_pipelines() {
+    init_pipelines
+    echo "── Available Pipelines ──"
+    echo ""
+    for f in "$PIPELINE_DIR"/*.txt; do
+        [ -f "$f" ] || continue
+        local name=$(grep "^PIPE_NAME=" "$f" 2>/dev/null | cut -d= -f2)
+        local desc=$(grep "^PIPE_DESC=" "$f" 2>/dev/null | cut -d= -f2)
+        local steps=$(grep -c "^STEP_.*_NAME=" "$f" 2>/dev/null)
+        printf "  %-25s %s\n" "$name" "$desc"
+        printf "  %-25s (%d steps)\n" "" "$steps"
+        echo ""
+    done
+    echo "Usage: nh-pipeline run <name>"
+}
+
+run_pipeline() {
+    local name="$1"
+    local file="$PIPELINE_DIR/$name.txt"
+    [ -f "$file" ] || { echo "Pipeline not found: $name"; echo "Available: recon-pipeline security-pipeline maintenance-pipeline"; exit 1; }
+
+    source "$file" 2>/dev/null
+
+    local pipe_name="${PIPE_NAME:-$name}"
+    local pipe_desc="${PIPE_DESC:-}"
+
+    local log_dir="$NHWORK/pipelines/$name-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$log_dir"
+
+    echo "╔══ Pipeline: $pipe_name ══╗"
+    [ -n "$pipe_desc" ] && echo "║  $pipe_desc"
+    echo "║  Started: $(date)"
+    echo "╚═══════════════════════════╝"
+    echo ""
+
+    local step=0
+    local failed=0
+    local total=0
+
+    # Count steps
+    while true; do
+        step=$((step + 1))
+        eval "local name=\"\${STEP_${step}_NAME:-}\""
+        [ -z "$name" ] && break
+        total=$step
+    done
+    [ $total -eq 0 ] && { echo "  No steps defined"; return 1; }
+
+    local result="PASSED"
+    for s in $(seq 1 $total); do
+        eval "local step_name=\"\${STEP_${s}_NAME:-}\""
+        eval "local step_cmd=\"\${STEP_${s}_CMD:-}\""
+        eval "local step_onfail=\"\${STEP_${s}_ONFAIL:-stop}\""
+
+        printf "  [%d/%d] %s..." $s $total "$step_name"
+
+        local output="$log_dir/step-$s.log"
+        if eval "$step_cmd" > "$output" 2>&1; then
+            echo " OK"
+        else
+            echo " FAILED"
+            failed=$((failed + 1))
+            echo "  Output:"
+            sed 's/^/    /' "$output"
+            if [ "$step_onfail" = "stop" ]; then
+                echo "  Pipeline stopped at step $s"
+                result="FAILED"
+                break
+            fi
+        fi
+    done
+
+    echo ""
+    echo "╔══ Pipeline Complete ══╗"
+    echo "║  Result: $result"
+    echo "║  Failed: $failed/$total steps"
+    echo "║  Log:    $log_dir"
+    echo "╚═══════════════════════╝"
+}
+
+create_pipeline() {
+    local name="$1"
+    local file="$PIPELINE_DIR/$name.txt"
+    [ -f "$file" ] && { echo "Pipeline already exists: $name"; exit 1; }
+
+    cat > "$file" <<EOF
+# Custom Pipeline: $name
+PIPE_NAME=$name
+PIPE_DESC="Custom automation pipeline"
+
+STEP_1_NAME="Step One"
+STEP_1_CMD="echo 'Define your first step'"
+STEP_1_ONFAIL=stop
+
+STEP_2_NAME="Step Two" 
+STEP_2_CMD="echo 'Define your second step'"
+STEP_2_ONFAIL=continue
+EOF
+    echo "  Pipeline created: $name"
+    echo "  Edit: $file"
+}
+
+usage() {
+    cat <<EOF
+nh-pipeline - Multi-step automation pipeline
+
+Usage: nh-pipeline <command> [name]
+
+Commands:
+  list              List available pipelines
+  run <name>        Execute a pipeline
+  create <name>     Create new pipeline
+
+Pipelines:
+  recon-pipeline       Full recon automation
+  security-pipeline    Security hardening automation
+  maintenance-pipeline System maintenance automation
+
+Examples:
+  nh-pipeline list
+  nh-pipeline run recon-pipeline
+  nh-pipeline create my-pipeline
+EOF
+    exit 1
+}
+
+case "${1:-list}" in
+    list|ls) list_pipelines ;;
+    run|exec|start) shift; [ $# -ge 1 ] || usage; run_pipeline "$1" ;;
+    create|new) shift; [ $# -ge 1 ] || usage; create_pipeline "$1" ;;
+    *) usage ;;
+esac

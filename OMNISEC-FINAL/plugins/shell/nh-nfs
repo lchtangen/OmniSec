@@ -1,0 +1,15 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-nfs — NFS management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-nfs - NFS Management
+Usage: nh-nfs {status|export|help}
+EOF
+}
+case "${1:-status}" in
+    status) showmount -e localhost 2>/dev/null || echo "NFS not running" ;;
+    export) echo "$2 *(rw,no_root_squash)" >> /etc/exports; exportfs -a 2>/dev/null ;;
+    help|*) show_usage ;;
+esac

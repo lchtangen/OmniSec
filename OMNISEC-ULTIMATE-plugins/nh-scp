@@ -1,0 +1,12 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-scp — Secure copy tool
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-scp - Secure Copy Tool
+Usage: nh-scp <src> <dest>
+EOF
+}
+[ $# -lt 2 ] && show_usage && exit 1
+scp "$1" "$2" 2>/dev/null || echo "scp failed"

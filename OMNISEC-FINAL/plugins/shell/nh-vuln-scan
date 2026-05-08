@@ -1,0 +1,16 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-vuln-scan — Vulnerability scanner
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-vuln-scan - Vulnerability Scanner
+Usage: nh-vuln-scan {quick|full|ports|help}
+EOF
+}
+case "${1:-quick}" in
+    quick) echo "Running quick vulnerability scan..."; echo "  Open ports: $(ss -tlnp 2>/dev/null | grep -c LISTEN)"; echo "  SUID files: $(find /system -perm -4000 2>/dev/null | wc -l)" ;;
+    full) echo "Full scan not implemented yet" ;;
+    ports) nmap -sT localhost 2>/dev/null || echo "nmap not installed" ;;
+    help|*) show_usage ;;
+esac

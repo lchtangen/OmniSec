@@ -1,0 +1,20 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-scheduler — Task scheduler
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-scheduler - Task Scheduler
+Usage: nh-scheduler {list|add|remove|run|help}
+EOF
+}
+CRON_FILE="/data/local/nhsystem/config/crontab"
+mkdir -p /data/local/nhsystem/config
+[ ! -f "$CRON_FILE" ] && touch "$CRON_FILE"
+case "${1:-list}" in
+    list) echo "Scheduled tasks:"; cat "$CRON_FILE" ;;
+    add) echo "$2" >> "$CRON_FILE"; echo "Added: $2" ;;
+    remove) sed -i "/$2/d" "$CRON_FILE"; echo "Removed: $2" ;;
+    run) crontab "$CRON_FILE" 2>/dev/null || echo "cron not available" ;;
+    help|*) show_usage ;;
+esac

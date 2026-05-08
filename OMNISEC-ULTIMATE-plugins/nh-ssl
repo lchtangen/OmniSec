@@ -1,0 +1,15 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-ssl — SSL/TLS testing tool
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-ssl - SSL/TLS Testing Tool
+Usage: nh-ssl {check|scan|help} <host>
+EOF
+}
+case "${1:-help}" in
+    check) openssl s_client -connect "$2:443" 2>/dev/null | grep -E "subject|issuer|expire" ;;
+    scan) nmap --script ssl-enum-ciphers -p 443 "$2" 2>/dev/null || echo "nmap not available" ;;
+    help|*) show_usage ;;
+esac

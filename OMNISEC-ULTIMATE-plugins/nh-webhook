@@ -1,0 +1,149 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-webhook - Event-driven webhook system
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+WEBHOOK_DIR=$NHSYSTEM/etc/webhooks
+WEBHOOK_LOG=$NHSYSTEM/logs/webhook.log
+NHWORK=$NHSYSTEM/workspaces/main
+
+ensure_dirs() { mkdir -p "$WEBHOOK_DIR" "$NHSYSTEM/logs"; }
+
+list_hooks() {
+    ensure_dirs
+    echo "── Registered Webhooks ──"
+    echo ""
+    local count=0
+    for f in "$WEBHOOK_DIR"/*.hook; do
+        [ -f "$f" ] || continue
+        local name=$(basename "$f" .hook)
+        local url=$(head -1 "$f" 2>/dev/null)
+        local event=$(sed -n '2p' "$f" 2>/dev/null)
+        local last=$(sed -n '3p' "$f" 2>/dev/null | cut -d= -f2)
+        printf "  %-25s %s\n" "$name" "$url"
+        printf "  %-25s Event: %s\n" "" "$event"
+        [ -n "$last" ] && printf "  %-25s Last: %s\n" "" "$last"
+        echo ""
+        count=$((count + 1))
+    done
+    [ $count -eq 0 ] && echo "  No webhooks registered"
+}
+
+register_hook() {
+    local name="${1:-}"
+    local url="${2:-}"
+    local event="${3:-all}"
+    [ -z "$name" ] || [ -z "$url" ] && { echo "Usage: nh-webhook add <name> <url> [event]"; exit 1; }
+
+    ensure_dirs
+    local file="$WEBHOOK_DIR/$name.hook"
+    cat > "$file" <<HOOK
+$url
+$event
+last_fired=never
+HOOK
+    echo "  Webhook registered: $name -> $url"
+    echo "  Event: $event"
+}
+
+remove_hook() {
+    local name="${1:-}"
+    [ -z "$name" ] && { echo "Usage: nh-webhook remove <name>"; exit 1; }
+    local file="$WEBHOOK_DIR/$name.hook"
+    [ -f "$file" ] || { echo "Webhook not found: $name"; exit 1; }
+    rm -f "$file"
+    echo "  Removed: $name"
+}
+
+fire_event() {
+    local event="${1:-test}"
+    local payload="${2:-{\"event\":\"$event\",\"source\":\"nethunter\",\"timestamp\":\"$(date -Iseconds)\"}}"
+
+    ensure_dirs
+    echo "── Firing Event: $event ──"
+    echo ""
+
+    local fired=0
+    for f in "$WEBHOOK_DIR"/*.hook; do
+        [ -f "$f" ] || continue
+        local name=$(basename "$f" .hook)
+        local url=$(head -1 "$f")
+        local evt=$(sed -n '2p' "$f")
+
+        # Check if event matches
+        [ "$evt" != "all" ] && [ "$evt" != "$event" ] && continue
+
+        echo "  -> $name ($url)"
+
+        if command -v curl >/dev/null 2>&1; then
+            curl -s -X POST "$url" \
+                -H "Content-Type: application/json" \
+                -H "X-NH-Event: $event" \
+                -H "X-NH-Source: nethunter-nextgen" \
+                -d "$payload" >/dev/null 2>&1 && {
+                echo "     Delivered"
+                fired=$((fired + 1))
+                sed -i "3s|.*|last_fired=$(date -Iseconds)|" "$f"
+            } || echo "     Failed"
+        elif command -v wget >/dev/null 2>&1; then
+            echo "$payload" | wget -q -O /dev/null --post-data=@- \
+                --header="Content-Type: application/json" \
+                --header="X-NH-Event: $event" \
+                "$url" 2>/dev/null && {
+                echo "     Delivered"
+                fired=$((fired + 1))
+            } || echo "     Failed"
+        else
+            echo "     curl/wget not available"
+        fi
+    done
+
+    echo ""
+    echo "  $fired webhook(s) fired for event: $event"
+    echo "  $(date) EVENT $event fired $fired hooks" >> "$WEBHOOK_LOG"
+}
+
+test_hook() {
+    local name="${1:-}"
+    if [ -n "$name" ]; then
+        fire_event "test" "{\"event\":\"test\",\"hook\":\"$name\",\"timestamp\":\"$(date -Iseconds)\"}"
+    else
+        fire_event "test"
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-webhook - Event-driven webhook system
+
+Usage: nh-webhook <command> [args]
+
+Commands:
+  list                List registered webhooks
+  add <name> <url> [event]  Register webhook
+  remove <name>       Remove webhook
+  fire <event> [json] Fire event to matching hooks
+  test [name]         Test fire event
+
+Events: all, alert, scan, monitor, cron, test
+
+Examples:
+  nh-webhook add alert https://hooks.slack.com/services/xxx
+  nh-webhook add all https://ntfy.sh/mytopic
+  nh-webhook add scan http://192.168.1.100:8080/webhook scan
+  nh-webhook fire alert '{"level":"critical","msg":"Intrusion detected"}'
+  nh-webhook list
+EOF
+    exit 1
+}
+
+case "${1:-help}" in
+    list|ls) list_hooks ;;
+    add|register) shift; register_hook "$@" ;;
+    remove|rm|del) shift; remove_hook "${1:-}" ;;
+    fire|send|trigger) shift; fire_event "$@" ;;
+    test|ping) shift; test_hook "${1:-}" ;;
+    *) usage ;;
+esac

@@ -1,0 +1,16 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-api — API testing tool
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-api - API Testing Tool
+Usage: nh-api {get|post|put|delete|help} <url>
+EOF
+}
+method="${1:-get}"; url="${2:-}"
+[ -z "$url" ] && show_usage && exit 1
+case "$method" in
+    get) curl -X GET "$url" ;; post) curl -X POST "$url" ;; put) curl -X PUT "$url" ;; delete) curl -X DELETE "$url" ;;
+    *) show_usage ;;
+esac

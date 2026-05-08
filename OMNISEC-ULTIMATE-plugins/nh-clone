@@ -1,0 +1,15 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-clone — Device cloning tool
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-clone - Device Cloning Tool
+Usage: nh-clone {create|restore|help}
+EOF
+}
+case "${1:-help}" in
+    create) echo "Creating device image..."; dd if=/dev/block/by-name/system of=/data/local/nhsystem/device.img 2>/dev/null || echo "dd not available" ;;
+    restore) echo "Restore not implemented" ;;
+    help|*) show_usage ;;
+esac

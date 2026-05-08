@@ -1,0 +1,16 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-ftp — FTP server management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-ftp - FTP Server Management
+Usage: nh-ftp {status|start|stop|help}
+EOF
+}
+case "${1:-status}" in
+    status) if pgrep vsftpd >/dev/null; then echo "VSFTPD running"; else echo "Stopped"; fi ;;
+    start) vsftpd 2>/dev/null & ;;
+    stop) pkill vsftpd 2>/dev/null ;;
+    help|*) show_usage ;;
+esac

@@ -1,0 +1,153 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# Profile: Arch ARM64 v2.0 nextgen; Kali ARM64 v2.0 nextgen
+
+NHSYSTEM="${NHSYSTEM:-/data/local/nhsystem}"
+NHROOTS="$NHSYSTEM/roots"
+NHWORK="$NHSYSTEM/workspaces/main"
+NH_SETUP_VERSION="${NH_SETUP_VERSION:-2.0}"
+NH_SETUP_PROFILE="${NH_SETUP_PROFILE:-nextgen}"
+ARCH_LABEL="${ARCH_LABEL:-Arch ARM64 v$NH_SETUP_VERSION ($NH_SETUP_PROFILE)}"
+KALI_LABEL="${KALI_LABEL:-Kali ARM64 v$NH_SETUP_VERSION ($NH_SETUP_PROFILE)}"
+NH_LABEL="${NH_LABEL:-NetHunter setup v$NH_SETUP_VERSION ($NH_SETUP_PROFILE)}"
+ARCH_SSH_PORT="${ARCH_SSH_PORT:-2222}"
+KALI_SSH_PORT="${KALI_SSH_PORT:-22}"
+TERMUX_SSH_PORT="${TERMUX_SSH_PORT:-8022}"
+
+_nh_detect_su() {
+    for _c in /debug_ramdisk/su /data/adb/magisk/magisk64 /data/adb/magisk/magisk /sbin/su /system/xbin/su; do
+        [ -x "$_c" ] && echo "$_c" && return 0
+    done
+    return 1
+}
+_nh_detect_magisk() {
+    for _c in /debug_ramdisk/magisk /data/adb/magisk/magisk64 /data/adb/magisk/magisk /sbin/magisk; do
+        [ -x "$_c" ] && echo "$_c" && return 0
+    done
+    return 1
+}
+MAGISK_SU="${MAGISK_SU:-$(_nh_detect_su 2>/dev/null || echo /debug_ramdisk/su)}"
+MAGISK_BIN="${MAGISK_BIN:-$(_nh_detect_magisk 2>/dev/null || echo /debug_ramdisk/magisk)}"
+
+kali_root() {
+    if [ -d "$NHROOTS/kali-arm64" ]; then
+        printf '%s\n' "$NHROOTS/kali-arm64"
+    else
+        printf '%s\n' "$NHSYSTEM/kali-arm64"
+    fi
+}
+
+arch_root() {
+    if [ -d "$NHROOTS/archlinux" ]; then
+        printf '%s\n' "$NHROOTS/archlinux"
+    else
+        printf '%s\n' "$NHSYSTEM/archlinux"
+    fi
+}
+
+is_mounted() {
+    grep -qs " $1 " /proc/mounts 2>/dev/null || \
+    grep -qs " $1 " /proc/self/mountinfo 2>/dev/null
+}
+
+mount_one() {
+    src="$1"
+    dst="$2"
+    type="$3"
+    opts="$4"
+    mkdir -p "$dst"
+    is_mounted "$dst" && return 0
+    if [ -n "$type" ]; then
+        mount -t "$type" $opts "$src" "$dst" 2>/dev/null || true
+    else
+        mount $opts "$src" "$dst" 2>/dev/null || true
+    fi
+}
+
+mount_root() {
+    root="$1"
+    [ -d "$root" ] || {
+        echo "missing rootfs: $root" >&2
+        return 1
+    }
+
+    mkdir -p "$root"/proc "$root"/sys "$root"/dev "$root"/dev/pts "$root"/dev/shm
+    mkdir -p "$root"/run "$root"/tmp "$root"/workspace "$NHWORK"
+
+    mount_one proc "$root/proc" proc ""
+    mount_one sysfs "$root/sys" sysfs ""
+    mount_one /dev "$root/dev" "" "-o bind"
+    mount_one devpts "$root/dev/pts" devpts "-o mode=600,ptmxmode=666"
+    mount_one tmpfs "$root/dev/shm" tmpfs "-o mode=1777"
+    mount_one tmpfs "$root/run" tmpfs "-o mode=755"
+    mount_one tmpfs "$root/tmp" tmpfs "-o mode=1777"
+    mount_one "$NHWORK" "$root/workspace" "" "-o bind"
+
+    _sdcard=""
+    for _s in "/mnt/user/0/emulated/0" "/storage/emulated/0" "/sdcard"; do
+        [ -d "$_s" ] && { _sdcard="$_s"; break; }
+    done
+    if [ -n "$_sdcard" ]; then
+        mkdir -p "$root/sdcard"
+        mount_one "$_sdcard" "$root/sdcard" "" "-o bind"
+    fi
+
+    chmod 1777 "$root/tmp" 2>/dev/null || true
+    mkdir -p "$root/run/sshd" 2>/dev/null || true
+}
+
+chroot_exec() {
+    root="$1"
+    shift
+    /system/bin/chroot "$root" /usr/bin/env -i \
+        HOME=/root \
+        USER=root \
+        LOGNAME=root \
+        TERM="${TERM:-xterm-256color}" \
+        LANG=C.UTF-8 \
+        LC_ALL=C.UTF-8 \
+        SHELL=/usr/bin/zsh \
+        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        "$@"
+}
+
+deploy_sudo_wrapper() {
+    root="$1"
+    SUDO_BIN="$root/usr/bin/sudo"
+    SUDO_ORIG="$root/usr/bin/sudo.orig"
+    if [ -f "$SUDO_BIN" ] && [ ! -f "$SUDO_ORIG" ] && [ ! -L "$SUDO_BIN" ]; then
+        if file "$SUDO_BIN" 2>/dev/null | grep -q ELF; then
+            cp "$SUDO_BIN" "$SUDO_ORIG" 2>/dev/null || true
+        fi
+    fi
+    if [ -f "$SUDO_ORIG" ]; then
+        cat > "$SUDO_BIN" <<'SUDOWRAP'
+#!/bin/sh
+set -u
+case "${1:-}" in
+    -V|--version)
+        exec /usr/bin/sudo.orig -V
+        ;;
+esac
+CMD=""
+SKIP=0
+for arg in "$@"; do
+    if [ $SKIP -eq 1 ]; then SKIP=0; continue; fi
+    case "$arg" in
+        -E|-e|-H|-P|-S|-n|-v|-k|-K|-r|-T|-g|-p|-t|-U|-u|--) SKIP=1 ;;
+        su|-l|--login) ;;
+        -c) SKIP=1 ;;
+        *)
+            if [ -z "$CMD" ]; then CMD="$arg"; else CMD="$CMD $arg"; fi
+            ;;
+    esac
+done
+if [ -n "$CMD" ]; then
+    exec /bin/su -l root -c "$CMD"
+else
+    exec /bin/su -l root
+fi
+SUDOWRAP
+        chmod 755 "$SUDO_BIN" 2>/dev/null || true
+    fi
+}

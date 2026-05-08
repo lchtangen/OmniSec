@@ -1,0 +1,327 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P2
+# nh-mesh - Reticulum Mesh Networking Stack Integration
+# Full implementation with RNS, LXMF, and Yggdrasil
+set -u
+
+NHSYSTEM=${NHSYSTEM:-/data/local/nhsystem}
+MESH_DIR="$NHSYSTEM/mesh"
+CONFIG_DIR="$NHSYSTEM/etc/mesh"
+LOG_DIR="$NHSYSTEM/logs/mesh"
+
+# Reticulum config
+RNS_CONFIG="$CONFIG_DIR/rns.conf"
+RNS_LOG="$LOG_DIR/rns.log"
+MESH_PORT=4242
+INTERFACES="wlan0,ble,lo"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+mkdir -p "$MESH_DIR" "$CONFIG_DIR" "$LOG_DIR"
+
+info()  { printf "${BLUE}[INFO]${NC} %s\n" "$*"; }
+ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+err()   { printf "${RED}[ERR]${NC} %s\n" "$*" >&2; }
+debug() { [ "${DEBUG:-0}" = "1" ] && printf "${CYAN}[DBG]${NC} %s\n" "$*" || true; }
+
+# ── Reticulum Stack Setup ──────────────────────────────
+
+setup_reticulum() {
+    info "Setting up Reticulum Network Stack..."
+    
+    # Install RNS in Arch chroot
+    if [ -f /data/local/nhsystem/roots/archlinux/usr/bin/python3 ]; then
+        info "Installing RNS in Arch chroot..."
+        chroot /data/local/nhsystem/roots/archlinux /usr/bin/python3 -m pip install rns 2>/dev/null || \
+            warn "Failed to install RNS via pip"
+    fi
+    
+    # Create RNS config
+    cat > "$RNS_CONFIG" <<'RNS'
+# Reticulum Network Stack Configuration
+# For mesh networking on NetHunter
+
+[reticulum]
+loglevel = 3
+share = True
+
+[interfaces]
+[[interfaces.wlan0]]
+type = AutoInterface
+interface = wlan0
+enabled = Yes
+
+[[interfaces.ble]]
+type = BLEInterface
+enabled = Yes
+
+[[interfaces.local]]
+type = LocalInterface
+enabled = Yes
+RNS
+    
+    ok "Reticulum config created: $RNS_CONFIG"
+}
+
+start_rns() {
+    info "Starting Reticulum Network Stack..."
+    
+    if ! command -v rns >/dev/null 2>&1; then
+        warn "RNS not found, installing..."
+        pip3 install rns 2>/dev/null || {
+            err "Failed to install RNS"
+            return 1
+        }
+    fi
+    
+    # Start RNS daemon
+    rns --config "$RNS_CONFIG" --log-file "$RNS_LOG" --daemonize 2>/dev/null &
+    local pid=$!
+    echo "$pid" > "$MESH_DIR/rns.pid"
+    
+    sleep 2
+    if kill -0 "$pid" 2>/dev/null; then
+        ok "RNS started (PID: $pid)"
+    else
+        warn "RNS may have failed to start, check: $RNS_LOG"
+    fi
+}
+
+stop_rns() {
+    info "Stopping Reticulum..."
+    if [ -f "$MESH_DIR/rns.pid" ]; then
+        local pid
+        pid=$(cat "$MESH_DIR/rns.pid" 2>/dev/null)
+        [ -n "$pid" ] && kill "$pid" 2>/dev/null
+        rm -f "$MESH_DIR/rns.pid"
+    fi
+    pkill -f "rns" 2>/dev/null && ok "RNS stopped" || info "RNS was not running"
+}
+
+# ── LXMF Messaging ──────────────────────────────────
+
+setup_lxmf() {
+    info "Setting up LXMF messaging..."
+    
+    if ! command -v lxmf >/dev/null 2>&1; then
+        pip3 install lxmf 2>/dev/null || warn "Failed to install LXMF"
+    fi
+    
+    # Initialize LXMF
+    lxmf init --path "$MESH_DIR/lxmf" 2>/dev/null || true
+    ok "LXMF initialized"
+}
+
+send_lxmf() {
+    local target="$1"
+    local message="$2"
+    
+    [ -z "$target" ] || [ -z "$message" ] && { 
+        err "Usage: nh-mesh send-lxmf <destination> <message>"
+        return 1
+    }
+    
+    info "Sending LXMF message to $target..."
+    lxmf send --dest "$target" --message "$message" 2>/dev/null || \
+        warn "Failed to send LXMF message"
+}
+
+# ── Yggdrasil IPv6 Mesh ─────────────────────────────
+
+setup_yggdrasil() {
+    info "Setting up Yggdrasil IPv6 overlay..."
+    
+    if ! command -v yggdrasil >/dev/null 2>&1; then
+        # Install in chroot
+        if [ -f /data/local/nhsystem/roots/archlinux/usr/bin/pacman ]; then
+            chroot /data/local/nhsystem/roots/archlinux pacman -S --noconfirm yggdrasil 2>/dev/null || \
+                warn "Failed to install Yggdrasil via pacman"
+        fi
+    fi
+    
+    # Generate config
+    yggdrasil -genconf > "$CONFIG_DIR/yggdrasil.conf" 2>/dev/null || {
+        warn "Failed to generate Yggdrasil config"
+        return 1
+    }
+    
+    ok "Yggdrasil config created: $CONFIG_DIR/yggdrasil.conf"
+}
+
+start_yggdrasil() {
+    info "Starting Yggdrasil..."
+    
+    if [ ! -f "$CONFIG_DIR/yggdrasil.conf" ]; then
+        setup_yggdrasil
+    fi
+    
+    yggdrasil --useconf < "$CONFIG_DIR/yggdrasil.conf" >/dev/null 2>&1 &
+    local pid=$!
+    echo "$pid" > "$MESH_DIR/yggdrasil.pid"
+    
+    ok "Yggdrasil started (PID: $pid)"
+    info "IPv6 address: $(yggdrasil -address 2>/dev/null)"
+}
+
+# ── Mesh Discovery & Peers ─────────────────────────────
+
+discover_peers() {
+    info "Discovering mesh peers..."
+    
+    # RNS peer discovery
+    if command -v rns >/dev/null 2>&1; then
+        echo "── Reticulum Peers ──"
+        rns --config "$RNS_CONFIG" --list-peers 2>/dev/null | head -20
+    fi
+    
+    # Yggdrasil peers
+    if pgrep -x yggdrasil >/dev/null 2>&1; then
+        echo "── Yggdrasil Peers ──"
+        yggdrasil -getpeers 2>/dev/null | head -10
+    fi
+}
+
+# ── Status & Monitoring ──────────────────────────────
+
+show_status() {
+    echo ""
+    echo "═════════════════════════════════════════════════════════════"
+    echo "  NETUNTER MESH STATUS"
+    echo "  Time: $(date)"
+    echo "═════════════════════════════════════════════════════════════"
+    echo ""
+    
+    # RNS status
+    echo "── Reticulum Network Stack ──"
+    if [ -f "$MESH_DIR/rns.pid" ] && kill -0 "$(cat "$MESH_DIR/rns.pid" 2>/dev/null)" 2>/dev/null; then
+        ok "RNS: Running (PID: $(cat "$MESH_DIR/rns.pid"))"
+        if command -v rns >/dev/null 2>&1; then
+            rns --config "$RNS_CONFIG" --status 2>/dev/null | sed 's/^/  /'
+        fi
+    else
+        info "RNS: Not running"
+    fi
+    
+    echo ""
+    
+    # Yggdrasil status
+    echo "── Yggdrasil IPv6 Mesh ──"
+    if pgrep -x yggdrasil >/dev/null 2>&1; then
+        ok "Yggdrasil: Running"
+        local addr
+        addr=$(yggdrasil -address 2>/dev/null || echo "N/A")
+        echo "  Address: $addr"
+    else
+        info "Yggdrasil: Not running"
+    fi
+    
+    echo ""
+    
+    # LXMF status
+    echo "── LXMF Messaging ──"
+    if [ -d "$MESH_DIR/lxmf" ]; then
+        ok "LXMF: Initialized"
+    else
+        info "LXMF: Not initialized"
+    fi
+}
+
+# ── Usage ───────────────────────────────────
+
+usage() {
+    cat <<EOF
+nh-mesh - Reticulum Mesh Networking Stack
+
+Usage: nh-mesh <command> [options]
+
+Setup:
+  setup               Install and configure Reticulum + LXMF + Yggdrasil
+  start               Start all mesh services
+  stop                Stop all mesh services
+  restart             Restart mesh services
+
+Services:
+  start-rns           Start Reticulum Network Stack
+  stop-rns            Stop Reticulum
+  start-ygg           Start Yggdrasil IPv6 mesh
+  stop-ygg            Stop Yggdrasil
+
+Messaging:
+  send-lxmf <dest> <msg>  Send LXMF message
+  peers               Discover mesh peers
+
+Status:
+  status              Show mesh status
+  info                Show detailed info
+
+Examples:
+  nh-mesh setup
+  nh-mesh start
+  nh-mesh send-lxmf <destination> "Hello Mesh!"
+  nh-mesh peers
+  nh-mesh status
+
+Files:
+  Config: $CONFIG_DIR/
+  Logs:   $LOG_DIR/
+  Data:   $MESH_DIR/
+
+Notes:
+  - Requires Python3 + pip in Arch chroot
+  - RNS: pip install rns
+  - LXMF: pip install lxmf
+  - Yggdrasil: pacman -S yggdrasil (Arch)
+EOF
+}
+
+# ── Main ───────────────────────────────────
+
+[ $# -ge 1 ] || usage
+
+case "$1" in
+    setup)
+        setup_reticulum
+        setup_lxmf
+        setup_yggdrasil
+        ;;
+    start)
+        start_rns
+        start_yggdrasil
+        ;;
+    stop)
+        stop_rns
+        pkill -f yggdrasil 2>/dev/null
+        ;;
+    restart)
+        $0 stop
+        sleep 2
+        $0 start
+        ;;
+    start-rns)  start_rns ;;
+    stop-rns)   stop_rns ;;
+    start-ygg)  start_yggdrasil ;;
+    stop-ygg)   pkill -f yggdrasil ;;
+    send-lxmf) shift; send_lxmf "$@" ;;
+    peers)      discover_peers ;;
+    status)     show_status ;;
+    info)
+        echo "── Reticulum Config ──"
+        [ -f "$RNS_CONFIG" ] && cat "$RNS_CONFIG" || info "Not configured"
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        err "Unknown command: $1"
+        usage
+        ;;
+esac

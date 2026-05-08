@@ -1,0 +1,298 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-crypt - Encryption toolkit: encrypt, decrypt, secure-delete, GPG, disk crypto
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+NHWORK=$NHSYSTEM/workspaces/main
+CRYPT_DIR=$NHWORK/crypto
+CRYPT_LOG=$NHSYSTEM/logs/crypt.log
+
+ensure_dirs() { mkdir -p "$CRYPT_DIR" "$NHSYSTEM/logs"; }
+log() { echo "[$(date '+%H:%M:%S')] $*" >> "$CRYPT_LOG"; }
+
+gpg_setup() {
+    echo "── GPG Setup ──"
+    ensure_dirs
+    local gpg_dir="$CRYPT_DIR/gpg"
+
+    [ -d "$gpg_dir" ] && echo "  GPG directory exists" || mkdir -p "$gpg_dir"
+    chmod 700 "$gpg_dir" 2>/dev/null
+
+    if command -v gpg >/dev/null 2>&1; then
+        echo "  GPG version: $(gpg --version 2>/dev/null | head -1 || echo '?')"
+    elif command -v gpg2 >/dev/null 2>&1; then
+        echo "  GPG2 version: $(gpg2 --version 2>/dev/null | head -1 || echo '?')"
+    else
+        echo "  GPG not found. Install in chroot:"
+        echo "    arch:  pacman -S gnupg"
+        echo "    kali:  apt install gnupg"
+        return 1
+    fi
+
+    if [ ! -f "$gpg_dir/pubring.kbx" ] && [ ! -f "$gpg_dir/secring.gpg" ]; then
+        printf "  Generate new key? [y/N]: "
+        read -r ans
+        case "$ans" in y|Y)
+            printf "  Your name: "
+            read -r name
+            printf "  Your email: "
+            read -r email
+            printf "  Passphrase: "
+            read -rs pass
+            echo ""
+            cat > /tmp/gpg-batch <<BATCH
+%echo Generating GPG key
+Key-Type: eddsa
+Key-Curve: Ed25519
+Subkey-Type: ecdh
+Subkey-Curve: Curve25519
+Name-Real: $name
+Name-Email: $email
+Passphrase: $pass
+Expire-Date: 2y
+%commit
+%echo Done
+BATCH
+            gpg --batch --gen-key /tmp/gpg-batch 2>/dev/null && \
+                echo "  Key generated" || echo "  Key generation failed"
+            rm -f /tmp/gpg-batch
+            ;;
+        esac
+    fi
+
+    echo ""
+    echo "  Keys:"
+    gpg --list-keys 2>/dev/null | grep -E 'pub|uid' | head -5
+    echo ""
+    echo "  GPG home: $gpg_dir"
+}
+
+gpg_encrypt_file() {
+    local file="${1:-}"
+    [ -z "$file" ] && { echo "Usage: nh-crypt encrypt <file> [recipient]"; exit 1; }
+    [ -f "$file" ] || { echo "File not found: $file"; exit 1; }
+    local recipient="${2:-}"
+    local output="$file.gpg"
+
+    if [ -n "$recipient" ]; then
+        gpg -e -r "$recipient" -o "$output" "$file" 2>/dev/null && \
+            echo "  Encrypted: $output (for $recipient)" || \
+            echo "  Encryption failed"
+    else
+        gpg -c -o "$output" "$file" 2>/dev/null && \
+            echo "  Encrypted (symmetric): $output" || \
+            echo "  Encryption failed"
+    fi
+    [ -f "$output" ] && log "Encrypted $file -> $output"
+}
+
+gpg_decrypt_file() {
+    local file="${1:-}"
+    [ -z "$file" ] && { echo "Usage: nh-crypt decrypt <file.gpg>"; exit 1; }
+    [ -f "$file" ] || { echo "File not found: $file"; exit 1; }
+    local output="${file%.gpg}"
+    [ "$output" = "$file" ] && output="$file.decrypted"
+
+    gpg -o "$output" -d "$file" 2>/dev/null && \
+        echo "  Decrypted: $output" || \
+        echo "  Decryption failed (wrong passphrase?)"
+    [ -f "$output" ] && log "Decrypted $file -> $output"
+}
+
+openssl_crypt() {
+    local action="${1:-encrypt}"
+    local file="${2:-}"
+    local algorithm="${3:-aes-256-cbc}"
+
+    [ -z "$file" ] && { echo "Usage: nh-crypt openssl <encrypt|decrypt> <file> [algorithm]"; exit 1; }
+    [ -f "$file" ] || { echo "File not found: $file"; exit 1; }
+
+    ensure_dirs
+    local output=""
+    local passfile="$CRYPT_DIR/.ssl-pass"
+
+    if [ "$action" = "encrypt" ]; then
+        output="$file.enc"
+        if [ ! -f "$passfile" ]; then
+            openssl rand -base64 32 > "$passfile" 2>/dev/null
+            chmod 600 "$passfile"
+            echo "  Generated key: $passfile"
+        fi
+        openssl enc -"$algorithm" -salt -in "$file" -out "$output" \
+            -pass file:"$passfile" 2>/dev/null && \
+            echo "  Encrypted: $output (algorithm: $algorithm)" || \
+            echo "  Encryption failed"
+    else
+        output="${file%.enc}"
+        [ "$output" = "$file" ] && output="$file.decrypted"
+        openssl enc -"$algorithm" -d -in "$file" -out "$output" \
+            -pass file:"$passfile" 2>/dev/null && \
+            echo "  Decrypted: $output" || \
+            echo "  Decryption failed"
+    fi
+    log "$action $file -> $output ($algorithm)"
+}
+
+secure_delete() {
+    local target="${1:-}"
+    [ -z "$target" ] && { echo "Usage: nh-crypt wipe <path> [passes]"; exit 1; }
+    [ -e "$target" ] || { echo "Not found: $target"; exit 1; }
+    local passes="${2:-3}"
+
+    echo "── Secure Delete ──"
+    echo "  Target: $target"
+    echo "  Passes: $passes"
+    printf "  This is IRREVERSIBLE. Continue? [y/N]: "
+    read -r ans
+    case "$ans" in y|Y) ;; *) echo "  Cancelled"; return ;; esac
+
+    if [ -f "$target" ]; then
+        local size=$(stat -c%s "$target" 2>/dev/null || echo 0)
+        echo "  File size: $size bytes"
+        for i in $(seq 1 "$passes"); do
+            echo "  Pass $i/$passes..."
+            openssl rand "$size" > "$target" 2>/dev/null
+            sync
+        done
+        shred -n "$passes" -z -u "$target" 2>/dev/null || \
+            rm -P "$target" 2>/dev/null || \
+            rm -f "$target"
+        echo "  Securely deleted"
+        log "WIPED $target ($passes passes)"
+    elif [ -d "$target" ]; then
+        local files=$(find "$target" -type f 2>/dev/null | wc -l)
+        echo "  Directory with $files files"
+        find "$target" -type f -exec sh -c 'openssl rand $(stat -c%s "$1") > "$1" 2>/dev/null; shred -u "$1" 2>/dev/null || rm -f "$1"' _ {} \;
+        rm -rf "$target"
+        echo "  Directory securely deleted"
+        log "WIPED directory $target ($passes passes, $files files)"
+    fi
+}
+
+secure_wipe_loop() {
+    echo "── Secure Wipe: Available Space ──"
+    local path="${1:-/sdcard}"
+    local passes="${2:-1}"
+
+    [ -d "$path" ] || { echo "Path not found: $path"; exit 1; }
+    local avail=$(df -k "$path" 2>/dev/null | tail -1 | awk '{print $4}')
+    echo "  Path: $path ($((avail / 1024))MB available)"
+    printf "  Wipe free space? This may take a while. Continue? [y/N]: "
+    read -r ans
+    case "$ans" in y|Y) ;; *) echo "  Cancelled"; return ;; esac
+
+    for i in $(seq 1 "$passes"); do
+        echo "  Pass $i/$passes..."
+        dd if=/dev/urandom of="$path/.wipe-temp" bs=1M 2>/dev/null || true
+        rm -f "$path/.wipe-temp"
+        sync
+    done
+    echo "  Free space wiped"
+    log "WIPED free space on $path ($passes passes)"
+}
+
+checksum_verify() {
+    local file="${1:-}"
+    local algorithm="${2:-sha256}"
+    local hash="${3:-}"
+
+    [ -z "$file" ] && { echo "Usage: nh-crypt checksum <file> [algorithm] [expected-hash]"; exit 1; }
+    [ -f "$file" ] || { echo "File not found: $file"; exit 1; }
+
+    echo "── Checksum Verification ──"
+    echo "  File: $file"
+    echo "  Algorithm: $algorithm"
+    echo ""
+
+    local computed=""
+    case "$algorithm" in
+        sha256|sha2) computed=$(sha256sum "$file" 2>/dev/null | awk '{print $1}') ;;
+        sha512) computed=$(sha512sum "$file" 2>/dev/null | awk '{print $1}') ;;
+        md5) computed=$(md5sum "$file" 2>/dev/null | awk '{print $1}') ;;
+        sha1) computed=$(sha1sum "$file" 2>/dev/null | awk '{print $1}') ;;
+        *) echo "  Unknown algorithm: $algorithm"; exit 1 ;;
+    esac
+
+    echo "  Computed: $computed"
+    if [ -n "$hash" ]; then
+        if [ "$computed" = "$hash" ]; then
+            echo "  VERIFIED: Hash matches"
+        else
+            echo "  MISMATCH: Hash does not match"
+            echo "  Expected: $hash"
+        fi
+    else
+        echo "  (no expected hash provided)"
+    fi
+}
+
+disk_encrypt_info() {
+    echo "── Disk Encryption Status ──"
+    echo ""
+
+    # Check Android encryption
+    local status=$(getprop ro.crypto.state 2>/dev/null || echo "?")
+    local type=$(getprop ro.crypto.type 2>/dev/null || echo "?")
+    echo "  Android encryption: $status ($type)"
+
+    # Check if /data is encrypted
+    if [ -f / fstab.$(getprop ro.hardware 2>/dev/null) ]; then
+        echo "  fstab found for device"
+    fi
+
+    # Check for encryption-related props
+    local fbe=$(getprop ro.crypto.fbe_ds_key 2>/dev/null || echo "")
+    [ -n "$fbe" ] && echo "  File-Based Encryption: supported"
+
+    local metadata=$(getprop ro.crypto.metadata_encryption 2>/dev/null || echo "")
+    [ -n "$metadata" ] && echo "  Metadata encryption: $metadata"
+
+    echo ""
+    echo "  Recommendations:"
+    echo "  - Ensure Android encryption is enabled (Settings -> Security)"
+    echo "  - Use nh-crypt encrypt for sensitive files"
+    echo "  - For full disk: nh-crypt wipe on sensitive data"
+    echo "  - Store keys in: $CRYPT_DIR/"
+}
+
+usage() {
+    cat <<EOF
+nh-crypt - Encryption and cryptographic toolkit
+
+Usage: nh-crypt <command> [args]
+
+Commands:
+  gpg-setup            Initialize GPG keys
+  encrypt <file> [recipient]  GPG encrypt file
+  decrypt <file.gpg>   GPG decrypt file
+  openssl <encrypt|decrypt> <file> [algo]  OpenSSL encryption (default: aes-256-cbc)
+  wipe <path> [passes] Secure delete file/directory (default: 3 passes)
+  wipe-free [path] [passes]  Wipe free disk space
+  checksum <file> [algo] [hash]  Verify file checksum (sha256/sha512/md5/sha1)
+  disk-status          Show disk encryption status
+
+Examples:
+  nh-crypt gpg-setup
+  nh-crypt encrypt secret.doc
+  nh-crypt decrypt secret.doc.gpg
+  nh-crypt openssl encrypt sensitive.tar
+  nh-crypt wipe /sdcard/sensitive-file 7
+  nh-crypt checksum download.iso sha256
+  nh-crypt disk-status
+EOF
+    exit 1
+}
+
+case "${1:-help}" in
+    gpg-setup|gpg-init|gpg) gpg_setup ;;
+    encrypt|gpg-encrypt) shift; gpg_encrypt_file "$@" ;;
+    decrypt|gpg-decrypt) shift; gpg_decrypt_file "$@" ;;
+    openssl|ssl) shift; openssl_crypt "$@" ;;
+    wipe|delete|shred) shift; secure_delete "$@" ;;
+    wipe-free|wipefree|wipe-space) shift; secure_wipe_loop "$@" ;;
+    checksum|hash|verify) shift; checksum_verify "$@" ;;
+    disk-status|disk-encrypt|encryption-status) disk_encrypt_info ;;
+    *) usage ;;
+esac

@@ -1,0 +1,180 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-canary - Canary token deployment and monitoring
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+CANARY_DIR=$NHSYSTEM/workspaces/main/canaries
+CANARY_LOG=$NHSYSTEM/logs/canary.log
+CANARY_CONF=$NHSYSTEM/etc/canary.conf
+
+ensure_dirs() {
+    mkdir -p "$CANARY_DIR" "$NHSYSTEM/logs" "$NHSYSTEM/etc"
+    [ -f "$CANARY_CONF" ] || cat > "$CANARY_CONF" <<CONF
+# Canary Token Configuration
+alert_email=
+alert_webhook=
+alert_cmd=nh-alert
+CONF
+}
+
+deploy_file_token() {
+    local name="${1:-canary-$(date +%s)}"
+    local path="${2:-$CANARY_DIR/$name}"
+    local bait="${3:-confidential-project-data.txt}"
+
+    ensure_dirs
+    mkdir -p "$(dirname "$path")"
+
+    cat > "$path" <<TOKEN
+╔══════════════════════════════════════════╗
+║  CONFIDENTIAL - DO NOT DISTRIBUTE       ║
+║  Project: $name
+║  Owner: $(whoami 2>/dev/null || echo 'admin')
+║  Created: $(date)
+╚══════════════════════════════════════════╝
+
+API_KEY = nk_$(openssl rand -hex 16 2>/dev/null || echo "canary_$(date +%s)")
+DB_PASS = $(openssl rand -base64 12 2>/dev/null || echo "s3cr3t!")
+SERVER   = https://internal-vpn.$(openssl rand -hex 4 2>/dev/null || echo "corp").local
+TOKEN
+
+    echo "  File token deployed: $path"
+    echo "  Bait: $bait"
+    echo "  $(date) DEPLOYED $name at $path" >> "$CANARY_LOG"
+    register_token "$name" "file" "$path"
+}
+
+deploy_webhook_token() {
+    local url="${1:-}"
+    [ -z "$url" ] && { echo "Usage: nh-canary webhook <url>"; exit 1; }
+
+    ensure_dirs
+    local name="webhook-$(date +%s)"
+
+    echo "  Webhook token deployed to: $url"
+    echo "  Token will fire on HTTP request"
+    echo "  $(date) DEPLOYED $name -> $url" >> "$CANARY_LOG"
+    register_token "$name" "webhook" "$url"
+}
+
+deploy_dns_token() {
+    local domain="${1:-canary-$(date +%s).nethunter.local}"
+
+    ensure_dirs
+    local name="dns-$domain"
+
+    echo "  DNS token: $domain"
+    echo "  Any DNS query to this domain triggers alert"
+    echo "  $(date) DEPLOYED dns:$domain" >> "$CANARY_LOG"
+    register_token "$name" "dns" "$domain"
+}
+
+deploy_honeytoken() {
+    local service="${1:-ssh}"
+    local port="${2:-2222}"
+
+    ensure_dirs
+    local name="honeypot-$service-$port"
+
+    echo "  Honeypot token: $service on port $port"
+    echo "  Any connection attempt triggers alert"
+    echo "  $(date) DEPLOYED honeypot:$service:$port" >> "$CANARY_LOG"
+    register_token "$name" "honeypot" "$service:$port"
+}
+
+register_token() {
+    local name="$1"
+    local type="$2"
+    local target="$3"
+    local token_file="$CANARY_DIR/.registry"
+
+    echo "$name|$type|$target|$(date +%s)" >> "$token_file"
+}
+
+list_tokens() {
+    local reg="$CANARY_DIR/.registry"
+    echo "── Deployed Canary Tokens ──"
+    echo ""
+
+    if [ ! -f "$reg" ]; then
+        echo "  No tokens deployed"
+        return
+    fi
+
+    local count=0
+    cat "$reg" | while IFS='|' read -r name type target timestamp; do
+        local age=$(( ($(date +%s) - timestamp) / 3600 ))
+        local fired=""
+        if grep -q "TRIGGERED $name" "$CANARY_LOG" 2>/dev/null; then
+            fired=" [FIRED]"
+        fi
+        printf "  %-25s %-10s %s (%dh ago)%s\n" "$name" "$type" "$target" "$age" "$fired"
+        count=$((count + 1))
+    done
+    echo ""
+    echo "  Total: $(wc -l < "$reg") token(s)"
+}
+
+check_alerts() {
+    echo "── Canary Alerts ──"
+    echo ""
+
+    if [ -f "$CANARY_LOG" ]; then
+        grep "TRIGGERED\|FIRED" "$CANARY_LOG" 2>/dev/null | tail -20 | while read -r line; do
+            echo "  $line"
+        done
+    fi
+
+    # Check token file access (atime comparison)
+    local reg="$CANARY_DIR/.registry"
+    if [ -f "$reg" ]; then
+        cat "$reg" | while IFS='|' read -r name type target timestamp; do
+            if [ "$type" = "file" ] && [ -f "$target" ]; then
+                local atime=$(stat -c '%X' "$target" 2>/dev/null || echo 0)
+                local ctime=$(stat -c '%Z' "$target" 2>/dev/null || echo 0)
+                if [ "$atime" -gt "$timestamp" ] || [ "$ctime" -gt "$timestamp" ]; then
+                    echo "  TRIGGERED: File token '$name' was accessed!"
+                    echo "  $(date) TRIGGERED $name (file access)" >> "$CANARY_LOG"
+                    nh-alert "CANARY_TRIGGERED:$name" 2>/dev/null || true
+                fi
+            fi
+        done
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-canary - Canary token deployment and monitoring
+
+Usage: nh-canary <command> [args]
+
+Commands:
+  file [name] [path] [bait]  Deploy a file canary token
+  webhook <url>              Deploy webhook canary token
+  dns [domain]               Deploy DNS canary token
+  honeypot [service] [port]  Deploy honeypot canary
+  list                       List deployed tokens
+  alerts                     Check for triggered tokens
+
+Examples:
+  nh-canary file secret.txt /sdcard/Documents/api-keys.txt
+  nh-canary webhook https://hooks.example.com/alert
+  nh-canary dns scan-$(hostname).nethunter.local
+  nh-canary honeypot ssh 2222
+  nh-canary list
+  nh-canary alerts
+EOF
+    exit 1
+}
+
+case "${1:-help}" in
+    file|f|document) shift; deploy_file_token "${1:-}" "${2:-}" "${3:-}" ;;
+    webhook|hook|url) shift; deploy_webhook_token "${1:-}" ;;
+    dns|domain) shift; deploy_dns_token "${1:-}" ;;
+    honeypot|honey|service) shift; deploy_honeytoken "${1:-}" "${2:-}" ;;
+    list|ls) list_tokens ;;
+    alerts|check|scan) check_alerts ;;
+    *) usage ;;
+esac

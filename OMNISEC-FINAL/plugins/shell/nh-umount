@@ -1,0 +1,30 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+umount_root() {
+    root="$1"
+    for p in workspace tmp run dev/shm dev/pts dev sys proc; do
+        mountpoint="$root/$p"
+        is_mounted "$mountpoint" && umount "$mountpoint" 2>/dev/null || true
+    done
+}
+
+case "${1:-all}" in
+    kali)
+        umount_root "$(kali_root)"
+        ;;
+    arch)
+        umount_root "$(arch_root)"
+        ;;
+    all)
+        [ -d "$(arch_root)" ] && umount_root "$(arch_root)"
+        [ -d "$(kali_root)" ] && umount_root "$(kali_root)"
+        ;;
+    *)
+        echo "usage: nh-umount [all|kali|arch]" >&2
+        exit 2
+        ;;
+esac

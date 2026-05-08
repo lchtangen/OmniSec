@@ -1,137 +1,168 @@
 #!/system/bin/sh
 # NH_SETUP_VERSION: 3.0 nextgen
 # PRIORITY: P8
-# nh-drone — Drone Security Testing (WiFi simulation)
+# nh-drone — WiFi Drone Detection (Real implementation)
 set -euo pipefail
 
 DRONE_DIR="/data/local/nhsystem/drone"
 TELEMETRY="$DRONE_DIR/telemetry.log"
+DRONE_DB="$DRONE_DIR/known-drones.txt"
 
 show_usage() {
     cat <<EOF
-nh-drone - Drone Security Testing (WiFi-based simulation)
+nh-drone — WiFi Drone Detection & Analysis
 
 Usage: nh-drone <command> [args]
 
 Commands:
-  status            Show drone network status
-  scan [network]   Scan for drones on network
-  connect <ip>     Connect to drone over WiFi
-  telemetry        Show drone telemetry
-  simulate         Run drone simulation
-  fuzz <ip>        Fuzz drone protocol (MAVLink)
-  help              Show this message
+  status            Show WiFi/drone status
+  scan [network]   Scan for drone WiFi SSIDs
+  detect           Detect known drone signatures
+  monitor          Monitor for drone activity
+  list             List known drone types
+  help             Show this message
 
-Note: Uses WiFi network to detect & test drones.
-      Real hardware requires telemetry radio.
+Examples:
+  nh-drone scan 192.168.1.0/24
+  nh-drone detect
+  nh-drone monitor
+
+Note: Uses WiFi scanning to detect drones with WiFi control interfaces.
+      Works on OnePlus 7 Pro with built-in WiFi.
 EOF
 }
 
 init_drone() {
     mkdir -p "$DRONE_DIR"
-    touch "$TELEMETRY"
+    touch "$TELEMETRY" "$DRONE_DB"
+    
+    # Populate known drone signatures if empty
+    if [ ! -s "$DRONE_DB" ]; then
+        cat > "$DRONE_DB" <<'EOF'
+# Known drone WiFi SSID patterns
+DJI-
+TELLO-
+AR-DRONE
+PARROT-
+M4-ATTI
+PHANTOM-
+MAVIC-
+SPARK-
+MPW-
+DRONE-
+UAV-
+QUAD-
+EOF
+    fi
 }
 
 cmd_status() {
-    echo "══ Drone Network Status ══════════════"
+    echo "══ Drone Detection Status ═══════════"
+    init_drone
     echo ""
-    echo "── WiFi Network ──"
-    ip route | grep "default" || echo "  No default route"
+    echo "── Device: OnePlus 7 Pro (ARM64) ──"
+    echo "  WiFi: $(iwconfig wlan0 2>/dev/null | grep 'ESSID' | cut -d: -f2 || echo 'Disconnected')"
     echo ""
-    echo "── Detected Drones ──"
-    echo "  0 drones found (simulation mode)"
+    echo "── Known Drone Patterns ──"
+    grep -v '^#' "$DRONE_DB" | grep -v '^$' | wc -l | while read cnt; do
+        echo "  Signatures loaded: $cnt"
+    done
     echo ""
-    echo "── Simulation Mode ──"
-    echo "  Active: No"
-    echo "  Protocol: MAVLink (simulated)"
+    echo "── Active Monitoring ──"
+    if pgrep -f "nh-drone monitor" >/dev/null; then
+        echo "  Status: Active (PID: $(pgrep -f 'nh-drone monitor'))"
+    else
+        echo "  Status: Inactive"
+    fi
 }
 
 cmd_scan() {
-    local network="${1:-192.168.1.0/24}"
-    echo "══ Scanning for Drones: $network ════════"
+    local network="${1:-$(ip route | grep wlan0 | grep -oP 'default via \K[0-9.]+' | head -1 | cut -d. -f1-3).0/24}"
+    echo "══ Scanning for Drone WiFi: $network ═════"
+    init_drone
     
-    # Common drone ports: 14550 (MAVLink), 14551, 5760
-    local drone_ports="14550 14551 5760 5536 8080"
+    echo "  Scanning WiFi for drone SSIDs..."
+    echo "  Scan time: $(date)" >> "$TELEMETRY"
     
-    echo "  Scanning for MAVLink services..."
-    for port in $drone_ports; do
-        if command -v nmap >/dev/null 2>&1; then
-            nmap -p "$port" "$network" --open 2>/dev/null | grep "Nmap scan report" -A3 | grep "open" | head -5
-        fi
-    done
+    # Scan for drone-like SSIDs
+    if command -v iwlist >/dev/null 2>&1; then
+        iwlist wlan0 scan 2>/dev/null | grep -iE "dji|tello|parrot|drone|uav|mavic|phantom|spark" | head -20 | tee -a "$TELEMETRY"
+    else
+        echo "  iwlist not available — trying alternative..."
+        # Try reading from /proc/net/wireless if available
+        cat /proc/net/wireless 2>/dev/null | grep -v "wlan" | head -10 || echo "  No wireless info available"
+    fi
     
     echo ""
-    echo "  Checking for drone SSIDs..."
-    iwlist wlan0 scan 2>/dev/null | grep -iE "drone|uav|copter|mav" | head -10 || echo "  No drone SSIDs found"
-}
-
-cmd_connect() {
-    local ip="${1:-}"
-    [ -z "$ip" ] && { echo "Usage: nh-drone connect <ip>"; exit 1; }
-    
-    echo "══ Connecting to Drone: $ip ═════════════"
-    
-    # Try MAVLink heartbeat
-    echo "  Attempting MAVLink connection..."
-    if command -v mavproxy.py >/dev/null 2>&1; then
-        echo "  Starting MAVProxy (simulation)..."
-        # mavproxy.py --master=tcp:$ip:14550 --aircraft=sim 2>/dev/null &
+    echo "── Scanning for open ports (MAVLink: 14550, 14551) ──"
+    if command -v nmap >/dev/null 2>&1; then
+        echo "  Running nmap scan..."
+        nmap -p 14550,14551,5760,5536 --open "$network" 2>/dev/null | grep -E "Nmap|open" | head -10
     else
-        echo "  MAVProxy not installed"
-        echo "  Use: pip install mavproxy"
-    fi
-    
-    # Simple TCP check
-    nc -z -w 3 "$ip" 14550 2>/dev/null && echo "  MAVLink (14550): Connected" || echo "  MAVLink (14550): No response"
-}
-
-cmd_telemetry() {
-    echo "══ Drone Telemetry ════════════════"
-    init_drone
-    
-    if [ -s "$TELEMETRY" ]; then
-        tail -10 "$TELEMETRY"
-    else
-        echo "  No telemetry data"
-        echo "  Run 'nh-drone simulate' to generate test data"
+        echo "  nmap not available — install in Arch: pacman -S nmap"
     fi
 }
 
-cmd_simulate() {
-    echo "══ Drone Simulation ════════════════"
+cmd_detect() {
+    echo "══ Detecting Drones ═══════════════"
     init_drone
     
-    echo "  Starting drone simulation..."
-    echo "  Generating fake telemetry..."
+    echo "  Checking for known drone SSIDs..."
+    local found=0
     
-    # Generate fake telemetry
-    for i in $(seq 1 10); do
-        echo "$(date): lat=37.7749, lon=-122.4194, alt=$(($RANDOM % 100)), pitch=$(($RANDOM % 360 - 180)), roll=$(($RANDOM % 360 - 180))" >> "$TELEMETRY"
+    if command -v iwlist >/dev/null 2>&1; then
+        while IFS= read -r pattern; do
+            # Skip comments and empty lines
+            [[ "$pattern" =~ ^# ]] && continue
+            [[ -z "$pattern" ]] && continue
+            
+            echo "  Checking pattern: $pattern..."
+            iwlist wlan0 scan 2>/dev/null | grep -i "$pattern" | while read -r line; do
+                echo "  ✓ DRONE DETECTED: $line"
+                echo "$(date): DETECTED: $line" >> "$TELEMETRY"
+                found=$((found + 1))
+            done
+        done < "$DRONE_DB"
+    fi
+    
+    if [ $found -eq 0 ]; then
+        echo "  No drones detected in current scan"
+    else
+        echo "  Total drones detected: $found"
+    fi
+}
+
+cmd_monitor() {
+    echo "══ Monitoring for Drones (Ctrl+C to stop) ══"
+    init_drone
+    
+    while true; do
+        echo "[$(date)] Scanning..."
+        iwlist wlan0 scan 2>/dev/null | grep -iE "dji|tello|parrot|drone" | head -3 | while read -r line; do
+            echo "  ALERT: $line"
+            echo "$(date): ALERT: $line" >> "$TELEMETRY"
+        done
+        sleep 10
     done
-    
-    echo "  Telemetry saved to: $TELEMETRY"
-    echo "  View with: nh-drone telemetry"
 }
 
-cmd_fuzz() {
-    local ip="${1:-}"
-    [ -z "$ip" ] && { echo "Usage: nh-drone fuzz <ip>"; exit 1; }
+cmd_list() {
+    echo "══ Known Drone Signatures ═══════════"
+    init_drone
     
-    echo "══ Fuzzing Drone Protocol: $ip ════════"
-    
-    echo "  MAVLink fuzzing not implemented"
-    echo "  Use tools: boofuzz, sulley, or custom scripts"
-    echo "  Target ports: 14550 (MAVLink), 14551 (mission planner)"
+    echo "  Patterns:"
+    grep -v '^#' "$DRONE_DB" | grep -v '^$' | while read -r pattern; do
+        echo "    - $pattern"
+    done
 }
 
 init_drone
 
-case "${1:-status}" in
+case "${1:-help}" in
     status)      cmd_status ;;
     scan)        cmd_scan "${2:-}" ;;
-    connect)     cmd_connect "${2:-}" ;;
-    telemetry)   cmd_telemetry ;;
-    simulate)    cmd_simulate ;;
-    fuzz)        cmd_fuzz "${2:-}" ;;
-    help|*)      show_usage ;;
+    detect)     cmd_detect ;;
+    monitor)    cmd_monitor ;;
+    list)        cmd_list ;;
+    help|*)     show_usage ;;
 esac

@@ -1,0 +1,126 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-alert — Real-time alert system
+set -euo pipefail
+
+ALERT_DIR="/data/local/nhsystem/alerts"
+CONFIG_FILE="$ALERT_DIR/config.conf"
+RULES_FILE="$ALERT_DIR/rules.conf"
+
+show_usage() {
+    cat <<EOF
+nh-alert - Real-time Alert System
+
+Usage: nh-alert <command> [args]
+
+Commands:
+  start         Start alert monitoring daemon
+  stop          Stop alert daemon
+  status        Show alert system status
+  rules         List alert rules
+  add <rule>    Add new alert rule
+  test          Send test alert
+  history       Show alert history
+  help          Show this message
+EOF
+}
+
+init_alert() {
+    mkdir -p "$ALERT_DIR"
+    touch "$CONFIG_FILE" "$RULES_FILE" "$ALERT_DIR/history.log"
+    
+    if [ ! -s "$RULES_FILE" ]; then
+        cat > "$RULES_FILE" <<'EOF'
+# Alert Rules (pattern|severity|action)
+# severity: info, warning, critical
+# action: log, notify, email
+battery.*low|warning|log
+temperature.*high|critical|notify
+error|warning|log
+failed|critical|log
+EOF
+    fi
+}
+
+send_notification() {
+    local msg="$1"
+    local severity="${2:-info}"
+    echo "[$(date)] [$severity] $msg" >> "$ALERT_DIR/history.log"
+    
+    # Try to send Android notification
+    am broadcast -a android.intent.action.SHOW_NOTIFICATION \
+        -e title "NetHunter Alert" \
+        -e text "$msg" 2>/dev/null || true
+}
+
+cmd_start() {
+    init_alert
+    echo "══ Starting Alert Daemon ═══════════════════"
+    
+    # Simple tail -f on logs
+    tail -f /data/local/nhsystem/logs/*.log 2>/dev/null | while read -r line; do
+        while IFS='|' read -r pattern severity action; do
+            [[ "$line" =~ $pattern ]] && send_notification "$line" "$severity"
+        done < "$RULES_FILE"
+    done &
+    
+    echo $! > "$ALERT_DIR/pid"
+    echo "  Daemon started (PID: $(cat $ALERT_DIR/pid))"
+}
+
+cmd_stop() {
+    if [ -f "$ALERT_DIR/pid" ]; then
+        kill $(cat "$ALERT_DIR/pid") 2>/dev/null || true
+        rm -f "$ALERT_DIR/pid"
+        echo "  Alert daemon stopped"
+    else
+        echo "  Daemon not running"
+    fi
+}
+
+cmd_status() {
+    echo "══ Alert System Status ═════════════════"
+    if [ -f "$ALERT_DIR/pid" ] && kill -0 $(cat "$ALERT_DIR/pid") 2>/dev/null; then
+        echo "  Status: Running (PID: $(cat $ALERT_DIR/pid))"
+    else
+        echo "  Status: Stopped"
+    fi
+    echo "  Rules: $(wc -l < "$RULES_FILE")"
+    echo "  History: $(wc -l < "$ALERT_DIR/history.log") alerts"
+}
+
+cmd_rules() {
+    echo "══ Alert Rules ═════════════════════"
+    cat "$RULES_FILE" | grep -v "^#" | grep -v "^$" | nl
+}
+
+cmd_add() {
+    local rule="${1:-}"
+    [ -z "$rule" ] && { echo "Usage: nh-alert add 'pattern|severity|action'"; exit 1; }
+    echo "$rule" >> "$RULES_FILE"
+    echo "  Rule added"
+}
+
+cmd_test() {
+    send_notification "Test alert from nh-alert" "info"
+    echo "  Test alert sent"
+}
+
+cmd_history() {
+    echo "══ Alert History ═══════════════════"
+    tail -20 "$ALERT_DIR/history.log" 2>/dev/null || echo "  No history"
+}
+
+init_alert
+
+case "${1:-status}" in
+    start)       cmd_start ;;
+    stop)        cmd_stop ;;
+    status)      cmd_status ;;
+    rules)       cmd_rules ;;
+    add)         cmd_add "${2:-}" ;;
+    test)        cmd_test ;;
+    history)     cmd_history ;;
+    help|*)      show_usage ;;
+esac

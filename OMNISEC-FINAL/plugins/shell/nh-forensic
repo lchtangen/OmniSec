@@ -1,0 +1,379 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-forensic - Anti-forensics and operational security toolkit
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+FORENSIC_DIR=$NHSYSTEM/etc/forensic
+FORENSIC_LOG=$NHSYSTEM/logs/forensic.log
+NHWORK=$NHSYSTEM/workspaces/main
+
+ensure_dirs() { mkdir -p "$FORENSIC_DIR" "$NHSYSTEM/logs"; }
+log() { echo "[$(date '+%H:%M:%S')] $*" >> "$FORENSIC_LOG"; }
+
+clean_logs_secure() {
+    echo "── Secure Log Sanitization ──"
+    echo ""
+
+    local targets=""
+    echo "  Select logs to sanitize:"
+    echo "    1) System logs ($NHSYSTEM/logs)"
+    echo "    2) Shell history (~/.bash_history, ~/.zsh_history)"
+    echo "    3) Android logs (logcat)"  
+    echo "    4) All of the above"
+    printf "  Choice [1-4]: "
+    read -r choice
+
+    case "$choice" in
+        1|4) targets="$targets syslog" ;;
+        2|4) targets="$targets shellhist" ;;
+        3|4) targets="$targets logcat" ;;
+    esac
+
+    for t in $targets; do
+        case "$t" in
+            syslog)
+                if [ -d "$NHSYSTEM/logs" ]; then
+                    local count=$(find "$NHSYSTEM/logs" -name '*.log' -type f 2>/dev/null | wc -l)
+                    local size=$(du -sh "$NHSYSTEM/logs" 2>/dev/null | cut -f1)
+                    echo "  System logs: $count files ($size)"
+
+                    # Overwrite with random data before deletion
+                    find "$NHSYSTEM/logs" -name '*.log' -type f -exec sh -c '
+                        dd if=/dev/urandom of="$1" bs=1024 count=$(stat -c%s "$1" 2>/dev/null || echo 1024) 2>/dev/null
+                        rm -f "$1"
+                    ' _ {} \;
+                    echo "  System logs sanitized"
+                    log "System logs sanitized"
+                fi
+                ;;
+            shellhist)
+                for hist in ~/.bash_history ~/.zsh_history /data/data/com.termux/files/home/.bash_history /data/data/com.termux/files/home/.zsh_history; do
+                    if [ -f "$hist" ]; then
+                        local size=$(stat -c%s "$hist" 2>/dev/null || echo 0)
+                        dd if=/dev/urandom of="$hist" bs=1024 count=$((size / 1024 + 1)) 2>/dev/null
+                        > "$hist"
+                        echo "  Sanitized: $hist"
+                        log "Shell history sanitized: $hist"
+                    fi
+                done
+                # Secure link: point to /dev/null
+                ln -sf /dev/null ~/.bash_history 2>/dev/null || true
+                ln -sf /dev/null ~/.zsh_history 2>/dev/null || true
+                echo "  Tip: ln -sf /dev/null ~/.bash_history prevents future logging"
+                ;;
+            logcat)
+                logcat -c 2>/dev/null && echo "  Android logcat buffer cleared" || echo "  Cannot clear logcat (may need root)"
+                log "Android logcat cleared"
+                ;;
+        esac
+    done
+}
+
+metadata_strip() {
+    local target="${1:-}"
+    [ -z "$target" ] && { echo "Usage: nh-forensic meta-strip <file>"; exit 1; }
+    [ -f "$target" ] || { echo "File not found: $target"; exit 1; }
+
+    echo "── Metadata Removal ──"
+    echo "  File: $target"
+    echo ""
+
+    local mime=$(file -b --mime-type "$target" 2>/dev/null || echo "?")
+    echo "  Type: $mime"
+
+    case "$mime" in
+        image/jpeg|image/jpg)
+            if command -v exiftool >/dev/null 2>&1; then
+                exiftool -all= "$target" 2>/dev/null && echo "  EXIF data stripped (exiftool)" || echo "  Failed"
+            elif command -v jhead >/dev/null 2>&1; then
+                jhead -de "$target" 2>/dev/null && echo "  EXIF stripped (jhead)" || echo "  Failed"
+            else
+                echo "  Need exiftool/jhead (install: pacman -S exiftool)"
+                # Manual QR: strip using dd
+                local tmp="$target.clean"
+                dd if="$target" bs=1 skip=$(grep -boa '\xff\xd8' "$target" 2>/dev/null | tail -1 | cut -d: -f1) of="$tmp" 2>/dev/null || true
+                [ -f "$tmp" ] && mv "$tmp" "$target" && echo "  EXIF stripped (manual)"
+            fi
+            ;;
+        image/png)
+            if command -v exiftool >/dev/null 2>&1; then
+                exiftool -all= "$target" 2>/dev/null && echo "  Metadata stripped" || echo "  Failed"
+            else
+                # pngcrush or convert
+                convert "$target" -strip "$target" 2>/dev/null && echo "  Metadata stripped (ImageMagick)" || \
+                    echo "  Need exiftool or ImageMagick"
+            fi
+            ;;
+        application/pdf)
+            if command -v exiftool >/dev/null 2>&1; then
+                exiftool -all= "$target" 2>/dev/null && echo "  PDF metadata stripped" || echo "  Failed"
+            else
+                echo "  Need exiftool"
+            fi
+            ;;
+        *)
+            if command -v exiftool >/dev/null 2>&1; then
+                exiftool -all= "$target" 2>/dev/null && echo "  Metadata stripped" || echo "  No metadata tool"
+            else
+                echo "  Unknown type: $mime"
+                echo "  Try: exiftool -all= <file>"
+            fi
+            ;;
+    esac
+    log "Metadata stripped from $target"
+}
+
+opsec_checklist() {
+    echo "╔══════════════════════════════════════════╗"
+    echo "║   Operational Security (OPSEC) Checklist ║"
+    echo "╚══════════════════════════════════════════╝"
+    echo ""
+
+    local checks=0
+    local passed=0
+
+    checks=$((checks + 1))
+    echo "  [$checks] Network exposure:"
+    local listening=$(netstat -tln 2>/dev/null | grep -c LISTEN)
+    if [ "$listening" -gt 0 ]; then
+        echo "    ! $listening ports listening:"
+        netstat -tln 2>/dev/null | grep LISTEN | awk '{print "      " $4}'
+    else
+        echo "    + No listening ports"
+        passed=$((passed + 1))
+    fi
+
+    checks=$((checks + 1))
+    echo "  [$checks] ADB over network:"
+    local adb_tcp=$(getprop persist.adb.tcp.port 2>/dev/null || echo "")
+    if [ -n "$adb_tcp" ]; then
+        echo "    ! ADB over TCP enabled on port $adb_tcp"
+    else
+        echo "    + ADB over TCP disabled"
+        passed=$((passed + 1))
+    fi
+
+    checks=$((checks + 1))
+    echo "  [$checks] USB debugging:"
+    if [ "$(getprop persist.sys.usb.config 2>/dev/null)" != "${getprop persist.sys.usb.config#*adb}" ]; then
+        echo "    ! USB debugging enabled"
+    else
+        echo "    + USB debugging disabled"
+        passed=$((passed + 1))
+    fi
+
+    checks=$((checks + 1))
+    echo "  [$checks] WiFi scanning:"
+    if [ "$(settings get global wifi_scan_always_enabled 2>/dev/null)" = "1" ]; then
+        echo "    ! WiFi scanning always on"
+    else
+        echo "    + WiFi scanning normal"
+        passed=$((passed + 1))
+    fi
+
+    checks=$((checks + 1))
+    echo "  [$checks] BLE scanning:"
+    if [ "$(settings get global ble_scan_always_enabled 2>/dev/null)" = "1" ]; then
+        echo "    ! BLE scanning always on"
+    else
+        echo "    + BLE scanning normal"
+        passed=$((passed + 1))
+    fi
+
+    checks=$((checks + 1))
+    echo "  [$checks] Location services:"
+    local loc=$(settings get secure location_providers_allowed 2>/dev/null || echo "")
+    if [ -n "$loc" ]; then
+        echo "    ! Location providers: $loc"
+    else
+        echo "    + Location disabled"
+        passed=$((passed + 1))
+    fi
+
+    checks=$((checks + 1))
+    echo "  [$checks] Bluetooth visibility:"
+    if command -v bluetoothctl >/dev/null 2>&1; then
+        bluetoothctl show 2>/dev/null | grep -q 'Discoverable: yes' && \
+            echo "    ! Bluetooth discoverable" || echo "    + Bluetooth not discoverable"
+        passed=$((passed + 1))
+    fi
+
+    checks=$((checks + 1))
+    echo "  [$checks] Shell history logging:"
+    for f in ~/.bash_history ~/.zsh_history; do
+        if [ -L "$f" ] && [ "$(readlink "$f")" = "/dev/null" ]; then
+            echo "    + $f -> /dev/null (no logging)"
+            passed=$((passed + 1))
+        elif [ -f "$f" ]; then
+            echo "    ! $f exists ($(wc -l < "$f") lines)"
+        fi
+    done
+
+    checks=$((checks + 1))
+    echo "  [$checks] Sensitive file permissions:"
+    local sensitive_found=0
+    for f in /data/adb/magisk.db /data/adb/post-fs-data.sh; do
+        if [ -f "$f" ]; then
+            local perms=$(stat -c '%a' "$f" 2>/dev/null)
+            [ "$perms" != "600" ] && [ "$perms" != "700" ] && \
+                echo "    ! $f has perms $perms" && sensitive_found=$((sensitive_found + 1))
+        fi
+    done
+    [ "$sensitive_found" -eq 0 ] && echo "    + File permissions OK" && passed=$((passed + 1))
+
+    checks=$((checks + 1))
+    echo "  [$checks] SELinux enforcing:"
+    if command -v getenforce >/dev/null 2>&1; then
+        [ "$(getenforce 2>/dev/null)" = "Enforcing" ] && \
+            echo "    + SELinux enforcing" && passed=$((passed + 1)) || \
+            echo "    ! SELinux permissive"
+    fi
+
+    echo ""
+    echo "  Score: $passed/$checks"
+    echo "  $(date)" >> "$FORENSIC_DIR/opsec-scores.log"
+    echo "$passed/$checks" >> "$FORENSIC_DIR/opsec-scores.log"
+
+    if [ "$passed" -lt "$((checks / 2))" ]; then
+        echo "  Status: EXPOSED - take action"
+    elif [ "$passed" -lt "$checks" ]; then
+        echo "  Status: WARNING - some exposure"
+    else
+        echo "  Status: CLEAN - good OPSEC"
+    fi
+    log "OPSEC check: $passed/$checks"
+}
+
+wipe_traces() {
+    echo "── Quick Trace Wipe ──"
+    echo "  Removes recent activity traces"
+    printf "  Continue? [y/N]: "
+    read -r ans
+    case "$ans" in y|Y) ;; *) return ;; esac
+
+    # Clear clipboard
+    echo "" | clipboard 2>/dev/null || true
+    am broadcast -a android.intent.action.CLIPBOARD_CLEARED 2>/dev/null || true
+
+    # Clear recent apps
+    am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS 2>/dev/null || true
+
+    # Clear notification history
+    service call notification 1 2>/dev/null || true
+
+    # Clear temp files
+    rm -rf /data/local/tmp/* 2>/dev/null || true
+
+    # Clear thumbnail cache
+    rm -rf /sdcard/DCIM/.thumbnails/* 2>/dev/null || true
+
+    # Reset MAC if spoofed
+    if ls "$NHSYSTEM/etc/privacy/mac.orig."* >/dev/null 2>&1; then
+        for orig in "$NHSYSTEM/etc/privacy/mac.orig."*; do
+            local iface=$(echo "$orig" | sed 's/.*mac.orig.//')
+            local mac=$(cat "$orig")
+            ip link set "$iface" address "$mac" 2>/dev/null || true
+        done
+        echo "  MAC addresses restored"
+    fi
+
+    echo "  Trace wipe complete"
+    log "Quick trace wipe executed"
+}
+
+usb_kill() {
+    echo "── USB Kill Switch ──"
+    echo ""
+
+    if [ "$(id -u)" != "0" ]; then
+        echo "  Root required"
+        return 1
+    fi
+
+    # Disable USB gadget
+    local gadget="/config/usb_gadget"
+    if [ -d "$gadget" ]; then
+        echo "" > "$gadget/UDC" 2>/dev/null || true
+        echo "  USB gadget disabled"
+    fi
+
+    # Disable MTP/ADB via USB
+    setprop persist.sys.usb.config none 2>/dev/null
+    setprop sys.usb.config none 2>/dev/null
+
+    # Disable tethering
+    service call connectivity 33 2>/dev/null || true
+
+    echo "  USB functions disabled"
+    echo "  Re-enable: setprop persist.sys.usb.config mtp,adb"
+    log "USB kill switch activated"
+}
+
+cam_mic_block() {
+    echo "── Camera & Microphone Block ──"
+    echo ""
+
+    if [ "$(id -u)" != "0" ]; then
+        echo "  Root required for hardware block"
+        echo "  Software block (app permissions):"
+        echo "    pm revoke <package> android.permission.CAMERA"
+        echo "    pm revoke <package> android.permission.RECORD_AUDIO"
+        return 1
+    fi
+
+    # Try to disable camera via kernel
+    if [ -d /sys/devices/platform/soc ]; then
+        for cam in $(find /sys/devices/platform/soc -name "camera*" -type d 2>/dev/null); do
+            if [ -f "$cam/power/control" ]; then
+                echo "off" > "$cam/power/control" 2>/dev/null || true
+                echo "  Camera hardware: $cam disabled"
+            fi
+        done
+    fi
+
+    # Disable camera service
+    pm disable com.android.camera 2>/dev/null && echo "  Camera app disabled" || true
+    pm disable com.google.android.GoogleCamera 2>/dev/null && echo "  Google Camera disabled" || true
+
+    # Block mic via policy
+    settings put global audio_record_protection 1 2>/dev/null && echo "  Audio recording protection enabled"
+
+    echo "  Camera/mic blocked at software level"
+    log "Camera/mic blocked"
+}
+
+usage() {
+    cat <<EOF
+nh-forensic - Anti-forensics and operational security
+
+Usage: nh-forensic <command> [args]
+
+Commands:
+  wipe-logs        Securely sanitize system logs and shell history
+  meta-strip <file>  Remove metadata from file (EXIF, etc.)
+  opsec            Run OPSEC compliance checklist
+  wipe-traces      Quick wipe of recent activity traces
+  usb-kill         Disable USB data (kill switch)
+  cam-block        Block camera and microphone access
+
+Examples:
+  nh-forensic wipe-logs
+  nh-forensic meta-strip photo.jpg
+  nh-forensic opsec
+  nh-forensic wipe-traces
+  nh-forensic usb-kill
+EOF
+    exit 1
+}
+
+case "${1:-help}" in
+    wipe-logs|sanitize-logs|sec-logs) clean_logs_secure ;;
+    meta-strip|strip-metadata|exif-strip) shift; metadata_strip "$@" ;;
+    opsec|checklist) opsec_checklist ;;
+    wipe-traces|quick-wipe|traces) wipe_traces ;;
+    usb-kill|usb-off) usb_kill ;;
+    cam-block|camera-block|mic-block) cam_mic_block ;;
+    *) usage ;;
+esac

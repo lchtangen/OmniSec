@@ -1,0 +1,14 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-encrypt — File encryption tool
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-encrypt - File Encryption Tool
+Usage: nh-encrypt <file> [output]
+EOF
+}
+[ $# -lt 1 ] && show_usage && exit 1
+infile="$1"
+outfile="${2:-$1.enc}"
+openssl enc -aes-256-cbc -salt -pbkdf2 -in "$infile" -out "$outfile" 2>/dev/null && echo "Encrypted: $outfile" || echo "Encryption failed"

@@ -1,0 +1,104 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-module - Module management system for nhsystem extensions
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+MODULES=$NHSYSTEM/modules
+MODULE_DIRS=$NHSYSTEM/etc/module-dirs.conf
+
+usage() {
+    echo "usage: nh-module <command> [name]"
+    echo ""
+    echo "Commands:"
+    echo "  list                 List installed modules"
+    echo "  install <path>       Install module from path"
+    echo "  remove <name>        Remove module"
+    echo "  enable <name>        Enable module"
+    echo "  disable <name>       Disable module"
+    echo "  info <name>          Show module info"
+    echo "  create <name>        Create new module scaffold"
+    echo "  search <term>        Search modules"
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+CMD="$1"; shift
+
+mkdir -p "$MODULES"
+[ -f "$MODULE_DIRS" ] || : > "$MODULE_DIRS"
+
+case "$CMD" in
+    list)
+        echo "══ Installed Modules ══"
+        echo ""
+        for mod in "$MODULES"/*/; do
+            [ -d "$mod" ] || continue
+            NAME=$(basename "$mod")
+            VERSION=$(cat "$mod/module.prop" 2>/dev/null | grep '^version=' | cut -d= -f2 || echo "?")
+            STATUS=$(cat "$mod/.disabled" 2>/dev/null && echo "disabled" || echo "enabled")
+            printf "  %-20s v%-10s %s\n" "$NAME" "$VERSION" "$STATUS"
+        done
+        ;;
+    install)
+        [ $# -ge 1 ] || usage
+        SRC="$1"
+        NAME=$(basename "$SRC")
+        [ -d "$SRC" ] || { echo "source not found: $SRC"; exit 1; }
+        DEST="$MODULES/$NAME"
+        [ -d "$DEST" ] && { echo "module already installed: $NAME"; exit 1; }
+        cp -a "$SRC" "$DEST"
+        echo "$DEST" >> "$MODULE_DIRS"
+        echo "  installed: $NAME"
+        ;;
+    remove)
+        [ $# -ge 1 ] || usage
+        NAME="$1"
+        DEST="$MODULES/$NAME"
+        [ -d "$DEST" ] || { echo "module not found: $NAME"; exit 1; }
+        rm -rf "$DEST"
+        sed -i "\|$DEST|d" "$MODULE_DIRS"
+        echo "  removed: $NAME"
+        ;;
+    enable)
+        [ $# -ge 1 ] || usage
+        rm -f "$MODULES/$1/.disabled"
+        echo "  enabled: $1"
+        ;;
+    disable)
+        [ $# -ge 1 ] || usage
+        touch "$MODULES/$1/.disabled"
+        echo "  disabled: $1"
+        ;;
+    info)
+        [ $# -ge 1 ] || usage
+        DIR="$MODULES/$1"
+        [ -d "$DIR" ] || { echo "module not found: $1"; exit 1; }
+        echo "══ Module: $1 ══"
+        echo ""
+        cat "$DIR/module.prop" 2>/dev/null || echo "  (no module.prop)"
+        echo ""
+        echo "Files:"
+        find "$DIR" -type f | sed 's/^/  /'
+        ;;
+    create)
+        [ $# -ge 1 ] || usage
+        nh-init module "$1"
+        ;;
+    search)
+        [ $# -ge 1 ] || usage
+        TERM="$1"
+        echo "══ Search: '$TERM' ══"
+        for mod in "$MODULES"/*/; do
+            [ -d "$mod" ] || continue
+            NAME=$(basename "$mod")
+            if echo "$NAME" | grep -qi "$TERM"; then
+                VERSION=$(cat "$mod/module.prop" 2>/dev/null | grep '^version=' | cut -d= -f2 || echo "?")
+                echo "  $NAME v$VERSION"
+            fi
+        done
+        ;;
+    *)
+        usage
+        ;;
+esac

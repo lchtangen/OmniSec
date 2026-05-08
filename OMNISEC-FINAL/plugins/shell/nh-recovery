@@ -1,0 +1,16 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-recovery — System recovery tool
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-recovery - System Recovery Tool
+Usage: nh-recovery {backup|restore|repair|help}
+EOF
+}
+case "${1:-help}" in
+    backup) nh-backup-pro create recovery ;;
+    restore) nh-backup-pro restore "${2:-}" ;;
+    repair) echo "Repair not implemented" ;;
+    help|*) show_usage ;;
+esac

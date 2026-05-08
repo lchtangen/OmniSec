@@ -1,0 +1,14 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-decrypt — File decryption tool
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-decrypt - File Decryption Tool
+Usage: nh-decrypt <file.enc> [output]
+EOF
+}
+[ $# -lt 1 ] && show_usage && exit 1
+infile="$1"
+outfile="${2:-${1%.enc}}"
+openssl enc -aes-256-cbc -d -pbkdf2 -in "$infile" -out "$outfile" 2>/dev/null && echo "Decrypted: $outfile" || echo "Decryption failed"

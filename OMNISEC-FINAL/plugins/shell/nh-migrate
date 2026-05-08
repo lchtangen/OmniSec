@@ -1,0 +1,15 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-migrate — Data migration tool
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-migrate - Data Migration Tool
+Usage: nh-migrate {export|import|help}
+EOF
+}
+case "${1:-help}" in
+    export) tar czf /data/local/nhsystem/migration.tar.gz /data/local/nhsystem/config /data/local/nhsystem/roots 2>/dev/null ;;
+    import) tar xzf "${2:-/data/local/nhsystem/migration.tar.gz}" -C / 2>/dev/null ;;
+    help|*) show_usage ;;
+esac

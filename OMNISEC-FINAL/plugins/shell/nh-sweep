@@ -1,0 +1,232 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-sweep - System cleanup and optimization
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+NHLOGS=$NHSYSTEM/logs
+NHTMP=$NHSYSTEM/tmp
+NHWORK=$NHSYSTEM/workspaces/main
+
+log() { echo "[$(date '+%H:%M:%S')] $*"; }
+
+clean_pacman() {
+    local root="$NHSYSTEM/roots/archlinux"
+    [ -d "$root" ] || { echo "  Arch rootfs not found"; return 1; }
+
+    echo "── Arch Linux Cleanup ──"
+
+    # Unused packages
+    local orphans=$(chroot_exec "$root" /bin/sh -c 'pacman -Qtdq 2>/dev/null' 2>/dev/null)
+    if [ -n "$orphans" ]; then
+        local count=$(echo "$orphans" | wc -l)
+        echo "  Orphan packages: $count"
+        chroot_exec "$root" /bin/sh -c 'pacman -Qtdq 2>/dev/null | pacman -Rns - --noconfirm' 2>/dev/null || true
+        echo "  Removed $count orphan packages"
+    else
+        echo "  No orphan packages"
+    fi
+
+    # Clean cache
+    chroot_exec "$root" /bin/sh -c 'pacman -Sc --noconfirm' 2>/dev/null && echo "  Cache cleaned" || true
+
+    # Pacman DB size
+    local db_size=$(du -sh "$root/var/lib/pacman" 2>/dev/null | cut -f1)
+    echo "  Pacman DB: $db_size"
+}
+
+clean_dpkg() {
+    local root=""
+    for d in "$NHSYSTEM/kali-arm64" "$NHSYSTEM/roots/kali-arm64"; do
+        [ -d "$d/etc" ] && root="$d" && break
+    done
+    [ -n "$root" ] || { echo "  Kali rootfs not found"; return 1; }
+
+    echo "── Kali Cleanup ──"
+
+    chroot_exec "$root" /bin/sh -c 'apt-get autoremove --purge -y 2>/dev/null' && echo "  Autoremoved" || true
+    chroot_exec "$root" /bin/sh -c 'apt-get autoclean -y 2>/dev/null' && echo "  Auto-cleaned" || true
+    chroot_exec "$root" /bin/sh -c 'apt-get clean -y 2>/dev/null' && echo "  Cache cleaned" || true
+}
+
+clean_logs() {
+    echo "── Log Cleanup ──"
+
+    local kept=0
+    local removed=0
+
+    if [ -d "$NHLOGS" ]; then
+        for f in "$NHLOGS"/*.log; do
+            [ -f "$f" ] || continue
+            local age=$((($(date +%s) - $(stat -c '%Y' "$f")) / 86400))
+            if [ "$age" -gt 30 ]; then
+                rm -f "$f" && removed=$((removed + 1))
+            else
+                kept=$((kept + 1))
+            fi
+        done
+    fi
+
+    if [ -d "$NHTMP" ]; then
+        local tmp_count=$(find "$NHTMP" -type f -mtime +1 2>/dev/null | wc -l)
+        find "$NHTMP" -type f -mtime +1 -delete 2>/dev/null
+        removed=$((removed + tmp_count))
+    fi
+
+    echo "  Kept: $kept, Removed: $removed"
+}
+
+clean_backups() {
+    echo "── Backup Cleanup ──"
+
+    local backup_dir="$NHWORK/backup"
+    [ -d "$backup_dir" ] || { echo "  No backup directory"; return 0; }
+
+    local kept=0
+    local removed=0
+    for d in "$backup_dir"/*/; do
+        [ -d "$d" ] || continue
+        local name=$(basename "$d")
+        local age=$((($(date +%s) - $(stat -c '%Y' "$d")) / 86400))
+        if [ "$age" -gt 60 ]; then
+            rm -rf "$d" && removed=$((removed + 1))
+        else
+            kept=$((kept + 1))
+        fi
+    done
+
+    echo "  Backup sets: $kept kept, $removed removed (older than 60 days)"
+}
+
+clean_temp() {
+    echo "── Temp File Cleanup ──"
+
+    local freed=0
+
+    for d in "$NHSYSTEM/tmp" "$NHWORK/downloads" "$NHSYSTEM/roots/archlinux/tmp" "$NHSYSTEM/roots/archlinux/var/tmp"; do
+        [ -d "$d" ] || continue
+        local size=$(find "$d" -type f 2>/dev/null | wc -l)
+        find "$d" -type f -atime +7 -delete 2>/dev/null
+        local after=$(find "$d" -type f 2>/dev/null | wc -l)
+        freed=$((freed + size - after))
+    done
+
+    echo "  Temp files removed: $freed"
+}
+
+clean_downloads() {
+    echo "── Download Cache Cleanup ──"
+    local dldir="$NHWORK/downloads"
+    [ -d "$dldir" ] || { echo "  No downloads directory"; return 0; }
+
+    local total=$(du -sh "$dldir" 2>/dev/null | cut -f1)
+    local files=$(find "$dldir" -type f 2>/dev/null | wc -l)
+    echo "  Downloads: $files files ($total)"
+}
+
+disk_usage() {
+    echo "── Disk Usage ──"
+    echo ""
+
+    local targets="$NHSYSTEM/roots/archlinux $NHSYSTEM $NHWORK"
+    for t in $targets; do
+        if [ -e "$t" ]; then
+            local size=$(du -sh "$t" 2>/dev/null | cut -f1)
+            printf "  %-30s %s\n" "$t" "$size"
+        fi
+    done
+
+    echo ""
+    if command -v df >/dev/null 2>&1; then
+        df -h /data 2>/dev/null | tail -1 | awk '{print "  /data: " $3 " used, " $4 " free (" $5 ")"}'
+    fi
+}
+
+optimize_mounts() {
+    echo "── Mount Optimization ──"
+
+    local changed=0
+
+    # Pacman cache as tmpfs (recreated if missing)
+    local root="$NHSYSTEM/roots/archlinux"
+    if [ -d "$root" ]; then
+        if ! grep -qs "$root/var/cache/pacman/pkg" /proc/mounts 2>/dev/null; then
+            mkdir -p "$root/var/cache/pacman/pkg"
+            local avail=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 1200)
+            local size=$((avail / 2))
+            [ "$size" -gt 600 ] && size=600
+            [ "$size" -lt 100 ] && size=100
+            mount -t tmpfs -o "size=${size}m, mode=755" tmpfs "$root/var/cache/pacman/pkg" 2>/dev/null && {
+                echo "  Pacman cache -> tmpfs (${size}MB)"
+                changed=$((changed + 1))
+            }
+        fi
+    fi
+
+    [ $changed -eq 0 ] && echo "  All mounts optimal"
+}
+
+show_report() {
+    echo ""
+    echo "── Cleanup Report ──"
+    echo ""
+
+    # Tool versions
+    local tools=$(ls "$NHSYSTEM/bin/nh-"* 2>/dev/null | wc -l)
+    echo "  NH tools deployed: $tools"
+    [ -d /data/adb/modules ] && echo "  Magisk modules: $(ls /data/adb/modules 2>/dev/null | wc -l)"
+
+    disk_usage
+}
+
+usage() {
+    cat <<EOF
+nh-sweep - System cleanup and optimization
+
+Usage: nh-sweep [command]
+
+Commands:
+  all         Run all cleanup (default)
+  pacman      Clean Arch pacman cache + orphans
+  dpkg        Clean Kali apt cache + autoremove
+  logs        Rotate old logs (>30 days)
+  backups     Remove old backups (>60 days)
+  temp        Clean temp files (>7 days)
+  downloads   Show download cache status
+  disk        Show disk usage
+  mounts      Optimize mount points (tmpfs)
+  report      Show system summary
+
+Examples:
+  nh-sweep all
+  nh-sweep pacman
+  nh-sweep disk
+  nh-sweep report
+EOF
+    exit 1
+}
+
+case "${1:-all}" in
+    all)
+        clean_pacman
+        clean_dpkg
+        clean_logs
+        clean_backups
+        clean_temp
+        clean_downloads
+        optimize_mounts
+        show_report
+        ok "Sweep complete"
+        ;;
+    pacman) clean_pacman ;;
+    dpkg|kali) clean_dpkg ;;
+    logs) clean_logs ;;
+    backups) clean_backups ;;
+    temp) clean_temp ;;
+    downloads) clean_downloads ;;
+    disk|usage) disk_usage ;;
+    mounts|mount) optimize_mounts ;;
+    report|status) show_report ;;
+    *) usage ;;
+esac

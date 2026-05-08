@@ -1,0 +1,177 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P2/P5
+# nh-key - SSH, GPG, and Post-Quantum key management
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+KEY_DIR=$NHSYSTEM/etc/keys
+PQC_DIR=$NHSYSTEM/etc/pqc
+SSH_DIR=$HOME/.ssh
+
+# PQ algorithm aliases
+PQ_ALGOS="ml-kem-512 ml-kem-768 ml-kem-1024 ml-dsa-44 ml-dsa-65 ml-dsa-87 slh-dsa-sha2-128s"
+PQ_ALIASES="kyber512 kyber768 kyber1024 dilithium2 dilithium3 dilithium5 sphincs-sha2-128s"
+
+ensure_dirs() {
+    mkdir -p $KEY_DIR $SSH_DIR $PQC_DIR/keys
+    chmod 700 $SSH_DIR 2>/dev/null || true
+}
+
+list_keys() {
+    ensure_dirs
+    echo "── SSH Keys ──"
+    local has_ssh=0
+    for key in $SSH_DIR/id_*; do
+        [ -f "$key" ] || continue
+        has_ssh=1
+        local pub="${key}.pub"
+        local fingerprint=""
+        if [ -f "$pub" ]; then
+            fingerprint=$(ssh-keygen -lf "$pub" 2>/dev/null | awk '{print $2}')
+        fi
+        printf "  %-20s %s\n" "$(basename "$key")" "${fingerprint:-no pub}"
+    done
+    [ "$has_ssh" -eq 0 ] && echo "  (no SSH keys)"
+    echo ""
+    echo "── GPG Keys ──"
+    if command -v gpg >/dev/null 2>&1; then
+        local has_gpg=0
+        gpg --list-keys --keyid-format SHORT 2>/dev/null | grep -E '^   |pub|uid' | head -20 || has_gpg=0
+    else
+        echo "  gpg not available"
+    fi
+    echo ""
+    echo "── Post-Quantum Keys ──"
+    local has_pq=0
+    for f in $PQC_DIR/keys/*.pqkey; do
+        [ -f "$f" ] || continue
+        has_pq=1
+        printf "  %-20s\n" "$(basename "$f" .pqkey)"
+    done
+    [ "$has_pq" -eq 0 ] && echo "  (no PQ keys. Generate: nh-key pq-generate ml-kem-768)"
+}
+
+generate_ssh() {
+    local type="${1:-ed25519}"
+    local comment="${2:-nethunter-$(hostname 2>/dev/null || echo device)}"
+    ensure_dirs
+    local key_file="$SSH_DIR/id_${type}"
+    if [ -f "$key_file" ]; then
+        echo "  Key already exists: $key_file" >&2
+        exit 1
+    fi
+    echo "  Generating $type SSH key..."
+    ssh-keygen -t "$type" -C "$comment" -f "$key_file" -N "" 2>/dev/null
+    echo "  Key generated: $key_file"
+    echo "  Public key: ${key_file}.pub"
+    cat "${key_file}.pub"
+}
+
+generate_pq() {
+    local algo="${1:-ml-kem-768}"
+    local name="${2:-}"
+    ensure_dirs
+
+    # Resolve PQ aliases
+    case "$algo" in
+        kyber512) algo=ml-kem-512 ;;
+        kyber768) algo=ml-kem-768 ;;
+        kyber1024) algo=ml-kem-1024 ;;
+        dilithium2) algo=ml-dsa-44 ;;
+        dilithium3) algo=ml-dsa-65 ;;
+        dilithium5) algo=ml-dsa-87 ;;
+        sphincs*|sphincs-sha2-128s) algo=slh-dsa-sha2-128s ;;
+    esac
+
+    # Validate algorithm
+    local valid=0
+    for a in $PQ_ALGOS; do
+        [ "$a" = "$algo" ] && { valid=1; break; }
+    done
+    [ "$valid" -eq 0 ] && {
+        echo "  Unknown PQ algorithm: $algo" >&2
+        echo "  Supported: ml-kem-512|768|1024, ml-dsa-44|65|87, slh-dsa-sha2-128s" >&2
+        echo "  Aliases: kyber512|768|1024, dilithium2|3|5, sphincs-sha2-128s" >&2
+        exit 1
+    }
+
+    if [ -z "$name" ]; then
+        name="pq-${algo}-$(date +%s)"
+    fi
+
+    nh-pqc keygen "$algo" "$name"
+}
+
+import_ssh() {
+    local path="$1"
+    if [ ! -f "$path" ]; then
+        echo "  File not found: $path" >&2
+        exit 1
+    fi
+    ensure_dirs
+    cp "$path" "$SSH_DIR/"
+    if [ -f "${path}.pub" ]; then
+        cp "${path}.pub" "$SSH_DIR/"
+    fi
+    chmod 600 $SSH_DIR/id_* 2>/dev/null || true
+    echo "  Imported: $path"
+}
+
+export_key() {
+    local name="${1:-nethunter-key}"
+    local archive="$KEY_DIR/${name}.tar.gz"
+    ensure_dirs
+    tar czf "$archive" -C "$SSH_DIR" . 2>/dev/null
+    if command -v gpg >/dev/null 2>&1; then
+        gpg --export --armor > "$KEY_DIR/gpg-public.asc" 2>/dev/null || true
+        gpg --export-secret-keys --armor > "$KEY_DIR/gpg-private.asc" 2>/dev/null || true
+        tar czf "$archive" -C "$SSH_DIR" . -C "$KEY_DIR" gpg-*.asc 2>/dev/null || true
+    fi
+    # Include PQ keys if any exist
+    local pq_count
+    pq_count=$(find $PQC_DIR/keys -name "*.pqkey" 2>/dev/null | wc -l)
+    if [ "$pq_count" -gt 0 ]; then
+        tar czf "$archive" -C "$SSH_DIR" . -C "$KEY_DIR" gpg-*.asc -C "$PQC_DIR" keys/*.pqkey keys/*.pqkey.pub 2>/dev/null || true
+    fi
+    echo "  Exported: $archive"
+}
+
+backup_keys() {
+    local backup="$NHSYSTEM/backups/keys-$(date +%Y%m%d).tar.gz"
+    ensure_dirs
+    mkdir -p $NHSYSTEM/backups
+    tar czf "$backup" "$SSH_DIR" "$HOME/.gnupg" "$PQC_DIR/keys" 2>/dev/null || \
+        tar czf "$backup" "$SSH_DIR" 2>/dev/null
+    echo "  Backed up: $backup ($(du -h "$backup" | cut -f1))"
+}
+
+usage() {
+    cat <<EOF
+usage: nh-key <command> [args]
+
+Commands:
+  list                    List SSH, GPG, and Post-Quantum keys
+  generate [type] [comment]  Generate SSH key (default: ed25519)
+  pq-generate <algo> [name]   Generate Post-Quantum keypair
+                            algos: ml-kem-512|768|1024, ml-dsa-44|65|87, slh-dsa-sha2-128s
+                            aliases: kyber512|768|1024, dilithium2|3|5, sphincs-sha2-128s
+  import <path>           Import SSH key from file
+  export [name]           Export keys to archive
+  backup                  Backup all keys to nhsystem
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    list) list_keys ;;
+    generate) shift; generate_ssh "$1" "$2" ;;
+    pq-generate|pq-gen|pqgen)
+        shift; [ $# -ge 1 ] || usage; generate_pq "$1" "$2"
+        ;;
+    import) shift; [ $# -ge 1 ] || usage; import_ssh "$1" ;;
+    export) shift; export_key "$1" ;;
+    backup) backup_keys ;;
+    *) usage ;;
+esac

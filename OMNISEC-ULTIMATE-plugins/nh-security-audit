@@ -1,0 +1,77 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-security-audit — Security audit tool
+set -euo pipefail
+
+show_usage() {
+    cat <<EOF
+nh-security-audit - Security Audit Tool
+
+Usage: nh-security-audit <command>
+
+Commands:
+  full         Run full security audit
+  ports        Check open ports
+  permissions  Check file permissions
+  users        Check user accounts
+  suid         Find SUID binaries
+  help         Show this message
+EOF
+}
+
+cmd_ports() {
+    echo "══ Open Ports Check ═══════════════════════════"
+    echo "  Listening TCP ports:"
+    ss -tlnp 2>/dev/null | grep -v "127.0.0" | head -20
+    echo ""
+    echo "  Listening UDP ports:"
+    ss -ulnp 2>/dev/null | head -10
+}
+
+cmd_permissions() {
+    echo "══ File Permissions Check ════════════════════"
+    echo "  World-writable files in /data/local/nhsystem:"
+    find /data/local/nhsystem -perm -0002 -type f 2>/dev/null | head -10
+    echo ""
+    echo "  SSH key permissions:"
+    ls -la /data/local/nhsystem/roots/archlinux/root/.ssh/ 2>/dev/null || echo "  No SSH keys found"
+}
+
+cmd_users() {
+    echo "══ User Accounts Check ═══════════════════════"
+    echo "  Users with UID 0:"
+    awk -F: '($3 == 0) {print "    " $1 " (UID: " $3 ")"}' /etc/passwd 2>/dev/null
+    echo ""
+    echo "  Recent logins:"
+    last -n 10 2>/dev/null || echo "  last not available"
+}
+
+cmd_suid() {
+    echo "══ SUID Binaries ═════════════════════════════"
+    find /system /vendor /data/local/nhsystem -perm -4000 -type f 2>/dev/null | head -20
+}
+
+cmd_full() {
+    echo "══ Full Security Audit ══════════════════════"
+    echo "  Date: $(date)"
+    echo ""
+    cmd_ports
+    echo ""
+    cmd_permissions
+    echo ""
+    cmd_users
+    echo ""
+    cmd_suid
+    echo ""
+    echo "══ Audit Complete ═══════════════════════════"
+}
+
+case "${1:-full}" in
+    full)        cmd_full ;;
+    ports)       cmd_ports ;;
+    permissions) cmd_permissions ;;
+    users)       cmd_users ;;
+    suid)        cmd_suid ;;
+    help|*)      show_usage ;;
+esac

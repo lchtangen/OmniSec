@@ -1,0 +1,17 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-benchmark — System benchmark
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-benchmark - System Benchmark
+Usage: nh-benchmark {cpu|mem|disk|all|help}
+EOF
+}
+case "${1:-all}" in
+    cpu) sysbench cpu run 2>/dev/null || echo "sysbench not available" ;;
+    mem) sysbench memory run 2>/dev/null || echo "sysbench not available" ;;
+    disk) sysbench fileio run 2>/dev/null || echo "sysbench not available" ;;
+    all) sysbench --test=cpu run 2>/dev/null || echo "sysbench not available" ;;
+    help|*) show_usage ;;
+esac

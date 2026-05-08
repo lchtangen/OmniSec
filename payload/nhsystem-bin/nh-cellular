@@ -1,94 +1,106 @@
 #!/system/bin/sh
 # NH_SETUP_VERSION: 3.0 nextgen
 # PRIORITY: P3
-# nh-cellular — Software-based Cellular Security (WiFi simulation)
+# nh-cellular — Cellular Security (WiFi-based detection for OnePlus 7 Pro)
 set -euo pipefail
 
 CELLULAR_DIR="/data/local/nhsystem/cellular"
-SIM_DIR="$CELLULAR_DIR/sim"
-IMS_I_DIR="$CELLULAR_DIR/imsi"
+WIFI_SCAN="$CELLULAR_DIR/wifi-scan.txt"
+CELL_TOWERS="$CELLULAR_DIR/towers.txt"
 
 show_usage() {
     cat <<EOF
-nh-cellular - Cellular Security Toolkit (Software-based)
+nh-cellular - Cellular Security (WiFi-based detection)
 
 Usage: nh-cellular <command> [args]
 
 Commands:
-  status           Show cellular status
-  scan [iface]    Scan for cellular networks (via WiFi)
-  imsi-simulate    Simulate IMSI/IMEI for testing
-  detect-c2         Detect fake base stations (StingRay)
-  analyze <pcap>   Analyze cellular PCAP file
-  help             Show this message
+  status            Show cellular/WiFi status
+  scan [iface]     Scan WiFi for cellular-adjacent signals
+  towers            List detected cell towers via WiFi
+  analyze <pcap>    Analyze cellular PCAP (requires tcpdump)
+  detect             Detect IMSI catcher indicators
+  help              Show this message
 
-Note: Hardware SDR not required. Uses software simulation & WiFi-based detection.
+Note: Uses WiFi signals to detect cellular environment on OnePlus 7 Pro.
+      No SDR hardware required — works with built-in WiFi.
 EOF
 }
 
 init_cellular() {
-    mkdir -p "$CELLULAR_DIR" "$SIM_DIR" "$IMS_I_DIR"
+    mkdir -p "$CELLULAR_DIR"
+    touch "$WIFI_SCAN" "$CELL_TOWERS"
 }
 
 cmd_status() {
-    echo "══ Cellular Status (Software Mode) ═════════"
+    echo "══ Cellular/WiFi Status ═══════════"
+    init_cellular
+    echo ""
+    echo "── Device: OnePlus 7 Pro (ARM64) ──"
+    echo "  Kernel: $(uname -r)"
     echo ""
     echo "── Network Interfaces ──"
-    ip addr show wlan0 2>/dev/null | grep -E "inet |ether " || echo "  wlan0 not available"
+    ip link show 2>/dev/null | grep -E "wlan|rmnet|lo" | head -10
     echo ""
-    echo "── Cellular Simulation ──"
-    echo "  Mode: Software simulation (no SDR)"
-    echo "  IMSI database: $(ls $IMS_I_DIR/*.imsi 2>/dev/null | wc -l) entries"
+    echo "── WiFi Connection ──"
+    if command -v iwconfig >/dev/null 2>&1; then
+        iwconfig wlan0 2>/dev/null | grep -E "ESSID|Frequency|Bit Rate" | head -5
+    fi
+    echo ""
+    echo "── Cellular (if available) ──"
+    # Check for rmnet interfaces (cellular)
+    ip addr show 2>/dev/null | grep "rmnet" | head -5 || echo "  No rmnet interfaces (WiFi-only mode)"
 }
 
 cmd_scan() {
     local iface="${1:-wlan0}"
-    echo "══ Scanning Cellular Networks (via $iface) ═════"
-    
-    # Use WiFi scanning to detect cellular-adjacent signals
-    echo "  Scanning for cellular indicators..."
-    
-    # Detect nearby cell towers via WiFi (some leak info)
-    iwlist "$iface" scan 2>/dev/null | grep -E "Cell|ESSID|Channel" | head -30
-    
-    echo ""
-    echo "  Note: Full cellular scan requires SDR hardware"
-    echo "  Using WiFi as proxy for cellular environment detection"
-}
-
-cmd_imsi_simulate() {
-    echo "══ IMSI/IMEI Simulation ═════════════"
+    echo "══ Scanning for Cellular Signals via $iface ═════"
     init_cellular
     
-    # Generate test IMSI/IMEI
-    local imsi=$(printf "310%010d" $((RANDOM % 10000000000)))
-    local imei=$(printf "%015d" $((RANDOM % 1000000000000000)))
+    echo "  Scanning WiFi (cellular-adjacent signals)..."
+    echo "  Scan time: $(date)" > "$WIFI_SCAN"
     
-    echo "  Generated test IMSI: $imsi"
-    echo "  Generated test IMEI: $imei"
+    if command -v iwlist >/dev/null 2>&1; then
+        iwlist "$iface" scan 2>/dev/null | grep -E "Cell|ESSID|Channel|Frequency|Signal" | tee -a "$WIFI_SCAN" | head -50
+    else
+        echo "  iwlist not available — trying alternative..."
+        # Use /proc/net/wireless if available
+        cat /proc/net/wireless 2>/dev/null || echo "  No wireless info available"
+    fi
     
-    # Save for testing
-    echo "$imsi" > "$IMS_I_DIR/test.imsi"
-    echo "$imei" > "$IMS_I_DIR/test.imei"
-    echo "  Saved to $IMS_I_DIR/"
+    echo ""
+    echo "  Scan saved to: $WIFI_SCAN"
+    
+    # Detect potential cellular signals (some leak via WiFi)
+    echo ""
+    echo "── Analyzing for cellular indicators ──"
+    grep -iE "lte|5g|4g|cellular|tower|base" "$WIFI_SCAN" 2>/dev/null | head -10 || echo "  No cellular indicators in WiFi scan"
 }
 
-cmd_detect_c2() {
-    echo "══ Detecting Fake Base Stations ═════════"
+cmd_towers() {
+    echo "══ Detected Cell Towers (via WiFi) ═══════"
+    init_cellular
     
-    # Simple heuristic: detect EvilAPs / suspicious WiFi
-    echo "  Scanning for suspicious APs..."
-    iwlist wlan0 scan 2>/dev/null | awk '/ESSID/ {print $0}' | while read line; do
-        # Check for known IMSI catcher patterns
-        if echo "$line" | grep -qiE "police|fbi|nsa|surveil|tap|intercept"; then
-            echo "  ⚠ SUSPICIOUS: $line"
-        fi
-    done
+    # On Android, we can read from certain system properties
+    echo "  Querying system for tower info..."
     
-    # Check for cellular-to-WiFi bridges (potential StingRay leakage)
+    # Try getprop for cellular info
+    if command -v getprop >/dev/null 2>&1; then
+        echo "  Operator: $(getprop gsm.operator.alpha 2>/dev/null || echo 'Unknown')"
+        echo "  MCC/MNC: $(getprop gsm.sim.operator.numeric 2>/dev/null || echo 'Unknown')"
+        echo "  Cell ID: $(getprop gsm.cell.id 2>/dev/null || echo 'Unknown')"
+        echo "  LAC: $(getprop gsm.cell.lac 2>/dev/null || echo 'Unknown')"
+        echo "  Signal: $(getprop gsm.signal_strength 2>/dev/null || echo 'Unknown')"
+    fi
+    
+    # Save to file
+    {
+        echo "Tower scan: $(date)"
+        getprop | grep -iE "gsm|cellular|lte|5g" 2>/dev/null
+    } > "$CELL_TOWERS"
+    
     echo ""
-    echo "  Checking for IMSI catcher indicators..."
-    echo "  (Advanced detection requires SDR hardware)"
+    echo "  Tower data saved to: $CELL_TOWERS"
 }
 
 cmd_analyze() {
@@ -98,16 +110,50 @@ cmd_analyze() {
     
     echo "══ Analyzing Cellular PCAP: $pcap ═════"
     
-    if command -v tshark >/dev/null 2>&1; then
+    if command -v tcpdump >/dev/null 2>&1; then
+        echo "  PCAP analysis (first 50 packets):"
+        tcpdump -r "$pcap" 2>/dev/null | head -50
+    elif command -v tshark >/dev/null 2>&1; then
         echo "  Protocol hierarchy:"
         tshark -r "$pcap" -q -z io,phs 2>/dev/null | head -20
         echo ""
         echo "  Top talkers:"
         tshark -r "$pcap" -q -z conv,ip 2>/dev/null | head -10
     else
-        echo "  tshark not available — basic analysis"
-        tcpdump -r "$pcap" 2>/dev/null | head -50
+        echo "  No analysis tools available (install tcpdump or wireshark)"
     fi
+}
+
+cmd_detect() {
+    echo "══ Detecting IMSI Catcher Indicators ═══════"
+    init_cellular
+    
+    echo "  Checking for suspicious WiFi APs (potential StingRay leakage)..."
+    iwlist wlan0 scan 2>/dev/null | awk '/ESSID/ {print $0}' | while read -r line; do
+        # Check for known IMSI catcher patterns
+        if echo "$line" | grep -qiE "intercept|tap|surveil|fake|rogue|evil"; then
+            echo "  ⚠ SUSPICIOUS: $line"
+        elif echo "$line" | grep -qiE "police|fbi|nsa|gov"; then
+            echo "  ⚠ GOVERNMENT: $line"
+        fi
+    done
+    
+    echo ""
+    echo "  Checking for fake base station indicators..."
+    
+    # Check signal strength anomalies
+    if command -v iwconfig >/dev/null 2>&1; then
+        local signal=$(iwconfig wlan0 2>/dev/null | grep "Signal level" | awk '{print $4}' | tr -d 'dBm=')
+        if [ -n "$signal" ] && [ "$signal" -gt -30 ]; then
+            echo "  ⚠ Strong signal ($signal dBm) — potential nearby fake BTS"
+        else
+            echo "  ✓ Signal levels normal"
+        fi
+    fi
+    
+    echo ""
+    echo "  Note: Full IMSI catcher detection requires SDR hardware."
+    echo "  This WiFi-based check is a basic heuristic only."
 }
 
 init_cellular
@@ -115,8 +161,8 @@ init_cellular
 case "${1:-status}" in
     status)        cmd_status ;;
     scan)          cmd_scan "${2:-}" ;;
-    imsi-simulate) cmd_imsi_simulate ;;
-    detect-c2)      cmd_detect_c2 ;;
+    towers)        cmd_towers ;;
     analyze)       cmd_analyze "${2:-}" ;;
+    detect)        cmd_detect ;;
     help|*)        show_usage ;;
 esac

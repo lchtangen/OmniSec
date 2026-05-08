@@ -1,0 +1,259 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-wizard - Interactive full setup wizard for NetHunter + Magisk
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+NHWORK=$NHSYSTEM/workspaces/main
+NH_LOGS=$NHSYSTEM/logs/wizard.log
+
+log() { echo "[$(date '+%H:%M:%S')] $*" >> "$NH_LOGS"; }
+
+banner() {
+    cat <<'BANNER'
+╔══════════════════════════════════════════╗
+║        NetHunter NextGen v2.0           ║
+║     Full Edition Setup Wizard           ║
+╚══════════════════════════════════════════╝
+BANNER
+}
+
+prompt() { printf "  %s [Y/n]: " "$1"; read -r ans; case "$ans" in n|N|no) return 1;; *) return 0;; esac }
+info() { echo "  * $1"; }
+ok()   { echo "  + $1"; }
+warn() { echo "  ! $1" >&2; }
+fail() { echo "  x $1" >&2; log "FAIL: $1"; }
+
+phase1_detect() {
+    echo ""
+    echo "── Phase 1/5: Device Detection ──"
+    echo ""
+
+    local model=$(getprop ro.product.model 2>/dev/null || echo "?")
+    local device=$(getprop ro.product.device 2>/dev/null || echo "?")
+    local release=$(getprop ro.build.version.release 2>/dev/null || echo "?")
+    local sdk=$(getprop ro.build.version.sdk 2>/dev/null || echo "?")
+    local abi=$(getprop ro.product.cpu.abi 2>/dev/null || echo "?")
+    local arch=$(uname -m 2>/dev/null || echo "?")
+
+    echo "  Device:   $model ($device)"
+    echo "  Android:  $release (SDK $sdk)"
+    echo "  Arch:     $arch ($abi)"
+    log "Device: $model / $device / Android $release"
+
+    # Root check
+    local uid=$(id -u 2>/dev/null || echo "?")
+    if [ "$uid" = "0" ]; then
+        ok "Root access confirmed"
+    else
+        fail "Not root. Run: su -c nh-wizard"
+        return 1
+    fi
+
+    # Arch check
+    if [ "$arch" != "aarch64" ] && [ "$arch" != "arm64" ]; then
+        warn "Unsupported arch: $arch (ARM64 recommended)"
+    fi
+
+    # Storage check
+    local avail=$(df -k /data 2>/dev/null | tail -1 | awk '{print $4}')
+    if [ -n "$avail" ] && [ "$avail" -gt 2097152 ]; then
+        ok "Storage: $((avail / 1024 / 1024))GB available"
+    elif [ -n "$avail" ]; then
+        warn "Low storage: $((avail / 1024 / 1024))GB (2GB+ recommended)"
+    fi
+
+    echo ""
+    if prompt "Continue with setup?"; then
+        return 0
+    else
+        echo "  Setup cancelled"
+        exit 0
+    fi
+}
+
+phase2_magisk() {
+    echo ""
+    echo "── Phase 2/5: Magisk Check ──"
+    echo ""
+
+    local magisk=""
+    for p in /debug_ramdisk/magisk /data/adb/magisk/magisk64 /data/adb/magisk/magisk /sbin/magisk; do
+        [ -x "$p" ] && magisk="$p" && break
+    done
+
+    if [ -n "$magisk" ]; then
+        local ver=$("$magisk" -v 2>/dev/null || echo "?")
+        ok "Magisk $ver detected ($magisk)"
+
+        local modules=$(ls /data/adb/modules 2>/dev/null | wc -l)
+        info "Installed modules: $modules"
+    else
+        warn "Magisk not detected"
+        warn "Install Magisk first: https://github.com/topjohnwu/Magisk"
+        prompt "Continue anyway?" || return 1
+    fi
+
+    # Check for NetHunter module
+    if [ -d /data/adb/modules/nethunter ] || [ -d /data/adb/modules/kali-nethunter ]; then
+        ok "NetHunter Magisk module found"
+    else
+        warn "NetHunter module not installed"
+        info "Download from: https://image-nethunter.kali.org/nethunter-installer/kali-daily/"
+        info "Flash in Magisk Manager -> Modules -> Install from storage"
+    fi
+}
+
+phase3_chroot() {
+    echo ""
+    echo "── Phase 3/5: Chroot Environment ──"
+    echo ""
+
+    mkdir -p "$NHSYSTEM"/{bin,etc,logs,tmp,backups,var/run,roots,workspaces/main}
+
+    # Check Arch
+    if [ -d "$NHSYSTEM/roots/archlinux/etc" ]; then
+        local arch_size=$(du -sh "$NHSYSTEM/roots/archlinux" 2>/dev/null | cut -f1)
+        ok "Arch Linux rootfs found ($arch_size)"
+    else
+        warn "Arch Linux rootfs not installed"
+        info "Options:"
+        info "  1. nh-install install ArchLinuxARM-aarch64-latest.tar.gz"
+        info "  2. Download tarball from: http://os.archlinuxarm.org/os/"
+    fi
+
+    # Check Kali
+    if [ -d "$NHSYSTEM/kali-arm64/etc" ] || [ -d "$NHSYSTEM/roots/kali-arm64/etc" ]; then
+        local kali_size=$(du -sh "$NHSYSTEM/kali-arm64" "$NHSYSTEM/roots/kali-arm64" 2>/dev/null | cut -f1)
+        ok "Kali rootfs found ($kali_size)"
+    else
+        warn "Kali rootfs not installed (optional)"
+    fi
+
+    # Deploy NH tools
+    local self_path=$(readlink -f "$0" 2>/dev/null || echo "$0")
+    local self_dir=$(dirname "$self_path")
+    if [ -d "$self_dir" ]; then
+        info "Deploying nh-* tools to $NHSYSTEM/bin..."
+        cp -a "$self_dir"/nh-* "$NHSYSTEM/bin/" 2>/dev/null && ok "Tools deployed" || warn "Tools not copied"
+    fi
+}
+
+phase4_modules() {
+    echo ""
+    echo "── Phase 4/5: Security Modules ──"
+    echo ""
+
+    local modules_dir="$NHWORK/magisk-modules"
+    mkdir -p "$modules_dir"
+
+    echo "  Recommended Magisk modules for security testing:"
+    echo ""
+    echo "    1. AlwaysTrustUserCerts - MITM certs"
+    echo "    2. MagiskFrida - Frida on boot"
+    echo "    3. MagiskHluda - Stealth Frida"
+    echo "    4. YayPentest - All-in-one"
+    echo "    5. Busybox - Linux utilities"
+    echo ""
+
+    if prompt "Download AlwaysTrustUserCerts (cert promotion)?"; then
+        nh-magisk fetch cert 2>/dev/null || warn "Download failed"
+    fi
+
+    if prompt "Download MagiskFrida (Frida on boot)?"; then
+        nh-magisk fetch frida 2>/dev/null || warn "Download failed"
+    fi
+
+    if prompt "Download Busybox (essential)?"; then
+        nh-magisk fetch busybox 2>/dev/null || warn "Download failed"
+    fi
+
+    echo ""
+    info "Module ZIPs saved to: $modules_dir"
+    info "Install via: Magisk Manager -> Modules -> Install from storage"
+}
+
+phase5_harden() {
+    echo ""
+    echo "── Phase 5/5: Platform Hardening ──"
+    echo ""
+
+    echo "  Applying security hardening..."
+
+    # SSH hardening
+    if nh-secure ssh 2>/dev/null; then
+        ok "SSH hardened (key-only auth)"
+    fi
+
+    # Certificate setup
+    if nh-secure certs 2>/dev/null; then
+        ok "Certificate trust configured"
+    fi
+
+    # Generate SSH key pair
+    if nh-secure keygen ed25519 2>/dev/null; then
+        ok "SSH key pair generated"
+    fi
+
+    # Backup config
+    if nh-secure backup 2>/dev/null; then
+        ok "Configuration backup created"
+    fi
+
+    echo ""
+    info "Manual steps remaining:"
+    echo "  1. Install downloaded modules in Magisk Manager"
+    echo "  2. Download NetHunter chroot via NetHunter app"
+    echo "  3. Use Kali Chroot Manager to install chroot"
+    echo "  4. Enable services: nh-services start"
+}
+
+usage() {
+    cat <<EOF
+nh-wizard - Interactive full setup wizard
+
+Usage: nh-wizard [steps]
+
+Steps:
+  all       Run full wizard (default)
+  detect    Device detection only
+  magisk    Magisk check only
+  chroot    Chroot setup only
+  modules   Module download only
+  harden    Hardening only
+
+Examples:
+  nh-wizard              # Full wizard
+  nh-wizard detect       # Just device detection
+  nh-wizard modules      # Just download modules
+EOF
+    exit 1
+}
+
+mkdir -p "$(dirname "$NH_LOGS")"
+: > "$NH_LOGS"
+
+banner
+
+case "${1:-all}" in
+    all)
+        phase1_detect || exit 1
+        phase2_magisk
+        phase3_chroot
+        phase4_modules
+        phase5_harden
+        echo ""
+        echo "── Wizard Complete ──"
+        echo "  Log: $NH_LOGS"
+        ok "NetHunter NextGen setup initialized"
+        echo "  Next: reboot device, then start services"
+        echo "  Commands: nh-health, nh-status, nh-services start"
+        ;;
+    detect) phase1_detect ;;
+    magisk) phase2_magisk ;;
+    chroot) phase3_chroot ;;
+    modules) phase4_modules ;;
+    harden) phase5_harden ;;
+    *) usage ;;
+esac

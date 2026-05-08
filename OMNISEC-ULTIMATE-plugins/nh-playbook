@@ -1,0 +1,302 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-playbook - Attack/defense playbook manager for security operations
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+PLAYBOOK_DIR=$NHSYSTEM/etc/playbooks
+NHWORK=$NHSYSTEM/workspaces/main
+
+ensure_playbooks() {
+    mkdir -p "$PLAYBOOK_DIR"
+    if [ ! -f "$PLAYBOOK_DIR/.initialized" ]; then
+
+        cat > "$PLAYBOOK_DIR/recon-passive.txt" <<'PBOOK'
+╔══ Passive Reconnaissance ══╗
+TYPE: recon
+DIFFICULTY: easy
+TIME: 5-15 min
+
+STEPS:
+  1. Identify target domain/IP
+     echo "Target: example.com"
+
+  2. DNS enumeration
+     dig ANY example.com
+     nslookup example.com
+     whois example.com
+
+  3. Subdomain discovery
+     curl -s "https://crt.sh/?q=%25.example.com&output=json" | jq '.[].name_value'
+
+  4. Technology fingerprinting
+     whatweb example.com
+
+  5. Save results
+     nh-init shell recon-target
+     nh-docs read quickstart
+
+OUTPUT: $NHWORK/projects/recon-*/notes/
+PBOOK
+
+        cat > "$PLAYBOOK_DIR/recon-active.txt" <<'PBOOK'
+╔══ Active Reconnaissance ══╗
+TYPE: recon
+DIFFICULTY: medium
+TIME: 10-30 min
+
+STEPS:
+  1. Ping sweep
+     nh-scan subnet
+
+  2. Port scanning
+     nmap -sS -sV -O 192.168.1.0/24
+     nmap -sC -sV -p- 192.168.1.100
+
+  3. Service enumeration
+     nmap -sV --script=http-enum 192.168.1.100
+     nmap -sV --script=smb-enum-shares 192.168.1.100
+
+  4. Packet capture
+     nh-sniff start wlan0
+     nh-sniff analyze captures/capture-*.pcap
+
+  5. Network topology
+     nh-topo scan
+     nh-topo map
+
+OUTPUT: $NHWORK/projects/recon-*/notes/
+PBOOK
+
+        cat > "$PLAYBOOK_DIR/exploit-web.txt" <<'PBOOK'
+╔══ Web Application Exploitation ══╗
+TYPE: exploit
+DIFFICULTY: medium-hard
+TIME: 15-60 min
+
+PREREQS:
+  - Target URL identified
+  - Web technologies fingerprinted
+
+STEPS:
+  1. Directory discovery
+     gobuster dir -u http://target.com -w /usr/share/wordlists/dirb/common.txt
+
+  2. SQL injection
+     sqlmap -u "http://target.com/page?id=1" --batch --dbs
+
+  3. XSS testing
+     cat > xss_payloads.txt <<EOF
+     <script>alert(1)</script>
+     <img src=x onerror=alert(1)>
+     "><script>alert(1)</script>
+EOF
+
+  4. File upload testing
+     curl -F "file=@shell.php" http://target.com/upload.php
+
+  5. Save findings
+     nh-init shell web-findings
+     echo "Findings saved" > $NHWORK/projects/web-findings/notes/findings.txt
+
+TOOLS: sqlmap, gobuster, nikto, burpsuite, curl
+PBOOK
+
+        cat > "$PLAYBOOK_DIR/defend-monitor.txt" <<'PBOOK'
+╔══ Network Monitoring & Defense ══╗
+TYPE: defense
+DIFFICULTY: medium
+TIME: continuous
+
+STEPS:
+  1. Deploy HIDS
+     nh-hids start
+     nh-hids status
+
+  2. File integrity monitoring
+     nh-sentinel init /etc
+     nh-sentinel check
+
+  3. Deploy canary tokens
+     nh-canary deploy file /tmp/secret.docx
+     nh-canary deploy webhook https://hooks.example.com/alert
+
+  4. Configure firewall
+     nh-secure firewall
+
+  5. Enable logging
+     nh-secure audit
+
+  6. Schedule periodic scans
+     nh-cron add "0 */4 * * *" nh-hids check
+     nh-cron add "0 0 * * *"   nh-sweep all
+
+MONITORING: nh-mon start, nh-dash, nh-status
+PBOOK
+
+        cat > "$PLAYBOOK_DIR/respond-incident.txt" <<'PBOOK'
+╔══ Incident Response ══╗
+TYPE: defense
+DIFFICULTY: hard
+TIME: 30-120 min
+
+STEPS:
+  1. Isolate affected system
+     nh-secure firewall
+     iptables -A INPUT -s <attacker_ip> -j DROP
+
+  2. Capture volatile data
+     nh-secure audit
+     ps aux > /tmp/process_snapshot.txt
+     ss -tunap > /tmp/connections.txt
+     netstat -tlnp > /tmp/listening.txt
+
+  3. Collect logs
+     nh-log | tail -500 > /tmp/recent_events.log
+
+  4. Create forensic image
+     dd if=/dev/block/mmcblk0 of=/sdcard/forensic.dd bs=4K
+
+  5. Analyze compromise
+     strings /tmp/connections.txt | grep -E '192\.168|10\.'
+     nh-cheat forensic
+
+  6. Restore from backup
+     nh-recover list
+     nh-recover restore <backup_id>
+
+TOOLS: nh-secure, nh-hids, nh-sentinel, nh-sweep
+PBOOK
+
+        cat > "$PLAYBOOK_DIR/wireless-audit.txt" <<'PBOOK'
+╔══ Wireless Security Audit ══╗
+TYPE: audit
+DIFFICULTY: medium
+TIME: 20-45 min
+
+PREREQS:
+  - Custom NetHunter kernel with injection support
+  - External Wi-Fi adapter (MT7612U, RTL8812AU)
+
+STEPS:
+  1. Enable monitor mode
+     airmon-ng start wlan1
+
+  2. Discover networks
+     airodump-ng wlan1mon
+
+  3. Capture handshake
+     airodump-ng -c 6 --bssid <MAC> -w capture wlan1mon
+
+  4. Deauth client (to force handshake)
+     aireplay-ng -0 2 -a <MAC> wlan1mon
+
+  5. Crack handshake
+     aircrack-ng -w /workspace/wordlists/rockyou.txt capture-01.cap
+     nh-crack hashcat capture.hccapx /workspace/wordlists/rockyou.txt
+
+  6. WPS test
+     oneshot -i wlan1mon -b <MAC>
+
+TOOLS: aircrack-ng, airodump-ng, aireplay-ng, oneshot, nh-crack
+PBOOK
+
+        touch "$PLAYBOOK_DIR/.initialized"
+    fi
+}
+
+list_playbooks() {
+    ensure_playbooks
+    echo "── Available Playbooks ──"
+    echo ""
+    for f in "$PLAYBOOK_DIR"/*.txt; do
+        [ -f "$f" ] || continue
+        local name=$(basename "$f" .txt)
+        local type=$(grep "^TYPE:" "$f" 2>/dev/null | cut -d: -f2 | tr -d ' ')
+        local diff=$(grep "^DIFFICULTY:" "$f" 2>/dev/null | cut -d: -f2 | tr -d ' ')
+        local time=$(grep "^TIME:" "$f" 2>/dev/null | cut -d: -f2- | tr -d ' ')
+        printf "  %-25s [%-8s] [%-6s] %s\n" "$name" "$type" "$diff" "$time"
+    done
+    echo ""
+    echo "Usage: nh-playbook run <name>"
+}
+
+run_playbook() {
+    local name="$1"
+    local file="$PLAYBOOK_DIR/$name.txt"
+    [ -f "$file" ] || { echo "Playbook not found: $name"; exit 1; }
+
+    local proj_dir="$NHWORK/projects/playbook-$name-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$proj_dir/notes"
+
+    cat "$file"
+    echo ""
+    echo "── Playbook: $name ──"
+    echo "  Project: $proj_dir"
+    echo ""
+
+    local step=0
+    grep -E '^\s+[0-9]+\.' "$file" | while read -r line; do
+        step=$((step + 1))
+        echo "  Step $step: $line"
+    done
+
+    echo ""
+    echo "  Output dir: $proj_dir"
+    echo "  To re-run: nh-playbook run $name"
+}
+
+create_playbook() {
+    local name="$1"
+    local file="$PLAYBOOK_DIR/$name.txt"
+    [ -f "$file" ] && { echo "Playbook already exists: $name"; exit 1; }
+
+    cat > "$file" <<EOF
+╔══ $name ══╗
+TYPE: custom
+DIFFICULTY: medium
+TIME: unknown
+
+STEPS:
+  1. Define first step
+     echo "Define your playbook steps here"
+
+  2. Define second step
+     echo "Add commands, tools, and notes"
+
+OUTPUT: $NHWORK/projects/$name/
+EOF
+    echo "  Playbook created: $name"
+    echo "  Edit: $file"
+}
+
+usage() {
+    cat <<EOF
+nh-playbook - Attack/defense playbook manager
+
+Usage: nh-playbook <command> [name]
+
+Commands:
+  list              List available playbooks
+  run <name>        Execute/show playbook
+  create <name>     Create new playbook
+
+Playbooks:
+  recon-passive     Passive reconnaissance
+  recon-active      Active scanning & enumeration
+  exploit-web       Web application exploitation
+  defend-monitor    Network monitoring & defense
+  respond-incident  Incident response procedures
+  wireless-audit    Wireless security audit
+EOF
+    exit 1
+}
+
+ensure_playbooks
+case "${1:-list}" in
+    list|ls) list_playbooks ;;
+    run|show|exec) shift; [ $# -ge 1 ] || usage; run_playbook "$1" ;;
+    create|new) shift; [ $# -ge 1 ] || usage; create_playbook "$1" ;;
+    *) usage ;;
+esac

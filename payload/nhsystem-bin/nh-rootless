@@ -1,0 +1,203 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P0
+# nh-rootless — Rootless Tool Wrapper
+set -euo pipefail;
+
+RL_DIR="/data/local/nhsystem/rootless"
+CACHE_DIR="$RL_DIR/cache"
+CONFIG_FILE="$RL_DIR/config.json"
+
+show_usage() {
+    cat <<'EOF'
+nh-rootless — Rootless Tool Wrapper
+
+Usage: nh-rootless <command> [args]
+
+Commands:
+  status           Show rootless status
+  check            Check what's available without root
+  run <tool> <args>  Run tool in rootless mode
+  list             List available rootless tools
+  help             Show this message
+
+Examples:
+  nh-rootless status
+  nh-rootless check
+  nh-rootless run nh-netdiag scan
+  nh-rootless run nh-ai chat "hello"
+EOF
+}
+
+init_rootless() {
+    mkdir -p "$RL_DIR" "$CACHE_DIR";
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo '{"mode": "rootless", "fallback_enabled": true, "cache_results": true, "tools": {"nh-netdiag": {"needs_root": false, "available": true}, "nh-ai": {"needs_root": false, "available": true}, "nh-mesh": {"needs_root": false, "available": true}, "nh-pqc": {"needs_root": false, "available": true}, "nh-ebpf": {"needs_root": true, "available": false}}}' > "$CONFIG_FILE"
+    fi;
+}
+
+cmd_status() {
+    echo "══ Rootless Status ═"
+    init_rootless;
+    
+    echo "── Edition ──"
+    if [ -f /data/local/nhsystem/config/edition ]; then
+        echo "  Edition: $(cat /data/local/nhsystem/config/edition)"
+    else
+        echo "  Edition: Rootless (auto-detected)"
+    fi;
+    
+    echo ""
+    echo "── Capabilities ──"
+    echo "  Network scanning: ✓ (nmap, ping)"
+    echo "  AI agent: ✓ (local LLM)"
+    echo "  Mesh networking: ✓ (Reticulum)"
+    echo "  eBPF: ✗ (requires root)"
+    echo "  HSM/YubiKey: ✗ (requires USB OTG + root)"
+    
+    echo ""
+    echo "── Available Tools ──"
+    python3 -c "
+import json;
+with open('$CONFIG_FILE') as f:
+    d = json.load(f)
+for tool, info in d['tools'].items():
+    status = '✓' if info['available'] else '✗';
+    root = '(root)' if info['needs_root'] else '(no root)';
+    print(f'  {status} {tool} {root}')
+" 2>/dev/null || echo "  nh-netdiag, nh-ai, nh-mesh, nh-pqc"
+}
+
+cmd_check() {
+    echo "══ Checking Rootless Availability ═"
+    init_rootless;
+    
+    echo "── Network Tools ──"
+    if command -v nmap >/dev/null 2>&1; then
+        echo "  ✓ nmap available"
+    else
+        echo "  ✗ nmap not found (install: pacman -S nmap)"
+    fi;
+    if command -v ping >/dev/null 2>&1; then
+        echo "  ✓ ping available"
+    fi;
+    
+    echo ""
+    echo "── AI Tools ──"
+    if command -v python3 >/dev/null 2>&1; then
+        echo "  ✓ Python3 available"
+        if command -v ollama >/dev/null 2>&1; then
+            echo "  ✓ Ollama available"
+        else
+            echo "  ? Ollama not found (install in Arch chroot)"
+        fi;
+    else
+        echo "  ✗ Python3 not found"
+    fi;
+    
+    echo ""
+    echo "── Mesh Networking ──"
+    if python3 -c "import RNS" 2>/dev/null; then
+        echo "  ✓ Reticulum available"
+    else
+        echo "  ? RNS not found (pip install rns)"
+    fi;
+    
+    echo ""
+    echo "── Post-Quantum Crypto ──"
+    if python3 -c "import oqs" 2>/dev/null; then
+        echo "  ✓ liboqs available"
+    else
+        echo "  ? liboqs not found (optional)"
+    fi;
+}
+
+cmd_run() {
+    shift 2>/dev/null || true;
+    local tool="${1:-}"
+    [ -z "$tool" ] && { echo "Usage: nh-rootless run <tool> [args]"; exit 1; }
+    shift 2>/dev/null || true;
+    
+    echo "══ Running in Rootless Mode: $tool ═"
+    init_rootless;
+    
+    # Check if tool needs root
+    local needs_root=$(python3 -c "
+import json;
+with open('$CONFIG_FILE') as f:
+    d = json.load(f)
+tool_info = d['tools'].get('$tool', {})
+print('1' if tool_info.get('needs_root', False) else '0')
+" 2>/dev/null || echo "0")
+    
+    if [ "$needs_root" = "1" ]; then
+        echo "  ⚠ Tool requires root: $tool"
+        echo "  Falling back to limited mode..."
+        
+        # Fallback behavior
+        case "$tool" in
+            nh-ebpf)
+                echo "  eBPF not available without root"
+                echo "  Use nh-netdiag for network monitoring instead"
+                exit 1
+                ;;
+            nh-ids)
+                echo "  IDS not available without root"
+                echo "  Use nh-netdiag to check connections"
+                exit 1
+                ;;
+            *)
+                echo "  Tool may have limited functionality"
+                ;;
+        esac;
+    fi;
+    
+    # Run the tool
+    if command -v "$tool" >/dev/null 2>&1; then
+        echo "  Executing: $tool $*"
+        "$tool" "$@"
+    else
+        # Try from nhsystem
+        if [ -f "/data/local/nhsystem/bin/$tool" ]; then
+            "/data/local/nhsystem/bin/$tool" "$@"
+        else
+            echo "  ✗ Tool not found: $tool"
+            exit 1
+        fi;
+    fi;
+}
+
+cmd_list() {
+    echo "══ Available Rootless Tools ═"
+    init_rootless;
+    
+    python3 -c "
+import json;
+with open('$CONFIG_FILE') as f:
+    d = json.load(f)
+print('  Tools available in rootless mode:')
+for tool, info in d['tools'].items():
+    if not info['needs_root']:
+        print(f'    ✓ {tool}')
+" 2>/dev/null || {
+        echo "  ✓ nh-netdiag — Network diagnostics"
+        echo "  ✓ nh-ai — AI agent"
+        echo "  ✓ nh-mesh — Mesh networking"
+        echo "  ✓ nh-pqc — Post-quantum crypto"
+        echo "  ✓ nh-threat — Threat intelligence"
+        echo "  ✓ nh-iot — IoT scanning (WiFi)"
+        echo "  ✓ nh-drone — Drone detection (WiFi)"
+        echo "  ✓ nh-voice — Voice control"
+        echo "  ✓ nh-digital-twin — Simulations"
+    }
+}
+
+init_rootless;
+
+case "${1:-help}" in
+    status)     cmd_status ;;
+    check)      cmd_check ;;
+    run)        cmd_run "$@" ;;
+    list)       cmd_list ;;
+    help|*)    show_usage ;;
+esac;

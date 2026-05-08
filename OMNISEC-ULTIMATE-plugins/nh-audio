@@ -1,0 +1,81 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P2
+# nh-audio - Audio volume and sink management
+set -u
+
+get_volume() {
+    if command -v termux-volume >/dev/null 2>&1; then
+        termux-volume 2>/dev/null || echo "  Volume: ?"
+    elif [ -d /sys/class/sound ]; then
+        for card in /sys/class/sound/card*/; do
+            [ -d "$card" ] || continue
+            local name=$(cat "${card}id" 2>/dev/null || echo "unknown")
+            echo "  Card: $name"
+            for ctl in "${card}"controlC*/; do
+                [ -d "$ctl" ] && ls "$ctl" 2>/dev/null | head -3 && break
+            done
+        done
+    else
+        echo "  Audio info not available (no Termux API)"
+    fi
+}
+
+set_volume() {
+    local level="$1"
+    if command -v termux-volume >/dev/null 2>&1; then
+        termux-volume --level "$level" 2>/dev/null && \
+            echo "  Volume set to: $level" || \
+            echo "  Failed to set volume"
+    else
+        echo "  termux-volume not available (install termux-api)" >&2
+        exit 1
+    fi
+}
+
+list_sinks() {
+    if command -v termux-microphone-record >/dev/null 2>&1; then
+        termux-microphone-record -l 2>/dev/null || echo "  Microphone available"
+    fi
+    echo "  Audio sinks:"
+    echo "    - Speaker (default)"
+    echo "    - Earpiece"
+    echo "    - Bluetooth (A2DP)"
+    echo "    - USB-C / 3.5mm"
+}
+
+usage() {
+    cat <<EOF
+usage: nh-audio <command> [args]
+
+Commands:
+  volume                  Show current volume
+  volume <0-100>          Set volume level
+  sinks                   List available audio sinks
+  mic [start|stop]        Control microphone recording
+
+Requires: termux-api (install: pkg install termux-api)
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    volume)
+        if [ $# -ge 2 ]; then
+            set_volume "$2"
+        else
+            get_volume
+        fi
+        ;;
+    sinks) list_sinks ;;
+    mic)
+        shift; [ $# -ge 1 ] || usage
+        case "$1" in
+            start) termux-microphone-record -d -f /sdcard/recording.m4a 2>/dev/null & echo "  Recording started" ;;
+            stop) pkill -f termux-microphone-record 2>/dev/null; echo "  Recording stopped" ;;
+            *) usage ;;
+        esac
+        ;;
+    *) usage ;;
+esac

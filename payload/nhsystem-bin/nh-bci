@@ -1,0 +1,167 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P9
+# nh-bci — Brain-Computer Interface (Real: keyboard/mic input proxy)
+
+set -euo pipefail
+
+BCI_DIR="/data/local/nhsystem/bci"
+PATTERNS_FILE="$BCI_DIR/patterns.json"
+LOG_FILE="$BCI_DIR/commands.log"
+
+show_usage() {
+    cat <<EOF
+nh-bci — Brain-Computer Interface (Input Proxy)
+
+Usage: nh-bci <command> [args]
+
+Commands:
+  status            Show BCI status
+  listen [duration]  Listen for text commands (keyboard/mic)
+  train <phrase> <action>  Teach new command mapping
+  patterns          List trained patterns
+  history           Show command history
+  help              Show this message.
+
+Examples:
+  nh-bci status
+  nh-bci listen 60
+  nh-bci train "scan network" "nh-netdiag scan"
+  nh-bci patterns
+
+Note: Uses keyboard input or microphone (whisper) as input proxy.
+      Saves all commands to log for analysis.
+EOF
+}
+
+init_bci() {
+    mkdir -p "$BCI_DIR"
+    if [ ! -f "$PATTERNS_FILE" ]; then
+        echo '{"patterns":{"scan network":"nh-netdiag scan","check status":"nh-device-detect","run update":"nhctl update","show help":"nhctl help"}}' > "$PATTERNS_FILE"
+    fi
+    touch "$LOG_FILE"
+}
+
+cmd_status() {
+    echo "══ BCI Status ═══════════"
+    init_bci
+    echo ""
+    echo "── Input Methods ──"
+    echo "  Keyboard: ✓ Available"
+    if command -v whisper >/dev/null 2>&1; then
+        echo "  Whisper: ✓ Installed (offline speech)"
+    else
+        echo "  Whisper: ✗ Not installed (pacman -S whisper.cpp in Arch)"
+    fi
+    echo ""
+    echo "── Trained Patterns ──"
+    local count=$(python3 -c "import json; d=json.load(open('$PATTERNS_FILE')); print(len(d['patterns']))" 2>/dev/null || echo 0)
+    echo "  Patterns: $count"
+    echo ""
+    echo "── Session Log ──"
+    echo "  Commands logged: $(wc -l < "$LOG_FILE" 2>/dev/null || echo 0)"
+}
+
+cmd_listen() {
+    local duration="${1:-60}"
+    echo "══ Listening for Commands ($duration sec) ═════"
+    init_bci
+    
+    echo "  Mode: Text input (simulates thought)"
+    echo "  Type commands, or 'quit' to stop"
+    echo ""
+    
+    local end_time=$(( $(date +%s) + duration ))
+    
+    while [ $(date +%s) -lt $end_time ]; do
+        printf "  Thought: "
+        read -t 60 -r thought || break
+        
+        [ "$thought" = "quit" ] && break
+        [ -z "$thought" ] && continue
+        
+        # Log the "thought"
+        echo "$(date): $thought" >> "$LOG_FILE"
+        
+        # Check against patterns
+        local matched=0
+        while IFS= read -r line; do
+            local phrase=$(echo "$line" | cut -d: -f1 | tr -d '" ,')
+            local action=$(echo "$line" | cut -d: -f2- | tr -d '" ,')
+            
+            if echo "$thought" | grep -qi "$phrase"; then
+                echo "  ✓ Matched: $phrase"
+                echo "  → Executing: $action"
+                eval "$action" 2>/dev/null || echo "    (Command not available)"
+                matched=1
+                break
+            fi
+        done < <(python3 -c "import json; d=json.load(open('$PATTERNS_FILE')); [print(f'{k}:{v}') for k,v in d['patterns'].items()]" 2>/dev/null)
+        
+        if [ $matched -eq 0 ]; then
+            echo "  ? Unknown thought: $thought"
+            echo "  Try: scan network, check status, show help"
+        fi
+        echo ""
+    done
+    
+    echo "  Listening stopped."
+}
+
+cmd_train() {
+    local phrase="${2:-}"
+    local action="${3:-}"
+    [ -z "$phrase" ] || [ -z "$action" ] && { echo "Usage: nh-bci train <phrase> <action>"; exit 1; }
+    
+    echo "══ Training Command ═══════════"
+    init_bci
+    
+    python3 -c "
+import json
+with open('$PATTERNS_FILE') as f:
+    d = json.load(f)
+d['patterns']['$phrase'] = '$action'
+with open('$PATTERNS_FILE', 'w') as f:
+    json.dump(d, f, indent=2)
+print('  ✓ Trained: \"$phrase\" → $action')
+" 2>/dev/null || echo "  Training failed (python3 required)"
+}
+
+cmd_patterns() {
+    echo "══ Trained Patterns ═══════════"
+    init_bci
+    
+    python3 -c "
+import json
+with open('$PATTERNS_FILE') as f:
+    d = json.load(f)
+print('  Phrase'.ljust(25) + '→ Action')
+print('  ' + '-' * 50)
+for phrase, action in d['patterns'].items():
+    print(f'  {phrase.ljust(25)} → {action}')
+" 2>/dev/null || cat "$PATTERNS_FILE"
+}
+
+cmd_history() {
+    echo "══ Command History ═══════════"
+    init_bci
+    
+    if [ -s "$LOG_FILE" ]; then
+        tail -20 "$LOG_FILE" | while read line; do
+            echo "  $line"
+        done
+    else
+        echo "  No commands logged yet"
+    fi
+}
+
+init_bci
+
+case "${1:-help}" in
+    status)     cmd_status ;;
+    listen)    cmd_listen "${2:-}" ;;
+    train)     cmd_train "$@" ;;
+    patterns)  cmd_patterns ;;
+    history)   cmd_history ;;
+    help|*)    show_usage ;;
+esac

@@ -1,0 +1,117 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P9
+# nh-bci — Brain-Computer Interface (Simulated)
+set -euo pipefail
+
+BCI_DIR="/data/local/nhsystem/bci"
+PATTERNS_FILE="$BCI_DIR/patterns.json"
+
+show_usage() {
+    cat <<EOF
+nh-bci — Brain-Computer Interface (Simulated)
+
+Usage: nh-bci <command> [args]
+
+Commands:
+  status           Show BCI status
+  calibrate        Calibrate EEG (simulated)
+  listen           Listen for thought commands
+  train <cmd>     Train new thought pattern
+  patterns         List trained patterns
+  help             Show this message
+
+Note: Simulated BCI using keyboard/mic input as proxy.
+EOF
+}
+
+init_bci() {
+    mkdir -p "$BCI_DIR"
+    if [ ! -f "$PATTERNS_FILE" ]; then
+        echo '{"patterns":{}}' > "$PATTERNS_FILE"
+    fi
+}
+
+cmd_status() {
+    echo "══ BCI Status (Simulated) ═══════════"
+    init_bci
+    echo ""
+    echo "── Hardware ──"
+    echo "  EEG Headset: Not connected (simulation mode)"
+    echo "  Input proxy: Keyboard + Voice"
+    echo ""
+    echo "── Patterns ──"
+    local count=$(python3 -c "import json; d=json.load(open('$PATTERNS_FILE')); print(len(d['patterns']))" 2>/dev/null || echo 0)
+    echo "  Trained patterns: $count"
+}
+
+cmd_calibrate() {
+    echo "══ Calibrating BCI (Simulated) ═════════"
+    echo "  Calibration not required in simulation mode"
+    echo "  Using keyboard input as thought proxy"
+}
+
+cmd_listen() {
+    echo "══ Listening for Thought Commands ═══════"
+    echo "  (Simulation: Type commands, they'll be interpreted as thoughts)"
+    echo "  Type 'scan', 'status', 'help', or 'quit'"
+    echo ""
+    
+    while true; do
+        printf "  Thought: "
+        read -r thought
+        [ "$thought" = "quit" ] && break
+        
+        case "$thought" in
+            scan*)   echo "  → Executing: nh-netdiag scan" ;;
+            status*) echo "  → Executing: nh-device-detect" ;;
+            help*)   echo "  → Executing: nhctl help" ;;
+            *)       echo "  → Unknown thought pattern" ;;
+        esac
+    done
+}
+
+cmd_train() {
+    local cmd="${2:-}"
+    [ -z "$cmd" ] && { echo "Usage: nh-bci train <command>"; exit 1; }
+    
+    echo "══ Training Thought Pattern ═══════════"
+    init_bci
+    
+    echo "  Training '$cmd' pattern..."
+    echo "  (In simulation, this just saves the mapping)"
+    
+    python3 -c "
+import json
+with open('$PATTERNS_FILE') as f:
+    d = json.load(f)
+d['patterns']['$cmd'] = {'thought': '$cmd', 'confidence': 0.95}
+with open('$PATTERNS_FILE', 'w') as f:
+    json.dump(d, f, indent=2)
+print('  Pattern trained!')
+" 2>/dev/null || echo "  Training failed (python3 required)"
+}
+
+cmd_patterns() {
+    echo "══ Trained Patterns ═════════════════"
+    init_bci
+    
+    python3 -c "
+import json
+with open('$PATTERNS_FILE') as f:
+    d = json.load(f)
+for cmd, pattern in d['patterns'].items():
+    print(f'  {cmd}: confidence={pattern.get(\"confidence\", 0)}')
+" 2>/dev/null || echo "  No patterns yet"
+}
+
+init_bci
+
+case "${1:-help}" in
+    status)     cmd_status ;;
+    calibrate) cmd_calibrate ;;
+    listen)    cmd_listen ;;
+    train)     cmd_train "$@" ;;
+    patterns)  cmd_patterns ;;
+    help|*)    show_usage ;;
+esac

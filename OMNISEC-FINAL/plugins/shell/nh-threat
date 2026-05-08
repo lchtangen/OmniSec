@@ -1,0 +1,358 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P2
+# nh-threat - Threat Intelligence & IoC Management
+# IPFS-based IoC sharing, AI correlation, C2 tracking
+set -u
+
+NHSYSTEM=${NHSYSTEM:-/data/local/nhsystem}
+THREAT_DIR="$NHSYSTEM/threat"
+CONFIG_DIR="$NHSYSTEM/etc/threat"
+LOG_DIR="$NHSYSTEM/logs/threat"
+IOC_DIR="$THREAT_DIR/iocs"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+mkdir -p "$THREAT_DIR" "$CONFIG_DIR" "$LOG_DIR" "$IOC_DIR/iocs"
+
+info()  { printf "${BLUE}[INFO]${NC} %s\n" "$*"; }
+ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+err()   { printf "${RED}[ERR]${NC} %s\n" "$*" >&2; }
+debug() { [ "${DEBUG:-0}" = "1" ] && printf "${CYAN}[DBG]${NC} %s\n" "$*" || true; }
+
+# ── IoC Management ──────────────────────────────
+
+add_ioc() {
+    local type="$1"
+    local value="$2"
+    local desc="${3:-}"
+    
+    [ -z "$type" ] || [ -z "$value" ] && { 
+        err "Usage: nh-threat add-ioc <type> <value> [description]"
+        echo "Types: ip, domain, hash, url, c2"
+        return 1
+    }
+    
+    local ioc_file="$IOC_DIR/${type}s.txt"
+    echo "$value | $desc | $(date +%s)" >> "$ioc_file"
+    ok "IoC added: $type=$value"
+}
+
+list_iocs() {
+    local type="${1:-all}"
+    
+    echo "── Indicators of Compromise ──"
+    echo ""
+    
+    if [ "$type" = "all" ]; then
+        for f in "$IOC_DIR"/*.txt; do
+            [ -f "$f" ] || continue
+            local ioc_type
+            ioc_type=$(basename "$f" .txt)
+            echo "  ${ioc_type^^}S:"
+            while IFS='|' read -r value desc timestamp; do
+                [ -z "$value" ] && continue
+                echo "    $value ${desc:+($desc)}"
+            done < "$f"
+            echo ""
+        done
+    else
+        local ioc_file="$IOC_DIR/${type}s.txt"
+        if [ -f "$ioc_file" ]; then
+            cat "$ioc_file" | nl
+        else
+            info "No IoCs of type: $type"
+        fi
+    fi
+}
+
+search_ioc() {
+    local query="$1"
+    [ -z "$query" ] && { err "Usage: nh-threat search <query>"; return 1; }
+    
+    info "Searching IoCs for: $query"
+    grep -r "$query" "$IOC_DIR/" 2>/dev/null | head -20 || info "No matches found"
+}
+
+# ── IPFS IoC Sharing ──────────────────────────────
+
+setup_ipfs() {
+    info "Setting up IPFS for decentralized IoC sharing..."
+    
+    if ! command -v ipfs >/dev/null 2>&1; then
+        if [ -f /data/local/nhsystem/roots/archlinux/usr/bin/pacman ]; then
+            info "Installing IPFS in Arch chroot..."
+            chroot /data/local/nhsystem/roots/archlinux pacman -S --noconfirm kubo 2>/dev/null || \
+                warn "Failed to install IPFS via pacman"
+        else
+            warn "IPFS not found. Install: pacman -S kubo (Arch)"
+            return 1
+        fi
+    fi
+    
+    # Initialize IPFS
+    if [ ! -d "$THREAT_DIR/ipfs" ]; then
+        ipfs init --profile server 2>/dev/null && \
+            ok "IPFS initialized" || warn "Failed to init IPFS"
+    fi
+    
+    ok "IPFS setup complete"
+}
+
+share_iocs_ipfs() {
+    info "Sharing IoCs via IPFS..."
+    
+    if ! command -v ipfs >/dev/null 2>&1; then
+        err "IPFS not installed"
+        return 1
+    fi
+    
+    # Add IoC directory to IPFS
+    local hash
+    hash=$(ipfs add -r -Q "$IOC_DIR" 2>/dev/null) || {
+        warn "Failed to add to IPFS"
+        return 1
+    }
+    
+    echo "$hash" > "$THREAT_DIR/ioc_hash.txt"
+    ok "IoCs shared! IPFS hash: $hash"
+    info "Others can fetch with: ipfs get $hash"
+}
+
+fetch_iocs_ipfs() {
+    local hash="$1"
+    [ -z "$hash" ] && { err "Usage: nh-threat fetch-iocs <ipfs_hash>"; return 1; }
+    
+    info "Fetching IoCs from IPFS: $hash"
+    
+    ipfs get "$hash" -o "$IOC_DIR/from_ipfs" 2>/dev/null && \
+        ok "IoCs fetched to: $IOC_DIR/from_ipfs" || \
+        warn "Failed to fetch from IPFS"
+}
+
+# ── C2 Tracking ──────────────────────────────
+
+track_c2() {
+    info "Starting C2 infrastructure tracking..."
+    
+    # Monitor for known C2 IPs/domains
+    local c2_file="$IOC_DIR/c2s.txt"
+    if [ ! -f "$c2_file" ]; then
+        warn "No C2 IoCs configured. Add with: nh-threat add-ioc c2 <ip/domain>"
+        return 1
+    fi
+    
+    info "Monitoring for C2 beacons..."
+    # Simple DNS monitoring (requires tcpdump or similar)
+    if command -v tcpdump >/dev/null 2>&1; then
+        nohup tcpdump -i any -n "port 53" 2>/dev/null | \
+        while read -r line; do
+            local domain
+            domain=$(echo "$line" | grep -oP '(?<=A\? ).*(?=\.)' || continue)
+            grep -q "$domain" "$c2_file" && \
+                warn "ALERT: C2 domain queried: $domain"
+        done &
+        echo $! > "$THREAT_DIR/c2_tracker.pid"
+        ok "C2 tracker started (PID: $(cat $THREAT_DIR/c2_tracker.pid))"
+    else
+        warn "tcpdump not available for C2 tracking"
+    fi
+}
+
+# ── AI Threat Correlation ──────────────────────────────
+
+ai_correlate() {
+    info "Running AI threat correlation engine..."
+    
+    if ! command -v ollama >/dev/null 2>&1; then
+        warn "Ollama not available for AI correlation"
+        return 1
+    fi
+    
+    # Gather all IoCs
+    local ioc_data="$THREAT_DIR/ioc_data.txt"
+    echo "IoC Analysis Request" > "$ioc_data"
+    echo "=====================" >> "$ioc_data"
+    cat "$IOC_DIR"/*.txt 2>/dev/null >> "$ioc_data" || true
+    
+    # Send to AI for correlation
+    info "Sending to AI for correlation..."
+    local response
+    response=$(cat "$ioc_data" | ollama run llama3.2:3b \
+        "Analyze these IoCs for patterns, correlations, and campaign attribution:" 2>/dev/null) || {
+        warn "AI correlation failed"
+        return 1
+    }
+    
+    echo "$response" > "$THREAT_DIR/correlation_report.txt"
+    ok "Correlation report saved: $THREAT_DIR/correlation_report.txt"
+    echo ""
+    echo "$response" | head -30
+}
+
+# ── Status ──────────────────────────────
+
+show_status() {
+    echo ""
+    echo "═══════════════════════════════════════════════════════════"
+    echo "  NH-THREAT STATUS"
+    echo "  Time: $(date)"
+    echo "═══════════════════════════════════════════════════════════"
+    echo ""
+    
+    # IoC counts
+    echo "── IoCs ──"
+    local total=0
+    for f in "$IOC_DIR"/*.txt; do
+        [ -f "$f" ] || continue
+        local count
+        count=$(wc -l < "$f")
+        total=$((total + count))
+        echo "  $(basename "$f" .txt): $count"
+    done
+    echo "  Total: $total"
+    echo ""
+    
+    # IPFS status
+    echo "── IPFS ──"
+    if command -v ipfs >/dev/null 2>&1; then
+        if ipfs id >/dev/null 2>&1; then
+            ok "IPFS: Running"
+            ipfs id 2>/dev/null | grep "ID:" | sed 's/^/  /'
+        else
+            info "IPFS: Not running (start with: ipfs daemon &)"
+        fi
+    else
+        info "IPFS: Not installed"
+    fi
+    echo ""
+    
+    # C2 Tracker
+    echo "── C2 Tracker ──"
+    if [ -f "$THREAT_DIR/c2_tracker.pid" ]; then
+        local pid
+        pid=$(cat "$THREAT_DIR/c2_tracker.pid" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            ok "C2 Tracker: Running (PID: $pid)"
+        else
+            info "C2 Tracker: Not running (stale PID file)"
+        fi
+    else
+        info "C2 Tracker: Not running"
+    fi
+}
+
+# ── Usage ──────────────────────────────
+
+usage() {
+    cat <<EOF
+nh-threat - Threat Intelligence & IoC Management
+
+Usage: nh-threat <command> [options]
+
+IoC Management:
+  add-ioc <type> <value> [desc]   Add Indicator of Compromise
+  list-iocs [type]              List IoCs (types: ip, domain, hash, url, c2, all)
+  search <query>                   Search IoCs
+  import <file>                    Import IoCs from file
+
+IPFS Sharing:
+  setup-ipfs                       Setup IPFS for decentralized sharing
+  share-iocs                       Share IoCs via IPFS
+  fetch-iocs <hash>                Fetch IoCs from IPFS
+
+C2 Tracking:
+  track-c2                         Start C2 infrastructure monitoring
+  stop-c2                          Stop C2 tracking
+
+AI Analysis:
+  correlate                       Run AI threat correlation engine
+  report                           Show latest correlation report
+
+Status:
+  status                           Show threat intelligence status
+
+Examples:
+  nh-threat add-ioc ip 192.168.1.100 "Known bad IP"
+  nh-threat list-iocs c2
+  nh-threat setup-ipfs
+  nh-threat share-iocs
+  nh-threat correlate
+
+Files:
+  IoCs:    $IOC_DIR/
+  Config:  $CONFIG_DIR/
+  Logs:    $LOG_DIR/
+
+Notes:
+  - IPFS: pacman -S kubo (Arch) for decentralized sharing
+  - AI correlation requires Ollama + llama3.2:3b
+  - C2 tracking requires tcpdump
+EOF
+}
+
+# ── Main ──────────────────────────────
+
+[ $# -ge 1 ] || usage
+
+case "$1" in
+    add-ioc)
+        shift
+        add_ioc "$@"
+        ;;
+    list-iocs)
+        shift
+        list_iocs "${1:-all}"
+        ;;
+    search)
+        shift
+        search_ioc "$@"
+        ;;
+    import)
+        shift
+        [ $# -ge 1 ] && cat "$1" >> "$IOC_DIR/imported.txt" && ok "Imported: $1" || err "Usage: nh-threat import <file>"
+        ;;
+    setup-ipfs)
+        setup_ipfs
+        ;;
+    share-iocs)
+        share_iocs_ipfs
+        ;;
+    fetch-iocs)
+        shift
+        fetch_iocs_ipfs "$@"
+        ;;
+    track-c2)
+        track_c2
+        ;;
+    stop-c2)
+        [ -f "$THREAT_DIR/c2_tracker.pid" ] && \
+            kill "$(cat "$THREAT_DIR/c2_tracker.pid")" 2>/dev/null && \
+            ok "C2 tracker stopped" || info "Not running"
+        ;;
+    correlate)
+        ai_correlate
+        ;;
+    report)
+        [ -f "$THREAT_DIR/correlation_report.txt" ] && \
+            cat "$THREAT_DIR/correlation_report.txt" || info "No report yet. Run: nh-threat correlate"
+        ;;
+    status)
+        show_status
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        err "Unknown command: $1"
+        usage
+        ;;
+esac

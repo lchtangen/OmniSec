@@ -1,0 +1,82 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-bt - Bluetooth adapter management, scanning, pairing
+set -u
+
+NHSYSTEM="${NHSYSTEM:-/data/local/nhsystem}"
+LOG="$NHSYSTEM/logs/bluetooth.log"
+mkdir -p "$NHSYSTEM/logs"
+
+HAVE_HCI=$(command -v hciconfig 2>/dev/null || command -v hcitool 2>/dev/null || echo "")
+HAVE_BLUEZ=$(command -v bluetoothctl 2>/dev/null || echo "")
+
+bt_adapter_info() {
+    echo "── Bluetooth Adapters ──"
+    if command -v hciconfig >/dev/null 2>&1; then
+        hciconfig -a 2>/dev/null | head -20
+    elif command -v hcitool >/dev/null 2>&1; then
+        hcitool dev 2>/dev/null
+    else
+        echo "  no Bluetooth tools available"
+        # Try sysfs
+        for dev in /sys/class/bluetooth/*; do
+            [ -d "$dev" ] || continue
+            NAME=$(cat "$dev/name" 2>/dev/null || echo "?")
+            ADDR=$(cat "$dev/address" 2>/dev/null || echo "?")
+            echo "  $(basename "$dev"): $NAME ($ADDR)"
+        done
+    fi
+}
+
+bt_scan() {
+    echo "── Bluetooth Scan ──"
+    if command -v bluetoothctl >/dev/null 2>&1; then
+        echo "starting scan (5 seconds)..."
+        bluetoothctl --timeout 5 scan on 2>&1 | grep -E 'Device|NEW' | head -20
+    elif command -v hcitool >/dev/null 2>&1; then
+        hcitool scan 2>/dev/null | head -20
+    else
+        echo "no Bluetooth scanning tools available"
+    fi
+}
+
+bt_pair() {
+    addr="${1:-}"
+    [ -z "$addr" ] && { echo "usage: nh-bt pair <device-address>"; exit 1; }
+    if command -v bluetoothctl >/dev/null 2>&1; then
+        echo "pairing with $addr..."
+        bluetoothctl pair "$addr" 2>&1
+        bluetoothctl trust "$addr" 2>&1 || true
+        bluetoothctl connect "$addr" 2>&1 || true
+    else
+        echo "bluetoothctl not available"
+    fi
+}
+
+bt_scan_paired() {
+    echo "── Paired Devices ──"
+    if command -v bluetoothctl >/dev/null 2>&1; then
+        bluetoothctl devices Paired 2>/dev/null | head -20
+    else
+        echo "bluetoothctl not available"
+    fi
+}
+
+case "${1:-status}" in
+    status|info)
+        bt_adapter_info
+        ;;
+    scan)
+        bt_scan
+        ;;
+    pair)
+        bt_pair "${2:-}"
+        ;;
+    paired|list)
+        bt_scan_paired
+        ;;
+    *)
+        echo "usage: nh-bt {status|scan|pair|paired}" >&2
+        exit 2
+        ;;
+esac

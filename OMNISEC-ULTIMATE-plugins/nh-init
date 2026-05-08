@@ -1,0 +1,181 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-init - Project scaffold generator
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+NHWORK=$NHSYSTEM/workspaces/main
+TEMPLATES=$NHSYSTEM/etc/templates
+
+usage() {
+    echo "usage: nh-init <type> <name>"
+    echo ""
+    echo "Project types:"
+    echo "  python          Python project with pipenv/pyproject.toml"
+    echo "  node            Node.js project with package.json"
+    echo "  rust            Rust project with Cargo.toml"
+    echo "  go              Go project with go.mod"
+    echo "  c               C project with Makefile"
+    echo "  shell           Shell script project"
+    echo "  module          nhsystem module skeleton"
+    echo "  workspace       New workspace directory structure"
+    echo ""
+    echo "  list            List available templates"
+    exit 1
+}
+
+[ $# -ge 2 ] || usage
+TYPE="$1"; shift
+NAME="$1"; shift
+DIR="$NHWORK/projects/$NAME"
+
+mkdir -p "$DIR"
+
+case "$TYPE" in
+    python)
+        cat > "$DIR/pyproject.toml" <<EOF
+[project]
+name = "$NAME"
+version = "0.1.0"
+description = ""
+requires-python = ">=3.11"
+dependencies = []
+EOF
+        cat > "$DIR/README.md" <<EOF
+# $NAME
+
+## Setup
+\`\`\`bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+\`\`\`
+EOF
+        mkdir -p "$DIR/src"
+        touch "$DIR/src/__init__.py"
+        echo '#!/usr/bin/env python3' > "$DIR/src/main.py"
+        chmod +x "$DIR/src/main.py"
+        echo "  created Python project: $DIR"
+        ;;
+    node)
+        cat > "$DIR/package.json" <<EOF
+{
+  "name": "$NAME",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node src/index.js",
+    "test": "node --test"
+  }
+}
+EOF
+        mkdir -p "$DIR/src"
+        echo '#!/usr/bin/env node' > "$DIR/src/index.js"
+        chmod +x "$DIR/src/index.js"
+        echo "  created Node.js project: $DIR"
+        ;;
+    rust)
+        cat > "$DIR/Cargo.toml" <<EOF
+[package]
+name = "$NAME"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+EOF
+        mkdir -p "$DIR/src"
+        echo 'fn main() { println!("Hello, world!"); }' > "$DIR/src/main.rs"
+        echo "  created Rust project: $DIR"
+        ;;
+    go)
+        cat > "$DIR/go.mod" <<EOF
+module github.com/tangen/$NAME
+
+go 1.22
+EOF
+        echo 'package main' > "$DIR/main.go"
+        echo '' >> "$DIR/main.go"
+        echo 'func main() {}' >> "$DIR/main.go"
+        echo "  created Go project: $DIR"
+        ;;
+    c)
+        cat > "$DIR/Makefile" <<EOF
+CC := gcc
+CFLAGS := -Wall -Wextra -pedantic -Os
+TARGET := $NAME
+
+\$(TARGET): main.c
+	\$(CC) \$(CFLAGS) -o \$@ main.c
+
+clean:
+	rm -f \$(TARGET)
+
+.PHONY: clean
+EOF
+        echo '#include <stdio.h>' > "$DIR/main.c"
+        echo '' >> "$DIR/main.c"
+        echo 'int main(int argc, char *argv[]) {' >> "$DIR/main.c"
+        echo '    printf("Hello from %s\\n", argv[0]);' >> "$DIR/main.c"
+        echo '    return 0;' >> "$DIR/main.c"
+        echo '}' >> "$DIR/main.c"
+        echo "  created C project: $DIR"
+        ;;
+    shell)
+        cat > "$DIR/$NAME.sh" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Hello from $NAME"
+EOF
+        chmod +x "$DIR/$NAME.sh"
+        echo "  created shell project: $DIR"
+        ;;
+    module)
+        MODULE_DIR="$DIR"
+        mkdir -p "$MODULE_DIR/bin" "$MODULE_DIR/etc" "$MODULE_DIR/docs"
+        cat > "$MODULE_DIR/module.prop" <<EOF
+name=$NAME
+version=1.0.0
+description=nhsystem module
+author=NetHunter NextGen
+EOF
+        cat > "$MODULE_DIR/install.sh" <<EOF
+#!/system/bin/sh
+# $NAME module installer
+echo "installing $NAME module..."
+EOF
+        chmod +x "$MODULE_DIR/install.sh"
+        cat > "$MODULE_DIR/README.md" <<EOF
+# $NAME Module
+
+## Description
+nhsystem module for NetHunter NextGen
+
+## Install
+\`\`\`sh
+nh-module install $NAME
+\`\`\`
+
+## Uninstall
+\`\`\`sh
+nh-module remove $NAME
+\`\`\`
+EOF
+        echo "  created module skeleton: $DIR"
+        ;;
+    workspace)
+        for subdir in projects source build notes daily docs config inbox backup; do
+            mkdir -p "$DIR/$subdir"
+            touch "$DIR/$subdir/.gitkeep"
+        done
+        echo "  created workspace structure: $DIR"
+        ;;
+    list)
+        echo "Available templates: python, node, rust, go, c, shell, module, workspace"
+        ;;
+    *)
+        echo "error: unknown type '$TYPE'"
+        usage
+        ;;
+esac

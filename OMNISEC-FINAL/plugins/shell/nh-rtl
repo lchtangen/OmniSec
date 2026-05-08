@@ -1,0 +1,100 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-rtl — SDR radio tools: spectrum scan, ADS-B, NOAA, APRS
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+KR="$(kali_root)"
+LOG="$NHSYSTEM/logs/rtl.log"
+mkdir -p "$NHSYSTEM/logs"
+
+have_cmd() { command -v "$1" >/dev/null 2>&1; }
+has_rtl() { have_cmd rtl_sdr || have_cmd rtl_power || have_cmd rtl_433; }
+
+spectrum_scan() {
+    freq_start="${1:-88M}"
+    freq_end="${2:-108M}"
+    output="$NHSYSTEM/logs/spectrum-$(date +%Y%m%d-%H%M%S).csv"
+    if have_cmd rtl_power; then
+        echo "scanning spectrum ${freq_start}-${freq_end}..."
+        rtl_power -f "${freq_start}:${freq_end}:1M" -i 10 -e 30 "$output" 2>&1 | head -5
+        echo "saved: $output"
+    else
+        echo "rtl_power not available"
+    fi
+}
+
+adsb_decode() {
+    duration="${1:-60}"
+    output="$NHSYSTEM/logs/adsb-$(date +%Y%m%d-%H%M%S).csv"
+    if have_cmd dump1090; then
+        echo "decoding ADS-B for ${duration}s..."
+        timeout "$duration" dump1090 --interactive --quiet 2>/dev/null | tee "$output" || true
+        echo "saved: $output"
+    else
+        echo "dump1090 not available (install: apt install dump1090-mutability)"
+    fi
+}
+
+noaa_apt() {
+    freq="${1:-137.9125M}"
+    duration="${2:-900}"
+    output="$NHSYSTEM/logs/noaa-$(date +%Y%m%d-%H%M%S).wav"
+    if have_cmd rtl_fm && have_cmd sox; then
+        echo "recording NOAA APT on $freq for ${duration}s..."
+        timeout "$duration" rtl_fm -f "$freq" -M wbfm -s 20834 -r 48000 -g 49.6 "$output" 2>/dev/null || true
+        echo "raw recording: $output"
+        echo "decode with: wxmap and wxtoimg"
+    else
+        echo "rtl_fm or sox not available"
+    fi
+}
+
+aprs_decode() {
+    freq="${1:-144.390M}"
+    duration="${2:-300}"
+    output="$NHSYSTEM/logs/aprs-$(date +%Y%m%d-%H%M%S).txt"
+    if have_cmd direwolf || have_cmd multimon-ng; then
+        echo "decoding APRS on $freq for ${duration}s..."
+        if have_cmd rtl_fm; then
+            timeout "$duration" rtl_fm -f "$freq" -s 22050 -g 49.6 2>/dev/null | \
+                multimon-ng -t raw -a AFSK1200 - 2>/dev/null | tee "$output" || true
+            echo "saved: $output"
+        fi
+    else
+        echo "multimon-ng or direwolf not available"
+    fi
+}
+
+status_rtl() {
+    echo "── SDR Radio Tools ──"
+    has_rtl && echo "  RTL-SDR: available" || echo "  RTL-SDR: not detected"
+    for tool in rtl_sdr rtl_power rtl_fm rtl_433 dump1090 multimon-ng sox; do
+        have_cmd "$tool" && echo "  ✓ $tool" || echo "  ○ $tool"
+    done
+    echo ""
+    echo "  Install in Kali chroot:"
+    echo "    apt install rtl-sdr dump1090-mutability multimon-ng sox"
+}
+
+case "${1:-status}" in
+    status|list)
+        status_rtl
+        ;;
+    spectrum|scan)
+        shift; spectrum_scan "$@"
+        ;;
+    adsb)
+        shift; adsb_decode "$@"
+        ;;
+    noaa)
+        shift; noaa_apt "$@"
+        ;;
+    aprs)
+        shift; aprs_decode "$@"
+        ;;
+    *)
+        echo "usage: nh-rtl {status|spectrum|adsb|noaa|aprs}" >&2
+        exit 2
+        ;;
+esac

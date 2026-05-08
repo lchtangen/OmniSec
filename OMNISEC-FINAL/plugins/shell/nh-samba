@@ -1,0 +1,15 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-samba — Samba management
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-samba - Samba Management
+Usage: nh-samba {status|start|stop|help}
+EOF
+}
+case "${1:-status}" in
+    status) if pgrep smbd >/dev/null; then echo "Samba running"; else echo "Stopped"; fi ;;
+    start) smbd 2>/dev/null & ;; stop) pkill smbd 2>/dev/null ;;
+    help|*) show_usage ;;
+esac

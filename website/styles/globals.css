@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --aegis-black: #000000;
+  --aegis-green: #00ff00;
+  --aegis-dark: #0a0a0a;
+  --aegis-red: #ff0000;
+}
+
+body {
+  background-color: var(--aegis-black);
+  color: var(--aegis-green);
+  font-family: 'Courier New', monospace;
+  margin: 0;
+  padding: 0;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--aegis-black);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--aegis-green);
+}
+
+a {
+  color: var(--aegis-green);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}

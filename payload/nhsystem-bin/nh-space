@@ -1,0 +1,111 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P8
+# nh-space — Space-Based Communication (Simulated Satellite)
+set -euo pipefail
+
+SPACE_DIR="/data/local/nhsystem/space"
+SAT_FILE="$SPACE_DIR/satellites.json"
+
+show_usage() {
+    cat <<EOF
+nh-space — Space-Based Communication (Simulated)
+
+Usage: nh-space <command> [args]
+
+Commands:
+  status           Show satellite status
+  scan             Scan for satellites
+  connect <sat>    Connect to satellite
+  msg <text>       Send message via satellite
+  track            Track satellite positions
+  help             Show this message
+
+Note: Simulated satellite communication via internet relay.
+EOF
+}
+
+init_space() {
+    mkdir -p "$SPACE_DIR"
+    if [ ! -f "$SAT_FILE" ]; then
+        cat > "$SAT_FILE" <<'EOF'
+{
+  "satellites": [
+    {"name":"ISS","norad":"25544","freq":"145.800MHz","status":"simulated"},
+    {"name":"Starlink-1","norad":"44238","freq":"10.7-12.7GHz","status":"simulated"},
+    {"name":"Starlink-2","norad":"44239","freq":"10.7-12.7GHz","status":"simulated"}
+  ]
+}
+EOF
+    fi
+}
+
+cmd_status() {
+    echo "══ Space Communication Status ══════"
+    init_space
+    
+    echo "  Mode: Simulated satellite relay"
+    echo "  Satellites: $(python3 -c "import json; d=json.load(open('$SAT_FILE')); print(len(d['satellites']))" 2>/dev/null || echo 3)"
+    echo "  Connection: Via internet (simulation)"
+    echo ""
+    echo "  Active relays: 0"
+}
+
+cmd_scan() {
+    echo "══ Scanning for Satellites ═════════"
+    init_space
+    
+    echo "  Scanning sky..."
+    echo "  (Simulation: would use SDR to detect beacons)"
+    echo ""
+    echo "  Found satellites:"
+    python3 -c "
+import json
+with open('$SAT_FILE') as f:
+    d = json.load(f)
+for sat in d['satellites']:
+    print(f\"  {sat['name']}: {sat['freq']} ({sat['status']})\")
+" 2>/dev/null || echo "  No satellites found"
+}
+
+cmd_connect() {
+    local sat="${2:-ISS}"
+    echo "══ Connecting to Satellite: $sat ═══"
+    
+    echo "  Establishing link..."
+    sleep 1
+    echo "  Link established (simulated)"
+    echo "  Latency: 500-2000ms (LEO orbital)"
+}
+
+cmd_msg() {
+    shift 2>/dev/null || true
+    local msg="${*:-Hello from Earth!}"
+    
+    echo "══ Sending via Satellite ═════════"
+    echo "  Message: $msg"
+    echo "  Routing via: Internet simulation"
+    echo "  Sent! (simulated)"
+}
+
+cmd_track() {
+    echo "══ Tracking Satellites ═══════════"
+    init_space
+    
+    echo "  Orbital positions (simulated):"
+    echo "    ISS: 408km altitude, 90 min orbit"
+    echo "    Starlink: 550km altitude, 95 min orbit"
+    echo ""
+    echo "  Next pass: ISS in 45 minutes (simulated)"
+}
+
+init_space
+
+case "${1:-help}" in
+    status)     cmd_status ;;
+    scan)       cmd_scan ;;
+    connect)    cmd_connect "$@" ;;
+    msg)        cmd_msg "$@" ;;
+    track)      cmd_track ;;
+    help|*)    show_usage ;;
+esac

@@ -1,0 +1,252 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 default
+# Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
+# nh-id - identity management: MAC, hostname, user-agent randomization
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+TAG="NH-ID"
+INTERFACE="wlan0"
+MAC_FILE="$NHWORK/.mac_backup"
+HOSTNAME_FILE="$NHWORK/.hostname_backup"
+
+usage() {
+    cat <<'EOF'
+nh-id - Identity Management for NetHunter
+
+Usage: nh-id <command> [options]
+
+Commands:
+  status             Show current identity (MAC, hostname, etc.)
+  random-mac [iface] Randomize MAC address (default: wlan0)
+  restore-mac [iface] Restore original MAC address
+  random-hostname    Set a random hostname
+  restore-hostname   Restore original hostname
+  random-ua          Generate random browser user-agent strings
+  spoof-wifi         Enable MAC spoofing for WiFi (requires root)
+  help               Show this help
+
+Examples:
+  nh-id status
+  nh-id random-mac wlan0
+  nh-id random-hostname
+  nh-id restore-mac
+
+Notes:
+  - MAC changes require root and interface down/up
+  - Hostname changes may require reboot to fully apply
+  - Backup files stored in $NHWORK
+EOF
+}
+
+cmd_status() {
+    echo "== Identity Status =="
+    echo ""
+
+    echo "-- Network Interfaces --"
+    ip link show 2>/dev/null || ifconfig 2>/dev/null || warn "Cannot read interfaces"
+    echo ""
+
+    echo "-- Hostname --"
+    echo "  current: $(hostname 2>/dev/null || getprop net.hostname 2>/dev/null || echo unknown)"
+    if [ -f "$HOSTNAME_FILE" ]; then
+        echo "  backup : $(cat "$HOSTNAME_FILE")"
+    fi
+    echo ""
+
+    echo "-- MAC Addresses --"
+    for iface in /sys/class/net/*; do
+        iface_name=$(basename "$iface")
+        if [ -f "$iface/address" ]; then
+            mac=$(cat "$iface/address")
+            echo "  $iface_name: $mac"
+        fi
+    done
+    echo ""
+
+    echo "-- Android Device Info --"
+    echo "  model  : $(getprop ro.product.model 2>/dev/null)"
+    echo "  build  : $(getprop ro.build.fingerprint 2>/dev/null | cut -d'/' -f1)"
+    echo "  serial : $(getprop ro.serialno 2>/dev/null)"
+    echo ""
+
+    echo "-- Browser User-Agents --"
+    generate_ua "chrome"
+    generate_ua "firefox"
+    echo ""
+
+    echo "-- Chroot Identity --"
+    AR="$(arch_root)"
+    KR="$(kali_root)"
+    for root in "$AR" "$KR"; do
+        if [ -d "$root" ]; then
+            label="Arch"
+            [ "$root" = "$KR" ] && label="Kali"
+            echo "  $label chroot:"
+            if [ -f "$root/etc/hostname" ]; then
+                echo "    hostname: $(cat "$root/etc/hostname")"
+            fi
+            if [ -f "$root/etc/hosts" ]; then
+                echo "    hosts: $(grep -v '^#' "$root/etc/hosts" | grep -v '^$' | head -3)"
+            fi
+        fi
+    done
+}
+
+random_mac() {
+    iface="${1:-$INTERFACE}"
+    info "Generating random MAC for $iface"
+
+    # Generate random MAC with locally administered bit set
+    # First byte: 02 (locally administered, unicast)
+    mac=$(printf "02:%02x:%02x:%02x:%02x:%02x" \
+        $((RANDOM % 256)) \
+        $((RANDOM % 256)) \
+        $((RANDOM % 256)) \
+        $((RANDOM % 256)) \
+        $((RANDOM % 256)))
+
+    # Backup current MAC
+    if [ -f "/sys/class/net/$iface/address" ]; then
+        current_mac=$(cat "/sys/class/net/$iface/address")
+        echo "$current_mac" > "$MAC_FILE" 2>/dev/null || warn "Cannot backup MAC to $MAC_FILE"
+        info "Backed up original MAC: $current_mac"
+    fi
+
+    # Change MAC (requires root)
+    if [ "$(id -u)" -eq 0 ]; then
+        ip link set "$iface" down 2>/dev/null
+        ip link set "$iface" address "$mac" 2>/dev/null
+        ip link set "$iface" up 2>/dev/null
+        if [ $? -eq 0 ]; then
+            pass "MAC changed to $mac on $iface"
+        else
+            warn "Failed to change MAC (interface may be busy)"
+        fi
+    else
+        warn "Root required to change MAC. Run: su -c 'nh-id random-mac $iface'"
+        info "Would set MAC to: $mac"
+    fi
+}
+
+restore_mac() {
+    iface="${1:-$INTERFACE}"
+    if [ -f "$MAC_FILE" ]; then
+        original_mac=$(cat "$MAC_FILE")
+        info "Restoring MAC $original_mac on $iface"
+        if [ "$(id -u)" -eq 0 ]; then
+            ip link set "$iface" down 2>/dev/null
+            ip link set "$iface" address "$original_mac" 2>/dev/null
+            ip link set "$iface" up 2>/dev/null
+            pass "MAC restored to $original_mac"
+        else
+            warn "Root required to restore MAC"
+        fi
+    else
+        warn "No MAC backup found at $MAC_FILE"
+    fi
+}
+
+random_hostname() {
+    # Generate random hostname
+    adjectives="dark silent hidden ghost shadow phantom crypto private secure stealth"
+    nouns="node host client device terminal station gateway router proxy"
+    adj=$(echo "$adjectives" | tr ' ' '\n' | shuf -n1)
+    noun=$(echo "$nouns" | tr ' ' '\n' | shuf -n1)
+    num=$(shuf -i 100-999 -n1)
+    new_hostname="${adj}-${noun}-${num}"
+
+    # Backup current hostname
+    current_host=$(hostname 2>/dev/null || echo "unknown")
+    echo "$current_host" > "$HOSTNAME_FILE" 2>/dev/null || warn "Cannot backup hostname"
+
+    # Set new hostname (best effort)
+    if [ "$(id -u)" -eq 0 ]; then
+        hostname "$new_hostname" 2>/dev/null
+        setprop net.hostname "$new_hostname" 2>/dev/null
+        pass "Hostname set to: $new_hostname"
+        warn "Reboot may be required for full effect"
+    else
+        warn "Root required to change hostname"
+        info "Would set hostname to: $new_hostname"
+    fi
+}
+
+restore_hostname() {
+    if [ -f "$HOSTNAME_FILE" ]; then
+        original_host=$(cat "$HOSTNAME_FILE")
+        if [ "$(id -u)" -eq 0 ]; then
+            hostname "$original_host" 2>/dev/null
+            setprop net.hostname "$original_host" 2>/dev/null
+            pass "Hostname restored to: $original_host"
+        else
+            warn "Root required to restore hostname"
+        fi
+    else
+        warn "No hostname backup found"
+    fi
+}
+
+generate_ua() {
+    browser="${1:-chrome}"
+    case "$browser" in
+        chrome)
+            # Random Chrome UA for Android
+            chrome_ver=$((90 + RANDOM % 20))
+            android_ver=$((10 + RANDOM % 4))
+            echo "  Chrome: Mozilla/5.0 (Linux; Android $android_ver) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$chrome_ver.0.0.0 Mobile Safari/537.36"
+            ;;
+        firefox)
+            # Random Firefox UA for Android
+            ff_ver=$((100 + RANDOM % 30))
+            android_ver=$((10 + RANDOM % 4))
+            echo "  Firefox: Mozilla/5.0 (Android $android_ver; Mobile; rv:$ff_ver) Gecko/$ff_ver Firefox/$ff_ver"
+            ;;
+        *)
+            echo "  Unknown browser: $browser"
+            ;;
+    esac
+}
+
+cmd_spoof_wifi() {
+    info "Enabling MAC spoofing for WiFi..."
+    if [ "$(id -u)" -eq 0 ]; then
+        # Create a script to randomize MAC on WiFi connect
+        SPOOF_SCRIPT="$NHSYSTEM/etc/mac-spoof.sh"
+        cat > "$SPOOF_SCRIPT" <<'SPOOF'
+#!/system/bin/sh
+iface="wlan0"
+mac=$(printf "02:%02x:%02x:%02x:%02x:%02x" $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)))
+ip link set "$iface" down
+ip link set "$iface" address "$mac"
+ip link set "$iface" up
+echo "MAC spoofed: $mac"
+SPOOF
+        chmod +x "$SPOOF_SCRIPT"
+        pass "MAC spoof script created: $SPOOF_SCRIPT"
+        warn "You must integrate this with WiFi connect events manually"
+    else
+        warn "Root required for MAC spoofing setup"
+    fi
+}
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+case "${1:-help}" in
+    status)       cmd_status ;;
+    random-mac)   random_mac "${2:-}" ;;
+    restore-mac)  restore_mac "${2:-}" ;;
+    random-hostname) random_hostname ;;
+    restore-hostname) restore_hostname ;;
+    random-ua)
+        echo "Random Browser User-Agents:"
+        generate_ua "chrome"
+        generate_ua "firefox"
+        ;;
+    spoof-wifi)   cmd_spoof_wifi ;;
+    help|--help|-h) usage ;;
+    *)
+        error "Unknown command: $1"
+        usage
+        exit 1
+        ;;
+esac

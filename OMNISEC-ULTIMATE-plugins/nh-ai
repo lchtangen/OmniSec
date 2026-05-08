@@ -1,0 +1,357 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P1
+# nh-ai - Local AI assistant + autonomous recon agent
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+OLLAMA_HOST=${OLLAMA_HOST:-http://127.0.0.1:11434}
+MODEL=${NH_AI_MODEL:-llama3.2:3b}
+AI_CONFIG=$NHSYSTEM/etc/ai.conf
+AGENT=$NHSYSTEM/ai/agent.py
+ARCH_PYTHON=/data/local/nhsystem/roots/archlinux/usr/bin/python3
+
+ensure_config() {
+    mkdir -p $NHSYSTEM/etc $NHSYSTEM/ai
+    [ -f "$AI_CONFIG" ] || cat > "$AI_CONFIG" <<CFG
+# nh-ai configuration
+model=$MODEL
+ollama_host=$OLLAMA_HOST
+system_prompt=You are an AI assistant integrated into NetHunter NextGen, a mobile security and development platform. You help users manage their device, write scripts, diagnose issues, and learn about security.
+CFG
+}
+
+load_config() {
+    ensure_config
+    MODEL=$(grep ^model "$AI_CONFIG" | cut -d= -f2)
+    OLLAMA_HOST=$(grep ^ollama_host "$AI_CONFIG" | cut -d= -f2)
+    SYSTEM_PROMPT=$(grep ^system_prompt "$AI_CONFIG" | cut -d= -f2-)
+}
+
+check_ollama() {
+    if ! command -v ollama >/dev/null 2>&1; then
+        echo "  ERROR: Ollama not installed" >&2
+        echo "  Run 'nh-ai setup' to install" >&2
+        return 1
+    fi
+    if ! curl -s "$OLLAMA_HOST/api/tags" >/dev/null 2>&1; then
+        echo "  Starting Ollama..."
+        ollama serve >/dev/null 2>&1 &
+        sleep 3
+    fi
+    return 0
+}
+
+setup_ollama() {
+    echo "── Installing AI Dependencies ──"
+    if [ -f "$ARCH_PYTHON" ]; then
+        echo "  Deploying AI agent to Arch chroot..."
+        local arch_home=/data/local/nhsystem/roots/archlinux/home/archlinux
+        mkdir -p "$arch_home/.local/bin" "$arch_home/reports" "$arch_home/.ollama"
+        cp "$AGENT" "$arch_home/.local/bin/nh-agent" 2>/dev/null
+        chmod 755 "$arch_home/.local/bin/nh-agent" 2>/dev/null
+        echo "  Agent deployed to Arch chroot"
+    fi
+
+    if command -v ollama >/dev/null 2>&1; then
+        echo "  ✓ Ollama already installed"
+    else
+        echo "  Ollama not found. Install inside Arch chroot:"
+        echo "    nh-ai enter-arch"
+        echo "    sudo pacman -S ollama"
+        echo "    ollama serve &"
+        echo "    ollama pull $MODEL"
+    fi
+
+    if curl -s "$OLLAMA_HOST/api/tags" >/dev/null 2>&1; then
+        echo "  ✓ Ollama server reachable"
+        local has_model
+        has_model=$(curl -s "$OLLAMA_HOST/api/tags" 2>/dev/null | grep -o "\"name\":\"$MODEL\"")
+        if [ -n "$has_model" ]; then
+            echo "  ✓ Model $MODEL available"
+        else
+            echo "  Model $MODEL not found. Pulling..."
+            ollama pull "$MODEL"
+        fi
+    fi
+}
+
+chat() {
+    load_config
+    local query="$*"
+    [ -n "$query" ] || { echo "  Usage: nh-ai chat <your question>" >&2; exit 1; }
+    check_ollama || exit 1
+    echo "  Model: $MODEL"
+    echo "  ──────────────────────────────────────"
+    curl -s "$OLLAMA_HOST/api/generate" -d "{
+        \"model\": \"$MODEL\",
+        \"prompt\": \"$SYSTEM_PROMPT\n\nUser: $query\nAssistant:\",
+        \"stream\": false
+    }" 2>/dev/null | grep -o '"response":"[^"]*"' | cut -d'"' -f4 | sed 's/\\n/\n/g' || {
+        echo "  Error communicating with Ollama"
+        echo "  Check: $OLLAMA_HOST"
+        exit 1
+    }
+    echo ""
+    echo "  ──────────────────────────────────────"
+}
+
+models() {
+    check_ollama || exit 1
+    echo "── Available Models ──"
+    curl -s "$OLLAMA_HOST/api/tags" 2>/dev/null | grep -o '"name":"[^"]*"' | cut -d'"' -f4 | \
+        while read -r m; do echo "  $m"; done
+    echo ""
+    echo "  Default: $MODEL"
+}
+
+pull_model() {
+    local model="${1:-$MODEL}"
+    check_ollama || exit 1
+    echo "  Pulling model: $model"
+    ollama pull "$model"
+}
+
+ask_about_system() {
+    load_config
+    local topic="${1:-status}"
+    local data=""
+    case "$topic" in
+        status) data=$(nh-status 2>/dev/null) ;;
+        health) data=$(nh-health 2>/dev/null) ;;
+        battery) data=$(nh-battery 2>/dev/null) ;;
+        temp) data=$(nh-temp 2>/dev/null) ;;
+        *) data=$(nh-status 2>/dev/null) ;;
+    esac
+    local query="Analyze this system data and provide insights or recommendations:\n\n$data"
+    chat "$query"
+}
+
+diagnose() {
+    echo "── AI System Diagnostic ──"
+    echo "  Collecting system data..."
+    local report="/tmp/nh-ai-diagnostic.txt"
+    {
+        echo "=== System Status ==="
+        nh-status 2>/dev/null
+        echo ""
+        echo "=== Health Check ==="
+        nh-health 2>/dev/null
+        echo ""
+        echo "=== Battery ==="
+        nh-battery 2>/dev/null
+        echo ""
+        echo "=== Temperature ==="
+        nh-temp 2>/dev/null
+        echo ""
+        echo "=== Storage ==="
+        df -h /data 2>/dev/null
+        echo ""
+        echo "=== Memory ==="
+        free -m 2>/dev/null
+        echo ""
+        echo "=== Top Processes ==="
+        ps aux 2>/dev/null | head -10
+        echo ""
+        echo "=== Recent Logs ==="
+        nh-log 2>/dev/null | tail -20
+    } > "$report"
+    echo "  Diagnostic data saved to: $report"
+    echo "  Analyzing with AI..."
+    sleep 1
+    load_config
+    check_ollama || exit 1
+    local data
+    data=$(cat "$report" 2>/dev/null)
+    curl -s "$OLLAMA_HOST/api/generate" -d "{
+        \"model\": \"$MODEL\",
+        \"prompt\": \"$SYSTEM_PROMPT\n\nPerform a comprehensive system diagnostic analysis based on this data. Identify issues, risks, and recommendations:\n\n$data\n\nAssistant:\",
+        \"stream\": false
+    }" 2>/dev/null | grep -o '"response":"[^"]*"' | cut -d'"' -f4 | sed 's/\\n/\n/g' || {
+        echo "  AI analysis unavailable (check Ollama)"
+    }
+}
+
+recon() {
+    local target="${1:-}"
+    [ -n "$target" ] || { echo "  Usage: nh-ai recon <target> [description]" >&2; exit 1; }
+    shift
+    local desc="$*"
+
+    check_ollama || exit 1
+
+    # Try Python agent inside Arch chroot first
+    if [ -f "$ARCH_PYTHON" ] && [ -f "$AGENT" ]; then
+        echo "  Launching autonomous recon agent in Arch chroot..."
+        echo "  Target: $target"
+        echo ""
+        local arch_home=/data/local/nhsystem/roots/archlinux/home/archlinux
+        # Mount chroot if needed
+        if ! mountpoint -q /data/local/nhsystem/roots/archlinux/proc 2>/dev/null; then
+            nh-mount arch 2>/dev/null || true
+        fi
+        # Deploy agent to chroot
+        mkdir -p "$arch_home/.local/bin" "$arch_home/reports"
+        cp "$AGENT" "$arch_home/.local/bin/nh-agent" 2>/dev/null
+        chmod 755 "$arch_home/.local/bin/nh-agent" 2>/dev/null
+
+        # Run agent inside chroot
+        chroot /data/local/nhsystem/roots/archlinux \
+            /usr/bin/python3 /home/archlinux/.local/bin/nh-agent \
+            recon "$target" $desc
+    elif command -v python3 >/dev/null 2>&1 && [ -f "$AGENT" ]; then
+        echo "  Running agent on host..."
+        python3 "$AGENT" recon "$target" $desc
+    else
+        echo "  Python agent not available. Running simplified recon..."
+        simplified_recon "$target"
+    fi
+}
+
+simplified_recon() {
+    local target="$1"
+    local report="/data/local/nhsystem/logs/recon-$(date +%Y%m%d-%H%M%S).txt"
+    mkdir -p /data/local/nhsystem/logs
+    {
+        echo "=== Reconnaissance Report: $target ==="
+        echo "Date: $(date)"
+        echo ""
+        echo "── DNS Lookup ──"
+        nslookup "$target" 2>/dev/null || dig "$target" 2>/dev/null || host "$target" 2>/dev/null
+        echo ""
+        echo "── Ping ──"
+        ping -c 2 -W 5 "$target" 2>/dev/null || echo "  unreachable"
+        echo ""
+        echo "── Port Scan (common ports) ──"
+        nmap -F --open "$target" 2>/dev/null || echo "  nmap not available"
+        echo ""
+        echo "── Web Fingerprint ──"
+        whatweb "$target" 2>/dev/null || curl -sI "http://$target" 2>/dev/null || echo "  web tools not available"
+        echo ""
+        echo "── Service Scan ──"
+        nmap -sV -p 22,80,443,8080,8443 "$target" 2>/dev/null || echo "  nmap not available"
+    } > "$report"
+    echo "  Report saved: $report"
+    cat "$report"
+}
+
+sessions() {
+    local action="${1:-list}"
+    local session_dir="/data/local/nhsystem/logs/ai-sessions"
+    mkdir -p "$session_dir"
+    case "$action" in
+        list)
+            echo "── AI Sessions ──"
+            local count=0
+            for f in "$session_dir"/*.log; do
+                [ -f "$f" ] || continue
+                count=$((count+1))
+                echo "  $(basename "$f" .log)"
+            done
+            [ "$count" -eq 0 ] && echo "  No sessions found"
+            ;;
+        show)
+            local name="${2:-}"
+            [ -n "$name" ] || { echo "  Usage: nh-ai sessions show <name>" >&2; exit 1; }
+            cat "$session_dir/$name.log" 2>/dev/null || echo "  Session not found: $name"
+            ;;
+        clear)
+            rm -f "$session_dir"/*.log 2>/dev/null
+            echo "  All sessions cleared"
+            ;;
+        *) echo "  Unknown action: $action" >&2; exit 1 ;;
+    esac
+}
+
+install_model() {
+    local model="${1:-}"
+    [ -n "$model" ] || {
+        echo "  Available models for ARM64:"
+        echo "    llama3.2:3b    (2GB, fast, good for most tasks)"
+        echo "    llama3.2:1b    (0.7GB, tiny, quick answers)"
+        echo "    mistral:7b     (4GB, good quality)"
+        echo "    qwen2.5:7b     (4GB, strong reasoning)"
+        echo "    phi3:3.8b      (2GB, good for coding)"
+        echo ""
+        echo "  Usage: nh-ai install <model>"
+        exit 1
+    }
+    check_ollama || exit 1
+    echo "  Installing model: $model"
+    ollama pull "$model"
+    sed -i "s/^model=.*/model=$model/" "$AI_CONFIG"
+    echo "  Set as default model"
+}
+
+enter_chroot() {
+    if [ -x /data/local/nhsystem/bin/nh-enter-arch ]; then
+        nh-enter-arch
+    elif [ -f /data/local/nhsystem/roots/archlinux/usr/bin/bash ]; then
+        chroot /data/local/nhsystem/roots/archlinux /usr/bin/bash
+    else
+        echo "  Arch chroot not available"
+        exit 1
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-ai - Autonomous AI Assistant + Recon Agent
+
+Usage: nh-ai <command> [args]
+
+AI Commands:
+  chat <question>      Ask the AI assistant anything
+  diagnose             Run AI system diagnostic (collects data + AI analysis)
+  status               AI-assisted system status analysis
+  models               List available AI models
+  install [model]      Download and set default AI model
+  pull [model]         Download an AI model (alias for install)
+
+Recon:
+  recon <target> [desc]  Run autonomous reconnaissance agent against target
+                          Uses Python agent in Arch chroot for full autonomy
+                          Falls back to simplified shell-based scan
+
+Session Management:
+  sessions list        List AI agent sessions
+  sessions show <name> Show session details
+  sessions clear       Clear all sessions
+
+Setup:
+  setup                Install AI dependencies (Ollama, agent, model)
+  enter-arch           Enter Arch chroot to configure Ollama manually
+
+Requires: Ollama (runs inside Arch chroot)
+Default model: $MODEL
+Model sizes: 1b=~0.7GB  3b=~2GB  7b=~4GB  8b=~4.5GB
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    chat) shift; [ $# -ge 1 ] || usage; chat "$*" ;;
+    diagnose) diagnose ;;
+    status) ask_about_system "status" ;;
+    models) models ;;
+    pull|install)
+        shift
+        install_model "${1:-}"
+        ;;
+    recon)
+        shift; [ $# -ge 1 ] || usage
+        recon "$@"
+        ;;
+    sessions)
+        shift
+        sessions "$@"
+        ;;
+    setup)
+        setup_ollama
+        ;;
+    enter-arch)
+        enter_chroot
+        ;;
+    *) usage ;;
+esac

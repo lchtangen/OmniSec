@@ -1,0 +1,85 @@
+---
+# Ansible Playbook for Aegis Nexus Deployment
+# Usage: ansible-playbook -i inventory aegis-nexus.yml
+
+- name: Deploy Aegis Nexus
+  hosts: all
+  become: yes
+  vars:
+    aegis_version: "3.0"
+    aegis_repo: "https://github.com/AegisNexus/aegis-nexus.git"
+    install_dir: "/opt/aegis-nexus"
+
+  tasks:
+    - name: Install dependencies (Ubuntu/Debian)
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - bash
+        - git
+        - make
+        - gcc
+        - python3
+        - openssl
+        - nmap
+        - tcpdump
+      when: ansible_os_family == "Debian"
+
+    - name: Install dependencies (Arch)
+      pacman:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - bash
+        - git
+        - make
+        - gcc
+        - python3
+        - openssl
+        - nmap
+      when: ansible_os_family == "Archlinux"
+
+    - name: Clone Aegis Nexus repository
+      git:
+        repo: "{{ aegis_repo }}"
+        dest: "{{ install_dir }}"
+        version: "v{{ aegis_version }}"
+
+    - name: Stage build
+      command: make stage
+      args:
+        chdir: "{{ install_dir }}"
+
+    - name: Build C tools
+      command: make build-c
+      args:
+        chdir: "{{ install_dir }}"
+
+    - name: Run test suite (334 tests)
+      command: make test
+      args:
+        chdir: "{{ install_dir }}"
+      register: test_result
+      failed_when: "'0 failed' not in test_result.stdout"
+
+    - name: Install to system
+      command: make install
+      args:
+        chdir: "{{ install_dir }}"
+      when: ansible_os_family != "Android"
+
+    - name: Verify installation
+      command: nhctl help
+      register: help_output
+      changed_when: false
+
+    - name: Display installation info
+      debug:
+        msg: "✅ Aegis Nexus v{{ aegis_version }} deployed successfully!"
+
+  handlers:
+    - name: restart service
+      systemd:
+        name: aegis-nexus
+        state: restarted

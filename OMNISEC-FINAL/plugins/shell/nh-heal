@@ -1,0 +1,137 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-heal — auto-healing for chroot environments
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+LOG="$NHSYSTEM/logs/heal.log"
+mkdir -p "$NHSYSTEM/logs"
+
+healed=0
+log()  { echo "$(date) $*" >> "$LOG"; echo "$*"; }
+warn() { log "WARN: $*"; }
+info() { log "INFO: $*"; }
+fix()  { healed=$((healed+1)); log "FIXED: $*"; }
+
+heal_arch() {
+    AR="$(arch_root)"
+    [ -d "$AR" ] || { info "Arch rootfs not found — skipping"; return 0; }
+    mount_root "$AR" 2>/dev/null || true
+
+    info "checking Arch chroot..."
+
+    # 1. Pacman DB corruption
+    if [ -f "$AR/var/lib/pacman/db.lck" ]; then
+        rm -f "$AR/var/lib/pacman/db.lck"
+        fix "removed stale pacman db.lck"
+    fi
+
+    PACMAN_DB="$AR/var/lib/pacman/local"
+    if [ -d "$PACMAN_DB" ]; then
+        DB_COUNT=$(find "$PACMAN_DB" -maxdepth 2 -name 'desc' 2>/dev/null | wc -l)
+        if [ "$DB_COUNT" -lt 10 ]; then
+            info "pacman DB may be corrupted ($DB_COUNT entries) — re-initializing"
+            chroot_exec "$AR" /bin/sh -c 'pacman-db-upgrade 2>/dev/null; pacman -Sy --noconfirm 2>/dev/null' || true
+            fix "re-indexed pacman database"
+        fi
+    fi
+
+    # 2. Missing critical binaries
+    for bin in sudo sshd zsh pacman; do
+        if [ ! -x "$AR/usr/bin/$bin" ] && [ ! -x "$AR/bin/$bin" ]; then
+            warn "missing $bin — reinstalling"
+            case "$bin" in
+                sudo) chroot_exec "$AR" /bin/sh -c 'pacman -S --noconfirm sudo 2>/dev/null' || true ;;
+                sshd) chroot_exec "$AR" /bin/sh -c 'pacman -S --noconfirm openssh 2>/dev/null' || true ;;
+                zsh)  chroot_exec "$AR" /bin/sh -c 'pacman -S --noconfirm zsh 2>/dev/null' || true ;;
+                pacman) warn "pacman itself missing — chroot may need reinstall" ;;
+            esac
+            [ -x "$AR/usr/bin/$bin" ] && fix "reinstalled $bin in Arch"
+        fi
+    done
+
+    # 3. /dev/fd for bash process substitution
+    if [ ! -e "$AR/dev/fd" ]; then
+        chroot_exec "$AR" /bin/sh -c 'ln -sf /proc/self/fd /dev/fd' 2>/dev/null || true
+        fix "created /dev/fd symlink"
+    fi
+
+    # 4. resolv.conf
+    if [ ! -f "$AR/etc/resolv.conf" ] || [ ! -s "$AR/etc/resolv.conf" ]; then
+        printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > "$AR/etc/resolv.conf"
+        fix "restored /etc/resolv.conf"
+    fi
+
+    # 5. sshd keys
+    if [ ! -f "$AR/etc/ssh/ssh_host_ed25519_key" ]; then
+        chroot_exec "$AR" /bin/sh -c 'ssh-keygen -A' 2>/dev/null || true
+        fix "regenerated SSH host keys"
+    fi
+}
+
+heal_kali() {
+    KR="$(kali_root)"
+    [ -d "$KR" ] || { info "Kali rootfs not found — skipping"; return 0; }
+    mount_root "$KR" 2>/dev/null || true
+
+    info "checking Kali chroot..."
+
+    # 1. Fix interrupted dpkg
+    if [ -f "$KR/var/lib/dpkg/lock-frontend" ] || [ -f "$KR/var/lib/dpkg/lock" ]; then
+        chroot_exec "$KR" /bin/sh -c 'rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock' 2>/dev/null
+        fix "removed dpkg locks"
+    fi
+
+    # 2. Configure any unpacked but unconfigured packages
+    chroot_exec "$KR" /bin/sh -c 'dpkg --configure -a' 2>/dev/null && \
+        fix "ran dpkg --configure -a" || true
+
+    # 3. Fix apt sources
+    if [ ! -f "$KR/etc/apt/sources.list" ]; then
+        mkdir -p "$KR/etc/apt"
+        echo "deb http://http.kali.org/kali kali-rolling main non-free contrib" > "$KR/etc/apt/sources.list"
+        fix "restored apt sources.list"
+    fi
+
+    # 4. /dev/fd
+    if [ ! -e "$KR/dev/fd" ]; then
+        chroot_exec "$KR" /bin/sh -c 'ln -sf /proc/self/fd /dev/fd' 2>/dev/null || true
+        fix "created /dev/fd symlink in Kali"
+    fi
+
+    # 5. sshd keys
+    if [ ! -f "$KR/etc/ssh/ssh_host_ed25519_key" ]; then
+        chroot_exec "$KR" /bin/sh -c 'ssh-keygen -A' 2>/dev/null || true
+        fix "regenerated SSH host keys in Kali"
+    fi
+}
+
+heal_all() {
+    info "starting auto-heal..."
+    heal_arch
+    heal_kali
+
+    # Common fixes
+    setenforce 0 2>/dev/null || true
+
+    if [ "$healed" -eq 0 ]; then
+        info "all checks passed — no healing needed"
+    else
+        info "$healed issue(s) fixed"
+    fi
+}
+
+case "${1:-all}" in
+    arch) heal_arch ;;
+    kali) heal_kali ;;
+    all)  heal_all ;;
+    check)
+        info "running check-only (no fixes)..."
+        nh_args="-n"
+        heal_all
+        ;;
+    *)
+        echo "usage: nh-heal {arch|kali|all|check}" >&2
+        exit 2
+        ;;
+esac

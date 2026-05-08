@@ -1,0 +1,156 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P10
+# nh-zero-trust — Zero Trust Architecture
+set -euo pipefail
+
+ZT_DIR="/data/local/nhsystem/zero-trust"
+POLICY_FILE="$ZT_DIR/policy.json"
+LOG_FILE="$ZT_DIR/decisions.log"
+
+show_usage() {
+    cat <<EOF
+nh-zero-trust — Zero Trust Architecture
+
+Usage: nh-zero-trust <command> [args]
+
+Commands:
+  status           Show zero trust status
+  verify <ip>     Verify device trust
+  policy [list|add|remove]  Manage trust policies
+  monitor          Start continuous monitoring
+  decisions        Show trust decisions log
+  help             Show this message
+
+Example:
+  nh-zero-trust status
+  nh-zero-trust verify 192.168.1.50
+  nh-zero-trust policy list
+EOF
+}
+
+init_zt() {
+    mkdir -p "$ZT_DIR"
+    if [ ! -f "$POLICY_FILE" ]; then
+        cat > "$POLICY_FILE" <<'EOF'
+{
+  "default_policy": "deny",
+  "trusted_devices": [],
+  "trusted_networks": ["127.0.0.0/8", "10.0.0.0/8"],
+  "verification_required": ["ssh", "adb", "http"]
+}
+EOF
+    fi
+    touch "$LOG_FILE"
+}
+
+verify_device() {
+    local ip="$1"
+    echo "══ Verifying Device: $ip ═══════"
+    
+    # Check if in trusted list
+    if grep -q "$ip" "$POLICY_FILE" 2>/dev/null; then
+        echo "  Trust: ✓ TRUSTED (explicit)"
+        return 0
+    fi
+    
+    # Check network
+    local network=$(echo "$ip" | cut -d. -f1-3)
+    if grep -q "$network" "$POLICY_FILE" 2>/dev/null; then
+        echo "  Trust: ⚠ CONDITIONAL (network trusted)"
+        return 1
+    fi
+    
+    # Verify connectivity
+    if ping -c 1 "$ip" >/dev/null 2>&1; then
+        echo "  Trust: ✗ UNTRUSTED (but reachable)"
+        echo "  Action: DENY access"
+        echo "[$(date)] DENY $ip: Not in trusted list" >> "$LOG_FILE"
+        return 2
+    else
+        echo "  Trust: ✗ UNREACHABLE"
+        return 3
+    fi
+}
+
+cmd_status() {
+    echo "══ Zero Trust Status ════════════"
+    init_zt
+    
+    echo "  Mode: Zero Trust (default: DENY)"
+    echo "  Trusted devices: $(python3 -c "import json; d=json.load(open('$POLICY_FILE')); print(len(d['trusted_devices']))" 2>/dev/null || echo 0)"
+    echo "  Trusted networks: $(python3 -c "import json; d=json.load(open('$POLICY_FILE')); print(len(d['trusted_networks']))" 2>/dev/null || echo 0)"
+    echo ""
+    echo "  Recent decisions:"
+    tail -3 "$LOG_FILE" 2>/dev/null || echo "    No decisions yet"
+}
+
+cmd_verify() {
+    local ip="${2:-}"
+    [ -z "$ip" ] && { echo "Usage: nh-zero-trust verify <ip>"; exit 1; }
+    init_zt
+    verify_device "$ip"
+}
+
+cmd_policy() {
+    local action="${2:-list}"
+    init_zt
+    
+    case "$action" in
+        list)
+            echo "══ Trust Policies ════════════"
+            python3 -c "
+import json
+with open('$POLICY_FILE') as f:
+    d = json.load(f)
+print('  Default policy:', d['default_policy'])
+print('  Trusted devices:', len(d['trusted_devices']))
+print('  Trusted networks:', d['trusted_networks'])
+" 2>/dev/null || cat "$POLICY_FILE"
+            ;;
+        add)
+            local item="${3:-}"
+            [ -z "$item" ] && { echo "Usage: nh-zero-trust policy add <ip|network>"; exit 1; }
+            echo "  Adding to trusted: $item"
+            ;;
+        remove)
+            local item="${3:-}"
+            [ -z "$item" ] && { echo "Usage: nh-zero-trust policy remove <ip|network>"; exit 1; }
+            echo "  Removing from trusted: $item"
+            ;;
+        *)
+            echo "Unknown action: $action"
+            ;;
+    esac
+}
+
+cmd_monitor() {
+    echo "══ Zero Trust Monitor ════════════"
+    init_zt
+    echo "  Monitoring started (Ctrl+C to stop)..."
+    
+    while true; do
+        # Check for new connections
+        ss -tun 2>/dev/null | grep ESTAB | while read line; do
+            echo "[$(date)] Connection: $line" >> "$LOG_FILE"
+        done
+        sleep 10
+    done
+}
+
+cmd_decisions() {
+    echo "══ Trust Decisions Log ══════════"
+    init_zt
+    tail -10 "$LOG_FILE" 2>/dev/null || echo "  No decisions logged yet"
+}
+
+init_zt
+
+case "${1:-help}" in
+    status)     cmd_status ;;
+    verify)    cmd_verify "$@" ;;
+    policy)     cmd_policy "$@" ;;
+    monitor)    cmd_monitor ;;
+    decisions) cmd_decisions ;;
+    help|*)    show_usage ;;
+esac

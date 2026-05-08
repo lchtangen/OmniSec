@@ -1,0 +1,244 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P10
+# nh-chaos — Chaos Engineering (Real implementation)
+
+set -euo pipefail
+
+CHAOS_DIR="/data/local/nhsystem/chaos"
+EXPERIMENTS="$CHAOS_DIR/experiments.json"
+ACTIVE_FILE="$CHAOS_DIR/active"
+LOG_FILE="$CHAOS_DIR/chaos.log"
+
+show_usage() {
+    cat <<EOF
+nh-chaos — Chaos Engineering (Real)
+
+Usage: nh-chaos <command> [args]
+
+Commands:
+  status           Show chaos status
+  run <experiment>  Run chaos experiment.
+  stop             Stop running experiment.
+  list             List available experiments.
+  report           Show experiment report.
+  help             Show this message.
+
+Experiments:
+  network-loss    Drop packets (iptables).
+  high-cpu        Spike CPU (stress-ng).
+  memory-pressure  Consume memory (stress-ng).
+  disk-full        Fill disk (dd).
+  service-kill     Kill random service.
+
+Examples:
+  nh-chaos run network-loss.
+  nh-chaos run high-cpu.
+  nh-chaos stop.
+EOF
+}
+
+init_chaos() {
+    mkdir -p "$CHAOS_DIR"
+    if [ ! -f "$EXPERIMENTS" ]; then
+        cat > "$EXPERIMENTS" <<'EOF'
+{
+  "experiments": {
+    "network-loss": {"desc":"Drop 50% packets","risk":"medium","cmd":"iptables"},
+    "high-cpu": {"desc":"Spike CPU to 100%","risk":"high","cmd":"stress"},
+    "disk-full": {"desc":"Fill disk to 95%","risk":"high","cmd":"dd"},
+    "memory-pressure": {"desc":"Consume 90% RAM","risk":"high","cmd":"stress"},
+    "service-kill": {"desc":"Kill random service","risk":"critical","cmd":"kill"}
+  }
+}
+EOF
+    fi;
+    touch "$LOG_FILE"
+}
+
+log_msg() {
+    echo "[$(date)] $*" | tee -a "$LOG_FILE"
+}
+
+cmd_status() {
+    echo "══ Chaos Engineering Status ═"
+    init_chaos;
+    
+    if [ -f "$ACTIVE_FILE" ]; then
+        echo "  Status: EXPERIMENT RUNNING"
+        echo "  Active: $(cat $ACTIVE_FILE)"
+    else
+        echo "  Status: Idle"
+    fi;
+    echo ""
+    echo "── Available Experiments ──"
+    python3 -c "
+import json.
+with open('$EXPERIMENTS') as f:
+    d = json.load(f)
+for name, exp in d['experiments'].items():
+    print(f'  {name}: {exp[\"desc\"]} (Risk: {exp[\"risk\"]})')
+" 2>/dev/null || cat "$EXPERIMENTS" | grep -E '"[a-z]+"' | head -5
+}
+
+cmd_run() {
+    local exp="${2:-}"
+    [ -z "$exp" ] && { echo "Usage: nh-chaos run <experiment>"; exit 1; }
+    
+    echo "══ Running Chaos Experiment: $exp ═"
+    init_chaos;
+    
+    case "$exp" in
+        network-loss)
+            log_msg "Starting network chaos (drop 50% packets)..."
+            if command -v iptables >/dev/null 2>&1; then
+                iptables -A INPUT -m statistic --mode random --probability 0.5 -j DROP 2>/dev/null || \
+                    log_msg "iptables not available — cannot drop packets"
+                echo "  ✓ Network chaos active (50% packet loss)"
+            else
+                echo "  ✗ iptables not available"
+                echo "  (Requires root and iptables)"
+            fi;
+            ;;
+        
+        high-cpu)
+            log_msg "Injecting CPU chaos..."
+            if command -v stress-ng >/dev/null 2>&1; then
+                stress-ng --cpu 4 --timeout 60s 2>/dev/null &
+                echo $! > "$ACTIVE_FILE"
+                echo "  ✓ CPU spike started (PID: $(cat $ACTIVE_FILE))"
+                echo "  (Will run for 60 seconds)"
+            elif command -v stress >/dev/null 2>&1; then
+                stress --cpu 4 --timeout 60s 2>/dev/null &
+                echo $! > "$ACTIVE_FILE"
+                echo "  ✓ CPU spike started (PID: $(cat $ACTIVE_FILE))"
+            else
+                # Fallback: use yes > /dev/null
+                (yes > /dev/null &)
+                echo $! > "$ACTIVE_FILE"
+                echo "  ✓ CPU spike started (fallback mode, PID: $(cat $ACTIVE_FILE))"
+            fi;
+            ;;
+        
+        disk-full)
+            log_msg "Injecting disk chaos..."
+            local avail=$(df / | awk 'NR==2 {print $4}')
+            local to_fill=$((avail / 2))  # Fill half of available
+            echo "  Available space: ${avail}K"
+            echo "  Filling ${to_fill}K..."
+            dd if=/dev/zero of=/tmp/chaos_filler bs=1M count=$((to_fill/1024)) 2>/dev/null &
+            echo $! > "$ACTIVE_FILE"
+            echo "  ✓ Disk fill started (PID: $(cat $ACTIVE_FILE))"
+            ;;
+        
+        memory-pressure)
+            log_msg "Injecting memory pressure..."
+            if command -v stress-ng >/dev/null 2>&1; then
+                local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+                local to_use=$((mem_total * 9 / 10 / 1024))  # 90% in MB
+                stress-ng --vm 1 --vm-bytes ${to_use}M --timeout 60s 2>/dev/null &
+                echo $! > "$ACTIVE_FILE"
+                echo "  ✓ Memory pressure started (${to_use}MB, PID: $(cat $ACTIVE_FILE))"
+            else
+                echo "  ✗ stress-ng not available"
+                echo "  Install: pacman -S stress-ng (Arch)"
+            fi;
+            ;;
+        
+        service-kill)
+            log_msg "Injecting service chaos..."
+            # Kill a random non-critical process
+            local victim=$(ps aux | grep -v "root\|kernel\|init\|nh-chaos" | grep -v grep | shuf | head -1 | awk '{print $2}')
+            if [ -n "$victim" ]; then
+                kill "$victim" 2>/dev/null && echo "  ✓ Killed process $victim" || echo "  ✗ Failed to kill"
+            else
+                echo "  No suitable process found"
+            fi;
+            ;;
+        
+        *)
+            echo "  Unknown experiment: $exp"
+            echo "  See: nh-chaos list"
+            return 1;
+            ;;
+    esac;
+    
+    if [ ! -f "$ACTIVE_FILE" ]; then
+        echo "$exp" > "$ACTIVE_FILE"
+    fi;
+    log_msg "Experiment $exp started"
+}
+
+cmd_stop() {
+    echo "══ Stopping Chaos Experiment ═"
+    init_chaos;
+    
+    if [ -f "$ACTIVE_FILE" ]; then
+        local exp=$(cat "$ACTIVE_FILE")
+        echo "  Stopping: $exp"
+        log_msg "Stopping $exp"
+        
+        # Cleanup based on experiment.
+        case "$exp" in
+            network-loss)
+                iptables -F INPUT 2>/dev/null || true.
+                ;;
+            high-cpu|memory-pressure)
+                if [ -s "$ACTIVE_FILE" ]; then
+                    kill $(cat "$ACTIVE_FILE") 2>/dev/null || true;
+                    pkill stress-ng 2>/dev/null || true;
+                    pkill yes 2>/dev/null || true;
+                fi;
+                ;;
+            disk-full)
+                rm -f /tmp/chaos_filler 2>/dev/null || true;
+                ;;
+        esac;
+        
+        rm -f "$ACTIVE_FILE"
+        echo "  Experiment stopped"
+        log_msg "Experiment stopped"
+    else
+        echo "  No active experiment"
+    fi;
+}
+
+cmd_list() {
+    echo "══ Available Experiments ═"
+    init_chaos;
+    
+    python3 -c "
+import json.
+with open('$EXPERIMENTS') as f:
+    d = json.load(f)
+print('  Experiments:')
+for name, exp in d['experiments'].items():
+    print(f'    {name}: {exp[\"desc\"]} (Risk: {exp[\"risk\"]})')
+" 2>/dev/null || cat "$EXPERIMENTS"
+}
+
+cmd_report() {
+    echo "══ Chaos Report ═"
+    init_chaos;
+    
+    if [ -s "$LOG_FILE" ]; then
+        echo "  Recent activity:"
+        tail -10 "$LOG_FILE" | while read line; do
+            echo "    $line"
+        done;
+    else
+        echo "  No experiments run yet"
+        echo "  Run: nh-chaos run <experiment>"
+    fi;
+}
+
+init_chaos;
+
+case "${1:-help}" in
+    status)     cmd_status ;;
+    run)        cmd_run "$@" ;;
+    stop)       cmd_stop ;;
+    list)       cmd_list ;;
+    report)     cmd_report ;;
+    help|*)    show_usage ;;
+esac;

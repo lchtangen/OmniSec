@@ -1,0 +1,405 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-market - Module marketplace and registry with real module data
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+MARKET_DIR=$NHSYSTEM/etc/market
+REGISTRY=$MARKET_DIR/registry.json
+INSTALLED_DIR=$NHSYSTEM/modules
+CACHE_DIR=$MARKET_DIR/cache
+NHWORK=$NHSYSTEM/workspaces/main
+
+MARKET_URL=${NH_MARKET_URL:-https://raw.githubusercontent.com/nethunter-nx/modules/main/registry.json}
+
+ensure_dirs() {
+    mkdir -p "$MARKET_DIR" "$INSTALLED_DIR" "$CACHE_DIR"
+}
+
+init_registry() {
+    ensure_dirs
+    if [ ! -f "$REGISTRY" ]; then
+        cat > "$REGISTRY" <<'REG'
+{
+  "name": "NetHunter NextGen Module Registry",
+  "version": "2.0.0",
+  "updated": "2026-05-08",
+  "modules": [
+    {
+      "name": "nethunter-full",
+      "version": "2025.4",
+      "description": "Kali NetHunter ARM64 full chroot (2.2GB)",
+      "author": "Offensive Security",
+      "category": "core",
+      "url": "https://image-nethunter.kali.org/nethunter-installer/kali-daily/",
+      "install_method": "magisk+chroot"
+    },
+    {
+      "name": "nethunter-minimal",
+      "version": "2025.4",
+      "description": "Kali NetHunter ARM64 minimal chroot (334MB)",
+      "author": "Offensive Security",
+      "category": "core",
+      "url": "https://image-nethunter.kali.org/nethunter-installer/kali-daily/",
+      "install_method": "magisk+chroot"
+    },
+    {
+      "name": "nethunter-kernel",
+      "version": "2025.4",
+      "description": "NetHunter custom kernel for supported devices",
+      "author": "Offensive Security",
+      "category": "kernel",
+      "url": "https://nethunter.kali.org/device-kernels.html",
+      "install_method": "twrp|magisk"
+    },
+    {
+      "name": "always-trust-user-certs",
+      "version": "1.2",
+      "description": "Auto-promote user certificates to system CA store (MITM testing)",
+      "author": "NVISOsecurity",
+      "category": "security",
+      "url": "https://github.com/NVISOsecurity/AlwaysTrustUserCerts",
+      "install_method": "magisk"
+    },
+    {
+      "name": "magisk-frida",
+      "version": "1.7.0",
+      "description": "Run frida-server on boot for dynamic instrumentation",
+      "author": "ViRb3",
+      "category": "pentest",
+      "url": "https://github.com/ViRb3/magisk-frida",
+      "install_method": "magisk"
+    },
+    {
+      "name": "magisk-hluda",
+      "version": "1.0",
+      "description": "Stealth Frida server - undetectable variant",
+      "author": "Exo1i",
+      "category": "pentest",
+      "url": "https://github.com/Exo1i/MagiskHluda",
+      "install_method": "magisk"
+    },
+    {
+      "name": "yay-pentest-module",
+      "version": "1.0",
+      "description": "All-in-one: MoveCert + Frida + custom pentest tools",
+      "author": "MaliciousErection",
+      "category": "pentest",
+      "url": "https://github.com/MaliciousErection/YayPentestMagiskModuleYay",
+      "install_method": "magisk"
+    },
+    {
+      "name": "beerus-framework",
+      "version": "2.0",
+      "description": "Mobile pentest framework: Frida Core, ADB over network, proxy, certs",
+      "author": "Hakai Offensive Security",
+      "category": "pentest",
+      "url": "https://github.com/hakaioffsec/beerus-android",
+      "install_method": "apk+magisk"
+    },
+    {
+      "name": "nethunter-term-fix",
+      "version": "1.0",
+      "description": "Fix Kali NetHunter Terminal for Magisk 26+",
+      "author": "Dylanmurzello",
+      "category": "fix",
+      "url": "https://github.com/Dylanmurzello/kali-nethunter-nhterm-magisk-fix",
+      "install_method": "magisk"
+    },
+    {
+      "name": "busybox-ndk",
+      "version": "1.36",
+      "description": "Essential Linux utilities for Android via Busybox",
+      "author": "Magisk-Modules-Repo",
+      "category": "utility",
+      "url": "https://github.com/Magisk-Modules-Repo/busybox-ndk",
+      "install_method": "magisk"
+    },
+    {
+      "name": "systemless-hosts",
+      "version": "1.0",
+      "description": "Systemless ad-blocking via hosts file",
+      "author": "Magisk-Modules-Repo",
+      "category": "utility",
+      "url": "https://github.com/Magisk-Modules-Repo/systemless-hosts",
+      "install_method": "magisk"
+    },
+    {
+      "name": "nethunter-bt-arsenal",
+      "version": "1.0",
+      "description": "Bluetooth attack suite: L2ping, Redfang, Blueranger, Carwhisperer",
+      "author": "Kali NetHunter",
+      "category": "attack",
+      "url": "https://kali.org/docs/nethunter/nethunter-btarsenal",
+      "install_method": "builtin"
+    },
+    {
+      "name": "nethunter-wifiphisher",
+      "version": "1.0",
+      "description": "Evil AP phishing attack framework",
+      "author": "Kali NetHunter",
+      "category": "attack",
+      "url": "https://kali.org/docs/nethunter/",
+      "install_method": "builtin"
+    },
+    {
+      "name": "nethunter-hid-attacks",
+      "version": "1.0",
+      "description": "HID keyboard attacks: BadUSB, DuckHunter",
+      "author": "Kali NetHunter",
+      "category": "attack",
+      "url": "https://kali.org/docs/nethunter/",
+      "install_method": "kernel"
+    },
+    {
+      "name": "nethunter-wps",
+      "version": "1.0",
+      "description": "WPS attacks using OneShot",
+      "author": "Kali NetHunter",
+      "category": "attack",
+      "url": "https://kali.org/docs/nethunter/",
+      "install_method": "builtin"
+    }
+  ]
+}
+REG
+        echo "  Local registry initialized"
+    fi
+}
+
+list_modules() {
+    local filter="${1:-all}"
+    init_registry
+
+    local data=$(cat "$REGISTRY")
+    local remote_data=""
+    if command -v curl >/dev/null 2>&1; then
+        remote_data=$(curl -s --connect-timeout 5 "$MARKET_URL" 2>/dev/null) || remote_data=""
+    fi
+    [ -n "$remote_data" ] && data="$remote_data"
+
+    echo "── NetHunter Module Registry ──"
+    echo ""
+
+    local current_category=""
+    echo "$data" | grep -o '"name":"[^"]*"' | cut -d'"' -f4 | while read -r name; do
+        local cat=$(echo "$data" | grep -A15 "\"name\":\"$name\"" | grep '"category"' | cut -d'"' -f4)
+        local ver=$(echo "$data" | grep -A15 "\"name\":\"$name\"" | grep '"version"' | cut -d'"' -f4)
+        local desc=$(echo "$data" | grep -A15 "\"name\":\"$name\"" | grep '"description"' | cut -d'"' -f4)
+        local author=$(echo "$data" | grep -A15 "\"name\":\"$name\"" | grep '"author"' | cut -d'"' -f4)
+        local method=$(echo "$data" | grep -A15 "\"name\":\"$name\"" | grep '"install_method"' | cut -d'"' -f4)
+
+        [ "$filter" != "all" ] && [ "$cat" != "$filter" ] && continue
+
+        if [ "$cat" != "$current_category" ]; then
+            current_category="$cat"
+            echo "  [${cat}]"
+        fi
+
+        local installed=""
+        if [ -d "$INSTALLED_DIR/$name" ] || [ -d "/data/adb/modules/$name" ]; then
+            installed=" [INSTALLED]"
+        fi
+
+        printf "    %-30s v%-10s %s%s\n" "$name" "$ver" "$author" "$installed"
+        printf "    %-30s %s\n" "" "$desc"
+        printf "    %-30s install: %s\n" "" "$method"
+        echo ""
+    done
+
+    echo "  Registry: $MARKET_URL"
+    echo "  Modules:  $INSTALLED_DIR"
+}
+
+install_module() {
+    local name="$1"
+    init_registry
+
+    if [ -d "$INSTALLED_DIR/$name" ]; then
+        echo "  Already installed: $name" >&2
+        return 1
+    fi
+
+    local data=$(cat "$REGISTRY")
+    local url=$(echo "$data" | grep -A15 "\"name\":\"$name\"" | grep '"url"' | cut -d'"' -f4)
+    local method=$(echo "$data" | grep -A15 "\"name\":\"$name\"" | grep '"install_method"' | cut -d'"' -f4)
+    local desc=$(echo "$data" | grep -A15 "\"name\":\"$name\"" | grep '"description"' | cut -d'"' -f4)
+
+    echo "  Installing: $name"
+    echo "  Description: $desc"
+    echo "  Method: $method"
+    echo ""
+
+    mkdir -p "$INSTALLED_DIR/$name"
+
+    case "$method" in
+        magisk)
+            echo "  This is a Magisk module. Install via:"
+            echo "    Magisk Manager -> Modules -> Install from storage"
+            echo "  URL: $url"
+            mkdir -p "$NHWORK/magisk-modules"
+            echo "  Tip: nh-magisk fetch <name> to download"
+            ;;
+        apk+magisk)
+            echo "  Requires both APK and Magisk module"
+            echo "  URL: $url"
+            echo "  1. Download APK from releases and install"
+            echo "  2. Flash Magisk module in Magisk Manager"
+            ;;
+        kernel)
+            echo "  Requires custom kernel. Check:"
+            echo "  URL: $url"
+            echo "  https://nethunter.kali.org/device-kernels.html"
+            ;;
+        builtin)
+            echo "  Built into NetHunter app or chroot"
+            echo "  Access via NetHunter app drawer"
+            echo "  URL: $url"
+            ;;
+        magisk+chroot)
+            echo "  Requires Magisk module + chroot download"
+            echo "  URL: $url"
+            echo "  1. Flash NetHunter zip in Magisk Manager"
+            echo "  2. Open NetHunter app, download chroot"
+            echo "  3. Use Kali Chroot Manager to install"
+            ;;
+        twrp|recovery)
+            echo "  Flash via custom recovery (TWRP)"
+            echo "  URL: $url"
+            ;;
+        *)
+            echo "  Manual install required"
+            echo "  URL: $url"
+            ;;
+    esac
+
+    # Save module info
+    cat > "$INSTALLED_DIR/$name/module.conf" <<MOD
+name=$name
+url=$url
+method=$method
+installed=$(date +%Y-%m-%d)
+MOD
+    echo ""
+    echo "  Module info saved to: $INSTALLED_DIR/$name/module.conf"
+}
+
+remove_module() {
+    local name="$1"
+    if [ ! -d "$INSTALLED_DIR/$name" ]; then
+        echo "  Not in local registry: $name" >&2
+        echo "  Check Magisk: /data/adb/modules/$name"
+        exit 1
+    fi
+    echo "  Removing $name"
+    rm -rf "$INSTALLED_DIR/$name"
+    echo "  Removed: $name"
+}
+
+list_installed() {
+    echo "── Installed Modules ──"
+    echo ""
+
+    local count=0
+
+    # Check local modules
+    for mod in "$INSTALLED_DIR"/*/; do
+        [ -d "$mod" ] || continue
+        local name=$(basename "$mod")
+        local ver=$(grep ^version "$mod/module.conf" 2>/dev/null | cut -d= -f2 || cat "$mod/module.conf" 2>/dev/null | grep installed | head -1)
+        echo "  $name ($ver)"
+        count=$((count + 1))
+    done
+
+    # Check Magisk modules
+    if [ -d /data/adb/modules ]; then
+        for m in /data/adb/modules/*/; do
+            [ -d "$m" ] || continue
+            local name=$(basename "$m")
+            local ver=$(cat "$m/module.prop" 2>/dev/null | grep '^version=' | cut -d= -f2 || echo "?")
+            [ -d "$INSTALLED_DIR/$name" ] && continue
+            echo "  $name (Magisk: v$ver)"
+            count=$((count + 1))
+        done
+    fi
+
+    [ $count -eq 0 ] && echo "  No modules installed"
+    echo "  Total: $count module(s)"
+}
+
+update_registry() {
+    init_registry
+    if command -v curl >/dev/null 2>&1; then
+        echo "  Updating registry from: $MARKET_URL"
+        local tmp="$CACHE_DIR/registry-new.json"
+        curl -sL --connect-timeout 10 "$MARKET_URL" -o "$tmp" 2>/dev/null && {
+            if grep -q '"modules"' "$tmp" 2>/dev/null; then
+                mv "$tmp" "$REGISTRY"
+                echo "  Registry updated successfully"
+                echo "  Source: remote"
+            else
+                rm -f "$tmp"
+                echo "  Invalid remote registry (using local)" >&2
+            fi
+        } || {
+            echo "  Failed to fetch remote registry (using local)" >&2
+        }
+    else
+        echo "  curl not available, using local registry" >&2
+    fi
+}
+
+show_categories() {
+    echo "── Module Categories ──"
+    echo ""
+    echo "  all       - Show all modules"
+    echo "  core      - NetHunter core (chroot, kernel)"
+    echo "  security  - Certificate trust, hardening"
+    echo "  pentest   - Frida, instrumentation, frameworks"
+    echo "  attack    - Wi-Fi, BT, HID attack tools"
+    echo "  kernel    - Custom kernels for NetHunter"
+    echo "  fix       - Compatibility fixes"
+    echo "  utility   - Busybox, hosts, etc."
+    echo ""
+    echo "Usage: nh-market list [category]"
+}
+
+usage() {
+    cat <<EOF
+nh-market - Module marketplace and registry
+
+Usage: nh-market <command> [args]
+
+Commands:
+  list [category]     List available modules (all, core, security, pentest, attack, kernel, fix, utility)
+  installed           List installed modules
+  install <name>      Install module (save config + instructions)
+  remove <name>       Remove from local registry
+  update              Update module registry from remote
+  categories          Show available categories
+
+Examples:
+  nh-market list all
+  nh-market list security
+  nh-market install magisk-frida
+  nh-market install always-trust-user-certs
+  nh-market installed
+  nh-market update
+
+Registry: $MARKET_URL
+Modules:  $INSTALLED_DIR
+EOF
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    list|list-all) shift; list_modules "${1:-all}" ;;
+    installed|list-installed) list_installed ;;
+    install) shift; [ $# -ge 1 ] || usage; install_module "$1" ;;
+    remove) shift; [ $# -ge 1 ] || usage; remove_module "$1" ;;
+    update|refresh) update_registry ;;
+    categories|cat) show_categories ;;
+    *) usage ;;
+esac

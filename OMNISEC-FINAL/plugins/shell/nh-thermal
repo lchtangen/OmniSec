@@ -1,0 +1,589 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P1
+# nh-thermal - Advanced thermal management for Android devices
+# Performance: cached reads, efficient sysfs polling, throttling detection
+set -u
+
+NHSYSTEM=${NHSYSTEM:-/data/local/nhsystem}
+CONFIG_DIR="$NHSYSTEM/etc/thermal"
+DATA_DIR="$NHSYSTEM/logs/thermal"
+THERMAL_ZONES="/sys/class/thermal"
+CPUFREQ_DIR="/sys/devices/system/cpu"
+MAX_HISTORY=1000
+
+# Colors
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# Thermal thresholds (millidegrees Celsius)
+THRESHOLD_CRITICAL=90000  # 90°C
+THRESHOLD_HIGH=75000      # 75°C
+THRESHOLD_MEDIUM=60000    # 60°C
+THRESHOLD_LOW=45000       # 45°C
+
+# Ensure directories
+mkdir -p "$CONFIG_DIR" "$DATA_DIR"
+
+# ── Utility Functions ───────────────────────────────────────────────────────
+
+info()  { printf "${BLUE}[INFO]${NC} %s\n" "$*"; }
+ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+err()   { printf "${RED}[ERR]${NC} %s\n" "$*" >&2; }
+debug() { [ "${DEBUG:-0}" = "1" ] && printf "${CYAN}[DBG]${NC} %s\n" "$*" || true; }
+
+# Cached thermal read (avoid excessive sysfs reads)
+cache_thermal_read() {
+    local zone="$1"
+    local cache_file="$DATA_DIR/.cache_zone_${zone##*/}"
+    local now=$(date +%s)
+    local cache_age=5  # seconds
+    
+    if [ -f "$cache_file" ]; then
+        local file_time=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+        local age=$((now - file_time))
+        if [ "$age" -lt "$cache_age" ]; then
+            cat "$cache_file"
+            return 0
+        fi
+    fi
+    
+    local temp
+    temp=$(cat "${zone}/temp" 2>/dev/null) || return 1
+    echo "$temp" > "$cache_file"
+    echo "$temp"
+}
+
+# ── Thermal Zone Discovery ─────────────────────────────────────────────────
+
+discover_zones() {
+    local zones=""
+    for zone in "$THERMAL_ZONES"/thermal_zone*; do
+        [ -d "$zone" ] || continue
+        zones="$zones $zone"
+    done
+    echo "$zones"
+}
+
+get_zone_type() {
+    local zone="$1"
+    cat "${zone}/type" 2>/dev/null || echo "unknown"
+}
+
+get_zone_temp() {
+    local zone="$1"
+    local temp
+    temp=$(cache_thermal_read "$zone" 2>/dev/null) || return 1
+    
+    # Handle different temp formats (some report in millidegrees, some in degrees)
+    if [ "$temp" -gt 1000 ]; then
+        # Millidegrees - convert to degrees
+        temp=$((temp / 1000))
+    fi
+    echo "$temp"
+}
+
+get_zone_temp_raw() {
+    local zone="$1"
+    cache_thermal_read "$zone" 2>/dev/null || echo "N/A"
+}
+
+# ── Temperature Classification ─────────────────────────────────────────────
+
+classify_temp() {
+    local temp="$1"
+    if [ "$temp" -ge $((THRESHOLD_CRITICAL/1000)) ]; then
+        echo "critical"
+    elif [ "$temp" -ge $((THRESHOLD_HIGH/1000)) ]; then
+        echo "high"
+    elif [ "$temp" -ge $((THRESHOLD_MEDIUM/1000)) ]; then
+        echo "medium"
+    elif [ "$temp" -ge $((THRESHOLD_LOW/1000)) ]; then
+        echo "low"
+    else
+        echo "cool"
+    fi
+}
+
+temp_color() {
+    local temp="$1"
+    local class
+    class=$(classify_temp "$temp")
+    case "$class" in
+        critical) echo -n "$RED" ;;
+        high)     echo -n "$YELLOW" ;;
+        medium)   echo -n "$CYAN" ;;
+        low)      echo -n "$GREEN" ;;
+        cool)     echo -n "$BLUE" ;;
+    esac
+}
+
+# ── CPU Frequency Monitoring ────────────────────────────────────────────────
+
+get_cpu_freq() {
+    local cpu="${1:-cpu0}"
+    local freq_file="$CPUFREQ_DIR/$cpu/cpufreq/scaling_cur_freq"
+    if [ -f "$freq_file" ]; then
+        local freq
+        freq=$(cat "$freq_file" 2>/dev/null) || return 1
+        # Convert from kHz to MHz
+        echo $((freq / 1000))
+    else
+        echo "N/A"
+    fi
+}
+
+get_cpu_governor() {
+    local cpu="${1:-cpu0}"
+    local gov_file="$CPUFREQ_DIR/$cpu/cpufreq/scaling_governor"
+    cat "$gov_file" 2>/dev/null || echo "N/A"
+}
+
+get_cpu_temp() {
+    # Try to find CPU-related thermal zone
+    for zone in $THERMAL_ZONES/thermal_zone*; do
+        [ -d "$zone" ] || continue
+        local type
+        type=$(get_zone_type "$zone")
+        case "$type" in
+            *cpu*|*CPU*|*core*|*CORE*) 
+                get_zone_temp "$zone"
+                return
+                ;;
+        esac
+    done
+    echo "N/A"
+}
+
+# ── Throttling Detection ────────────────────────────────────────────────────
+
+detect_throttling() {
+    local cpu="${1:-cpu0}"
+    local cur_freq
+    local max_freq
+    local min_freq
+    
+    cur_freq=$(cat "$CPUFREQ_DIR/$cpu/cpufreq/scaling_cur_freq" 2>/dev/null) || return 1
+    max_freq=$(cat "$CPUFREQ_DIR/$cpu/cpufreq/cpuinfo_max_freq" 2>/dev/null) || return 1
+    min_freq=$(cat "$CPUFREQ_DIR/$cpu/cpufreq/cpuinfo_min_freq" 2>/dev/null) || return 1
+    
+    # Check if current freq is significantly below max
+    local threshold=$((max_freq * 80 / 100))  # 80% of max
+    if [ "$cur_freq" -lt "$threshold" ]; then
+        echo "throttled"
+        return 0
+    fi
+    
+    # Check thermal throttling state
+    if [ -f "/sys/class/thermal/thermal_zone0/emul_temp" ]; then
+        # Some devices support thermal throttling indication
+        true
+    fi
+    
+    echo "normal"
+}
+
+# ── Profile Management ─────────────────────────────────────────────────────
+
+list_profiles() {
+    echo "── Available Thermal Profiles ──"
+    echo ""
+    printf "  ${BOLD}%-15s %-10s %-10s %-30s${NC}\n" "Profile" "Governor" "Max Freq" "Description"
+    printf "  %-15s %-10s %-10s %-30s\n" "───────────────" "──────────" "──────────" "──────────────────────────────────"
+    
+    printf "  %-15s %-10s %-10s %-30s\n" "performance" "performance" "max" "Maximum performance, no throttling"
+    printf "  %-15s %-10s %-10s %-30s\n" "balanced" "schedutil" "max" "Balanced performance and thermal"
+    printf "  %-15s %-10s %-10s %-30s\n" "powersave" "powersave" "max" "Prioritize battery life"
+    printf "  %-15s %-10s %-10s %-30s\n" "cool" "powersave" "scaled" "Aggressive cooling, reduced freq"
+    printf "  %-15s %-10s %-10s %-30s\n" "game" "performance" "max" "Gaming mode (higher thresholds)"
+    printf "  %-15s %-10s %-10s %-30s\n" "custom" "user-set" "user-set" "Custom settings (see config)"
+}
+
+apply_profile() {
+    local profile="$1"
+    info "Applying thermal profile: $profile"
+    
+    case "$profile" in
+        performance)
+            set_governor "performance"
+            set_thermal_limits 95 80 65
+            ok "Performance profile applied"
+            ;;
+        balanced)
+            set_governor "schedutil"
+            set_thermal_limits 85 70 55
+            ok "Balanced profile applied"
+            ;;
+        powersave)
+            set_governor "powersave"
+            set_thermal_limits 75 60 45
+            ok "Powersave profile applied"
+            ;;
+        cool)
+            set_governor "powersave"
+            scale_max_freq 70  # 70% of max
+            set_thermal_limits 65 50 40
+            ok "Cool profile applied - frequencies reduced"
+            ;;
+        game)
+            set_governor "performance"
+            set_thermal_limits 90 75 60
+            ok "Game profile applied"
+            ;;
+        custom)
+            if [ -f "$CONFIG_DIR/profile_custom.conf" ]; then
+                info "Loading custom profile from $CONFIG_DIR/profile_custom.conf"
+                # Parse custom config
+                . "$CONFIG_DIR/profile_custom.conf"
+            else
+                warn "Custom profile config not found, creating default"
+                create_custom_profile
+            fi
+            ;;
+        *)
+            err "Unknown profile: $profile"
+            echo "Available: performance, balanced, powersave, cool, game, custom"
+            return 1
+            ;;
+    esac
+    
+    # Save current profile
+    echo "$profile" > "$CONFIG_DIR/current_profile"
+}
+
+set_governor() {
+    local gov="$1"
+    info "Setting CPU governor to: $gov"
+    for cpu in $CPUFREQ_DIR/cpu*/cpufreq/scaling_governor; do
+        [ -f "$cpu" ] && echo "$gov" > "$cpu" 2>/dev/null || true
+    done
+}
+
+set_thermal_limits() {
+    local critical="$1"
+    local high="$2"
+    local medium="$3"
+    # Store for reference
+    cat > "$CONFIG_DIR/thermal_limits.conf" <<LIMITS
+CRITICAL=$critical
+HIGH=$high
+MEDIUM=$medium
+LIMITS
+    THRESHOLD_CRITICAL=$((critical * 1000))
+    THRESHOLD_HIGH=$((high * 1000))
+    THRESHOLD_MEDIUM=$((medium * 1000))
+}
+
+scale_max_freq() {
+    local percent="$1"
+    info "Scaling max frequency to ${percent}%"
+    for cpu in $CPUFREQ_DIR/cpu*; do
+        [ -d "$cpu/cpufreq" ] || continue
+        local max_freq
+        max_freq=$(cat "$cpu/cpufreq/cpuinfo_max_freq" 2>/dev/null) || continue
+        local new_max=$((max_freq * percent / 100))
+        echo "$new_max" > "$cpu/cpufreq/scaling_max_freq" 2>/dev/null || true
+    done
+}
+
+create_custom_profile() {
+    cat > "$CONFIG_DIR/profile_custom.conf" <<'CUSTOM'
+# Custom thermal profile
+GOVERNOR="schedutil"
+MAX_FREQ_PERCENT=100
+CRITICAL_THRESHOLD=80
+HIGH_THRESHOLD=65
+MEDIUM_THRESHOLD=50
+CUSTOM
+    ok "Custom profile template created at $CONFIG_DIR/profile_custom.conf"
+    ok "Edit the file and run: nh-thermal profile custom"
+}
+
+get_current_profile() {
+    if [ -f "$CONFIG_DIR/current_profile" ]; then
+        cat "$CONFIG_DIR/current_profile"
+    else
+        echo "none"
+    fi
+}
+
+# ── Monitoring ──────────────────────────────────────────────────────────────
+
+cmd_status() {
+    echo ""
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "  NH-THERMAL STATUS"
+    echo "  Device: $(getprop ro.product.model 2>/dev/null)"
+    echo "  Time: $(date +'%Y-%m-%d %H:%M:%S')"
+    echo "  Profile: $(get_current_profile)"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo ""
+    
+    # Thermal zones
+    echo "── Thermal Zones ──"
+    printf "  %-20s %-8s %-10s %-10s\n" "Zone" "Temp°C" "Class" "Type"
+    printf "  %-20s %-8s %-10s %-10s\n" "────────────────────" "───────" "──────────" "──────────"
+    
+    for zone in $(discover_zones); do
+        local type
+        local temp
+        type=$(get_zone_type "$zone")
+        temp=$(get_zone_temp "$zone" 2>/dev/null) || continue
+        [ -z "$temp" ] && continue
+        
+        local class
+        class=$(classify_temp "$temp")
+        local color
+        color=$(temp_color "$temp")
+        
+        printf "  %-20s ${color}%-8s${NC} %-10s %-10s\n" "$(basename "$zone")" "$temp" "$class" "$type"
+    done
+    
+    echo ""
+    
+    # CPU status
+    echo "── CPU Status ──"
+    printf "  %-10s %-10s %-15s %-10s\n" "Core" "Freq MHz" "Governor" "Throttling"
+    printf "  %-10s %-10s %-15s %-10s\n" "──────────" "──────────" "───────────────" "──────────"
+    
+    for cpu in $CPUFREQ_DIR/cpu[0-9]; do
+        [ -d "$cpu" ] || continue
+        local cpu_name
+        cpu_name=$(basename "$cpu")
+        local freq
+        local gov
+        local throttle
+        freq=$(get_cpu_freq "$cpu_name")
+        gov=$(get_cpu_governor "$cpu_name")
+        throttle=$(detect_throttling "$cpu_name")
+        
+        local throttle_color="$GREEN"
+        [ "$throttle" = "throttled" ] && throttle_color="$RED"
+        
+        printf "  %-10s %-10s %-15s ${throttle_color}%-10s${NC}\n" "$cpu_name" "$freq" "$gov" "$throttle"
+    done
+    
+    echo ""
+    
+    # Summary
+    echo "── Summary ──"
+    local cpu_temp
+    cpu_temp=$(get_cpu_temp)
+    if [ "$cpu_temp" != "N/A" ]; then
+        local cpu_class
+        cpu_class=$(classify_temp "$cpu_temp")
+        local color
+        color=$(temp_color "$cpu_temp")
+        echo "  CPU Temperature: ${color}${cpu_temp}°C ($cpu_class)${NC}"
+    fi
+    
+    # Check for critical temps
+    local critical_found=0
+    for zone in $(discover_zones); do
+        local temp
+        temp=$(get_zone_temp "$zone" 2>/dev/null) || continue
+        if [ "$temp" -ge $((THRESHOLD_CRITICAL/1000)) ]; then
+            err "CRITICAL TEMPERATURE in $(basename "$zone"): ${temp}°C"
+            critical_found=1
+        fi
+    done
+    
+    [ "$critical_found" -eq 0 ] && ok "No critical temperatures detected"
+    
+    echo ""
+}
+
+cmd_watch() {
+    local interval="${1:-2}"
+    info "Monitoring thermal status every ${interval}s (Ctrl+C to stop)"
+    echo ""
+    
+    while true; do
+        clear
+        cmd_status
+        sleep "$interval"
+    done
+}
+
+cmd_log() {
+    local duration="${1:-60}"
+    local interval="${2:-5}"
+    info "Logging thermal data for ${duration}s (every ${interval}s)..."
+    
+    local log_file="$DATA_DIR/thermal-$(date +%Y%m%d-%H%M%S).csv"
+    echo "time,cpu_temp,cpu_freq,governor,throttling" > "$log_file"
+    
+    local elapsed=0
+    while [ "$elapsed" -lt "$duration" ]; do
+        local timestamp
+        local cpu_temp
+        local cpu_freq
+        local gov
+        local throttle
+        
+        timestamp=$(date +%s)
+        cpu_temp=$(get_cpu_temp)
+        cpu_freq=$(get_cpu_freq "cpu0")
+        gov=$(get_cpu_governor "cpu0")
+        throttle=$(detect_throttling "cpu0")
+        
+        echo "$timestamp,$cpu_temp,$cpu_freq,$gov,$throttle" >> "$log_file"
+        
+        sleep "$interval"
+        elapsed=$((elapsed + interval))
+    done
+    
+    ok "Log saved: $log_file"
+}
+
+cmd_alert() {
+    local threshold="${1:-75}"
+    info "Alert mode: will notify when CPU temp exceeds ${threshold}°C"
+    info "Press Ctrl+C to stop"
+    echo ""
+    
+    while true; do
+        local cpu_temp
+        cpu_temp=$(get_cpu_temp)
+        if [ "$cpu_temp" != "N/A" ] && [ "$cpu_temp" -ge "$threshold" ]; then
+            err "ALERT: CPU temperature ${cpu_temp}°C exceeds threshold ${threshold}°C!"
+            # Try to send notification (if available)
+            am broadcast -a android.intent.action.SHOW_THERMAL_ALERT \
+                --es temp "$cpu_temp" >/dev/null 2>&1 || true
+        fi
+        sleep 5
+    done
+}
+
+# ── History & Analysis ─────────────────────────────────────────────────────
+
+cmd_history() {
+    echo "── Thermal History ──"
+    local logs
+    logs=$(ls -t "$DATA_DIR"/thermal-*.csv 2>/dev/null | head -5)
+    
+    if [ -z "$logs" ]; then
+        info "No thermal logs found"
+        return 0
+    fi
+    
+    for log in $logs; do
+        [ -f "$log" ] || continue
+        echo ""
+        echo "  File: $(basename "$log")"
+        echo "  Lines: $(wc -l < "$log")"
+        local avg_temp
+        avg_temp=$(tail -n +2 "$log" | cut -d',' -f2 | grep -v "N/A" | \
+            awk '{sum+=$1} END {if(NR>0) print int(sum/NR)}' 2>/dev/null || echo "N/A")
+        echo "  Avg CPU Temp: ${avg_temp}°C"
+    done
+}
+
+# ── Usage ──────────────────────────────────────────────────────────────────
+
+usage() {
+    cat <<EOF
+nh-thermal - Advanced Thermal Management for Android
+
+Usage: nh-thermal <command> [options]
+
+Status & Monitoring:
+  status              Show current thermal status
+  watch [interval]   Monitor continuously (default: 2s)
+  log [duration] [interval]  Log thermal data to CSV (default: 60s, 5s)
+  alert [threshold]  Alert when temp exceeds threshold (default: 75°C)
+
+Profiles:
+  profiles            List available thermal profiles
+  profile <name>      Apply a thermal profile
+  
+  Available profiles:
+    performance       Max performance, no throttling
+    balanced          Balanced performance and thermal (default)
+    powersave         Prioritize battery life
+    cool              Aggressive cooling, reduced frequency
+    game              Gaming mode (higher thresholds)
+    custom            Load custom settings from config
+
+Analysis:
+  history             Show thermal log history
+  analyze             Analyze thermal patterns (TODO)
+
+Configuration:
+  config              Show/edit configuration
+  reset               Reset to defaults
+
+Examples:
+  nh-thermal status
+  nh-thermal watch 5
+  nh-thermal profile balanced
+  nh-thermal alert 80
+
+Files:
+  Config: $CONFIG_DIR/
+  Logs:  $DATA_DIR/
+  Cache: $DATA_DIR/.cache_*
+
+Environment:
+  DEBUG=1    Enable debug output
+  NHSYSTEM   Override NetHunter system path
+
+Note: Some features require root access
+EOF
+    exit 0
+}
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+[ $# -ge 1 ] || usage
+
+case "$1" in
+    status)
+        cmd_status
+        ;;
+    watch)
+        shift
+        cmd_watch "${1:-2}"
+        ;;
+    log)
+        shift
+        cmd_log "${1:-60}" "${2:-5}"
+        ;;
+    alert)
+        shift
+        cmd_alert "${1:-75}"
+        ;;
+    profiles)
+        list_profiles
+        ;;
+    profile)
+        shift
+        [ $# -ge 1 ] || { err "Usage: nh-thermal profile <name>"; exit 1; }
+        apply_profile "$1"
+        ;;
+    history)
+        cmd_history
+        ;;
+    config)
+        info "Configuration directory: $CONFIG_DIR"
+        ls -la "$CONFIG_DIR/" 2>/dev/null || { warn "No config files yet"; exit 0; }
+        ;;
+    reset)
+        info "Resetting thermal configuration..."
+        rm -rf "$CONFIG_DIR"/*
+        ok "Reset complete"
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        err "Unknown command: $1"
+        usage
+        ;;
+esac

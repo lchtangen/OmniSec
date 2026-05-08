@@ -1,0 +1,16 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-sync — File sync tool
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-sync - File Sync Tool
+Usage: nh-sync {push|pull|status|help}
+EOF
+}
+case "${1:-help}" in
+    push) rsync -avz /data/local/nhsystem/ "$2" 2>/dev/null || echo "rsync failed" ;;
+    pull) rsync -avz "$2"/ /data/local/nhsystem/ 2>/dev/null || echo "rsync failed" ;;
+    status) echo "Sync status not implemented" ;;
+    help|*) show_usage ;;
+esac

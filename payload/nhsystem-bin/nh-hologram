@@ -1,0 +1,173 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P9
+# nh-hologram — ASCII/HTML Visualization (Real output)
+
+set -euo pipefail
+
+HOLO_DIR="/data/local/nhsystem/hologram"
+SCENE_FILE="$HOLO_DIR/scene.json"
+OUTPUT_FILE="$HOLO_DIR/output.html"
+
+show_usage() {
+    cat <<EOF
+nh-hologram — System Visualization (Real render)
+
+Usage: nh-hologram <command> [args]
+
+Commands:
+  status            Show visualization status
+  render <type>    Render system state (network, security, performance)
+  export [file]    Export to HTML file
+  scenes            List available scene types.
+  help              Show this message.
+
+Examples:
+  nh-hologram status
+  nh-hologram render network
+  nh-hologram render security
+  nh-hologram export /tmp/system.html
+
+Note: Generates real ASCII/HTML visualizations of system state.
+EOF
+}
+
+init_holo() {
+    mkdir -p "$HOLO_DIR"
+    if [ ! -f "$SCENE_FILE" ]; then
+        cat > "$SCENE_FILE" <<'EOF'
+{
+  "scenes": {
+    "network": "Network topology visualization",
+    "security": "Security status visualization",
+    "performance": "Performance metrics radar chart",
+    "threat": "Threat level visualization"
+  }
+}
+EOF
+    fi
+}
+
+cmd_status() {
+    echo "══ Visualization Status ═"
+    init_holo
+    echo ""
+    echo "── Available Scenes ──"
+    python3 -c "
+import json
+with open('$SCENE_FILE') as f:
+    d = json.load(f)
+for name, desc in d['scenes'].items():
+    print(f'  {name}: {desc}')
+" 2>/dev/null || echo "  network, security, performance, threat"
+    echo ""
+    echo "── Last Render ──"
+    if [ -f "$OUTPUT_FILE" ]; then
+        echo "  Output: $OUTPUT_FILE"
+        echo "  Size: $(du -h $OUTPUT_FILE | awk '{print $1}')"
+    else
+        echo "  No renders yet"
+    fi
+}
+
+cmd_render() {
+    local type="${2:-network}"
+    echo "══ Rendering Scene: $type ═"
+    init_holo
+    
+    case "$type" in
+        network)
+            echo "  Network Topology:"
+            echo "  ┌─────────────┐"
+            echo "  │   Gateway     │"
+            echo "  │   ($(ip route | grep default | awk '{print $3}' || echo 'N/A'))   │"
+            echo "  └──────┬──────┘"
+            
+            # Show connected devices
+            ip neigh 2>/dev/null | grep -v "FAILED" | head -5 | while read ip hw flags rest; do
+                echo "       ├─ $ip ($hw)"
+            done
+            ;;
+        
+        security)
+            echo "  Security Status:"
+            echo "  ┌─────────────────────────┐"
+            echo "  │ Threat Level: $([ -f /data/local/nhsystem/logs/alerts.log ] && echo 'HIGH' || echo 'LOW')     │"
+            echo "  │ Firewall:    $(iptables -L 2>/dev/null | grep -c DROP || echo 0) rules   │"
+            echo "  │ Open Ports:  $(ss -tln 2>/dev/null | grep -c LISTEN || echo 0)          │"
+            echo "  └─────────────────────────┘"
+            ;;
+        
+        performance)
+            echo "  Performance Metrics:"
+            echo "  ┌──────────────────────────────────┐"
+            echo "  │ CPU:    $(top -n 1 | grep "CPU:" | awk '{print $2}' || echo 'N/A')%        │"
+            echo "  │ Memory: $(free | awk '/Mem:/ {printf "%.1f%%", $3/$2*100}')        │"
+            echo "  │ Disk:   $(df / | awk 'NR==2 {print $5}')          │"
+            echo "  └──────────────────────────────────┘"
+            ;;
+        
+        threat)
+            echo "  Threat Visualization:"
+            echo "  ┌─────────────────────────────┐"
+            local threats=$(find /data/local/nhsystem/logs -name "*.log" 2>/dev/null | xargs grep -c "fail\|error\|attack" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
+            echo "  │ Total Threats: $threats           │"
+            echo "  │ Level: $([ $threats -gt 10 ] && echo 'HIGH' || echo 'LOW')               │"
+            echo "  └─────────────────────────────┘"
+            ;;
+        
+        *)
+            echo "  Unknown scene: $type"
+            echo "  Available: network, security, performance, threat"
+            ;;
+    esac
+    
+    # Save to HTML
+    cat > "$OUTPUT_FILE" <<HTML
+<!DOCTYPE html>
+<html>
+<head><title>Aegis Nexus Visualization</title></head>
+<body style="background:#000;color:#0f0;font-family:monospace;">
+<h1>Scene: $type</h1>
+<pre>
+$(cmd_render "$@" 2>/dev/null | grep -v "══\|═\|╚\|╔\|╗\|╝\|║\|╔\|╗\|╝")
+</pre>
+</body>
+</html>
+HTML
+    
+    echo ""
+    echo "  Rendered to: $OUTPUT_FILE"
+}
+
+cmd_export() {
+    local file="${2:-/tmp/aegis-viz.html}"
+    echo "══ Exporting Visualization ═"
+    init_holo
+    
+    cmd_render "render" "network" >/dev/null 2>&1
+    cp "$OUTPUT_FILE" "$file" 2>/dev/null && echo "  Exported to: $file"
+}
+
+cmd_scenes() {
+    echo "══ Available Scenes ═"
+    init_holo
+    
+    python3 -c "
+import json
+with open('$SCENE_FILE') as f:
+    d = json.load(f)
+for name, desc in d['scenes'].items():
+    print(f'  {name}: {desc}')
+" 2>/dev/null || cat "$SCENE_FILE"
+}
+
+init_holo
+
+case "${1:-help}" in
+    status)     cmd_status ;;
+    render)    cmd_render "$@" ;;
+    export)    cmd_export "$@" ;;
+    scenes)    cmd_scenes ;;
+    help|*)    show_usage ;;
+esac

@@ -1,0 +1,16 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-ssh — Advanced SSH tools
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-ssh - Advanced SSH Tools
+Usage: nh-ssh {status|keys|tunnel|help}
+EOF
+}
+case "${1:-status}" in
+    status) systemctl status sshd 2>/dev/null || service ssh status 2>/dev/null || echo "SSH status unknown" ;;
+    keys) ls -la ~/.ssh/authorized_keys 2>/dev/null ;;
+    tunnel) ssh -L "$2:$3:$4" "$5" 2>/dev/null ;;
+    help|*) show_usage ;;
+esac

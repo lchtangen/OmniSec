@@ -1,0 +1,15 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-forensics — Digital forensics tool
+set -euo pipefail
+show_usage() { cat <<EOF
+nh-forensics - Digital Forensics Tool
+Usage: nh-forensics {collect|analyze|help}
+EOF
+}
+case "${1:-help}" in
+    collect) echo "Collecting forensic data..."; tar czf /data/local/nhsystem/forensics-$(date +%Y%m%d).tar.gz /data/local/nhsystem/logs /var/log 2>/dev/null ;;
+    analyze) echo "Analyze not implemented" ;;
+    help|*) show_usage ;;
+esac

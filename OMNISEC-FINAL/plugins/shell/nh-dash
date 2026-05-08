@@ -1,0 +1,195 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-dash - Full TUI dashboard (terminal-based UI)
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+
+detect_dialog() {
+    for c in whiptail dialog; do
+        command -v "$c" >/dev/null 2>&1 && echo "$c" && return 0
+    done
+    return 1
+}
+
+get_battery() {
+    local cap=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "?")
+    local status=$(cat /sys/class/power_supply/battery/status 2>/dev/null || echo "?")
+    echo "$cap|$status"
+}
+
+get_memory() {
+    local total=$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    local avail=$(awk '/MemAvailable/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    local used=$(( (total - avail) / 1024 ))
+    local total_mb=$(( total / 1024 ))
+    echo "$used|$total_mb|$avail"
+}
+
+get_uptime() {
+    local up=$(awk '{print int($1)}' /proc/uptime 2>/dev/null || echo 0)
+    local days=$(( up / 86400 ))
+    local hours=$(( (up % 86400) / 3600 ))
+    local mins=$(( (up % 3600) / 60 ))
+    echo "${days}d ${hours}h ${mins}m"
+}
+
+get_temp() {
+    for z in /sys/class/thermal/thermal_zone*/temp; do
+        local val=$(cat "$z" 2>/dev/null || echo "")
+        [ -n "$val" ] && [ "$val" -gt 0 ] 2>/dev/null && echo "$((val / 1000))" && return
+    done
+    echo "?"
+}
+
+get_ip() {
+    ip -br addr show 2>/dev/null | grep -v '^lo' | head -3 | awk '{print $3}' | cut -d/ -f1 | tr '\n' ' '
+}
+
+render_dialog() {
+    local dialog=$(detect_dialog)
+    [ -z "$dialog" ] && { echo "whiptail/dialog not found"; return 1; }
+
+    while true; do
+        local bat=$(get_battery)
+        local bat_pct=$(echo "$bat" | cut -d'|' -f1)
+        local bat_sts=$(echo "$bat" | cut -d'|' -f2)
+        local mem=$(get_memory)
+        local mem_used=$(echo "$mem" | cut -d'|' -f1)
+        local mem_total=$(echo "$mem" | cut -d'|' -f2)
+        local up=$(get_uptime)
+        local temp=$(get_temp)
+        local ip=$(get_ip)
+
+        $dialog --title "NetHunter NextGen v2.0" \
+            --menu "\
+BATTERY: ${bat_pct}% (${bat_sts})
+MEMORY:  ${mem_used}MB / ${mem_total}MB
+TEMP:    ${temp}°C
+UPTIME:  ${up}
+IP:      ${ip}" \
+            20 60 8 \
+            "status"   "System Status Overview" \
+            "health"   "Deep Health Diagnostic" \
+            "monitor"  "Real-time Monitor" \
+            "services" "Start/Stop Services" \
+            "network"  "Network Tools" \
+            "security" "Security Tools" \
+            "topo"     "Network Topology" \
+            "quit"     "Exit Dashboard" 2>&1 >/dev/tty || break
+
+        local choice=$?
+        [ "$choice" = "255" ] || [ "$choice" = "1" ] && break
+
+        case "$choice" in
+            0) $dialog --title "System Status" --textbox /dev/stdin 20 60 <<STATUS 2>/dev/null || true
+$(nh-status 2>&1)
+STATUS
+            ;;
+            1) $dialog --title "Health Check" --textbox /dev/stdin 20 60 <<HEALTH 2>/dev/null || true
+$(nh-health 2>&1)
+HEALTH
+            ;;
+            2) nh-mon || true ;;
+            3) nh-services start 2>&1 | $dialog --title "Services" --textbox /dev/stdin 10 40 2>/dev/null || true ;;
+            4) $dialog --title "Network" --textbox /dev/stdin 20 60 <<NET 2>/dev/null || true
+$(nh-scan local 2>&1)
+$(echo "")
+$(nh-net 2>&1)
+NET
+            ;;
+            5) $dialog --title "Security" --textbox /dev/stdin 20 60 <<SEC 2>/dev/null || true
+$(nh-secure audit 2>&1)
+SEC
+            ;;
+            6) nh-topo 2>&1 | $dialog --title "Network Topology" --textbox /dev/stdin 20 60 2>/dev/null || true ;;
+        esac
+    done
+}
+
+render_ascii() {
+    clear
+    echo ""
+    echo "╔══════════════════════════════════════════╗"
+    echo "║        NetHunter NextGen v2.0           ║"
+    echo "║        Terminal Dashboard                ║"
+    echo "╚══════════════════════════════════════════╝"
+    echo ""
+
+    while true; do
+        local bat=$(get_battery)
+        local mem=$(get_memory)
+        local up=$(get_uptime)
+        local temp=$(get_temp)
+        local ip=$(get_ip)
+
+        clear
+        cat <<DASH
+╔══ STATUS DASHBOARD ═══════════════════════════╗
+║                                                ║
+║  BATTERY: $(printf "%-4s" "$(echo $bat | cut -d'|' -f1)")%  $(echo $bat | cut -d'|' -f2)
+║  MEMORY:  $(printf "%-4s" "$(echo $mem | cut -d'|' -f1)")MB / $(printf "%-4s" "$(echo $mem | cut -d'|' -f2)")MB
+║  TEMP:    $(printf "%-4s" "$temp")°C
+║  UPTIME:  $up
+║  IP:      $ip
+║                                                ║
+╠══ COMMANDS ════════════════════════════════════╣
+║                                                ║
+║  [1] Status    [2] Health    [3] Monitor       ║
+║  [4] Services  [5] Network   [6] Security      ║
+║  [7] Topology  [8] Sweep     [9] AI Diagnose   ║
+║  [0] Refresh   [q] Quit                        ║
+║                                                ║
+╚══════════════════════════════════════════════════╝
+DASH
+        printf "  Command: "
+        read -r cmd
+        case "$cmd" in
+            1) nh-status 2>&1 | head -20; echo ""; printf "  Press enter..."; read -r ;;
+            2) nh-health 2>&1 | head -20; echo ""; printf "  Press enter..."; read -r ;;
+            3) nh-mon --simple 2>&1 | head -15; echo ""; printf "  Press enter..."; read -r ;;
+            4) nh-services start 2>&1; printf "  Press enter..."; read -r ;;
+            5) nh-scan local 2>&1; echo ""; nh-net 2>&1 | head -10; printf "  Press enter..."; read -r ;;
+            6) nh-secure audit 2>&1 | head -20; printf "  Press enter..."; read -r ;;
+            7) nh-topo 2>&1 | head -20; printf "  Press enter..."; read -r ;;
+            8) nh-sweep all 2>&1 | head -15; printf "  Press enter..."; read -r ;;
+            9) nh-ai diagnose 2>&1 | head -15; printf "  Press enter..."; read -r ;;
+            0) continue ;;
+            q|Q) break ;;
+        esac
+    done
+    clear
+}
+
+usage() {
+    cat <<EOF
+nh-dash - Terminal UI Dashboard
+
+Usage: nh-dash [mode]
+
+Modes:
+  dialog    Use whiptail/dialog TUI (default, auto-detect)
+  ascii     Use ASCII terminal dashboard
+  simple    Simple one-shot status output
+
+Examples:
+  nh-dash           # Auto-detect best mode
+  nh-dash ascii     # ASCII dashboard
+  nh-dash simple    # Quick status
+EOF
+    exit 1
+}
+
+case "${1:-auto}" in
+    dialog|auto)
+        if command -v whiptail >/dev/null 2>&1 || command -v dialog >/dev/null 2>&1; then
+            render_dialog
+        else
+            render_ascii
+        fi
+        ;;
+    ascii|terminal) render_ascii ;;
+    simple|status) nh-status 2>&1 ;;
+    *) usage ;;
+esac

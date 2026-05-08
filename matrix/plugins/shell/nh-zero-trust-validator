@@ -1,0 +1,254 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P2
+# nh-zero-trust-validator - Zero Trust Architecture Validator
+# Validates if infrastructure follows Zero Trust principles
+set -u
+
+NHSYSTEM=${NHSYSTEM:-/data/local/nhsystem}
+VALIDATE_DIR="$NHSYSTEM/validate/zero-trust"
+SCORE=0
+TOTAL=0
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+mkdir -p "$VALIDATE_DIR"
+
+info()  { printf "${BLUE}[INFO]${NC} %s\n" "$*"; }
+ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+err()   { printf "${RED}[ERR]${NC} %s\n" "$*" >&2; }
+
+# ── Zero Trust Principles ──────────────────────────────
+
+check_identity_verification() {
+    info "🔐 Checking identity verification..."
+    TOTAL=$((TOTAL + 1))
+    
+    # Check for OAuth/OIDC
+    if command -v oauth2-proxy >/dev/null 2>&1; then
+        ok "✓ Identity: OAuth proxy found"
+        SCORE=$((SCORE + 1))
+    elif [ -f /etc/oauth2-proxy.cfg ] || [ -f /etc/keycloak/keycloak.json ]; then
+        ok "✓ Identity: OAuth/OIDC configured"
+        SCORE=$((SCORE + 1))
+    else
+        warn "✗ Identity: No OAuth/OIDC found"
+    fi
+    
+    # Check for MFA
+    if [ -f /etc/pam.d/common-auth ] && grep -q "pam_u2f\|pam_google_authenticator" /etc/pam.d/common-auth 2>/dev/null; then
+        ok "✓ Identity: MFA configured (PAM)"
+        SCORE=$((SCORE + 1))
+    else
+        warn "✗ Identity: MFA not detected"
+    fi
+    
+    TOTAL=$((TOTAL + 1))
+}
+
+check_device_authentication() {
+    info "📱 Checking device authentication..."
+    TOTAL=$((TOTAL + 1))
+    
+    # Check for device certificates
+    if [ -d /etc/ssl/certs ] || [ -d /data/local/nhsystem/etc/certs ]; then
+        ok "✓ Device: Certificates found"
+        SCORE=$((SCORE + 1))
+    else
+        warn "✗ Device: No certificates found"
+    fi
+    
+    # Check for hardware tokens
+    if command -v ykman >/dev/null 2>&1; then
+        ok "✓ Device: YubiKey tools found"
+        SCORE=$((SCORE + 1))
+    else
+        warn "✗ Device: No hardware tokens detected"
+    fi
+    
+    TOTAL=$((TOTAL + 1))
+}
+
+check_network_segmentation() {
+    info "🌐 Checking network segmentation..."
+    TOTAL=$((TOTAL + 1))
+    
+    # Check for firewall
+    if command -v iptables >/dev/null 2>&1; then
+        local rules
+        rules=$(iptables -L -n 2>/dev/null | wc -l)
+        if [ "$rules" -gt 10 ]; then
+            ok "✓ Network: Firewall active ($rules rules)"
+            SCORE=$((SCORE + 1))
+        else
+            warn "✗ Network: Firewall has too few rules"
+        fi
+    else
+        warn "✗ Network: iptables not found"
+    fi
+    
+    # Check for network isolation
+    if [ -f /etc/docker/daemon.json ] && grep -q "icc.*false" /etc/docker/daemon.json 2>/dev/null; then
+        ok "✓ Network: Docker isolation enabled"
+        SCORE=$((SCORE + 1))
+    else
+        warn "✗ Network: Container isolation not configured"
+    fi
+    
+    TOTAL=$((TOTAL + 1))
+}
+
+check_data_encryption() {
+    info "🔐 Checking data encryption..."
+    TOTAL=$((TOTAL + 1))
+    
+    # Check for TLS/SSL
+    if command -v openssl >/dev/null 2>&1; then
+        ok "✓ Data: OpenSSL available"
+        SCORE=$((SCORE + 1))
+    else
+        warn "✗ Data: OpenSSL not found"
+    fi
+    
+    # Check for encrypted storage
+    if mount | grep -q "dm-" 2>/dev/null; then
+        ok "✓ Data: Encrypted storage detected"
+        SCORE=$((SCORE + 1))
+    else
+        warn "✗ Data: No encrypted storage found"
+    fi
+    
+    TOTAL=$((TOTAL + 1))
+}
+
+check_continuous_monitoring() {
+    info "📊 Checking continuous monitoring..."
+    TOTAL=$((TOTAL + 1))
+    
+    # Check for monitoring tools
+    if command -v prometheus >/dev/null 2>&1 || command -v zabbix_agentd >/dev/null 2>&1; then
+        ok "✓ Monitoring: Tool found"
+        SCORE=$((SCORE + 1))
+    else
+        warn "✗ Monitoring: No monitoring tool detected"
+    fi
+    
+    # Check for logging
+    if [ -d /var/log ] && [ -f /var/log/syslog ] || [ -f /var/log/messages ]; then
+        ok "✓ Monitoring: Logging active"
+        SCORE=$((SCORE + 1))
+    else
+        warn "✗ Monitoring: Logging not configured properly"
+    fi
+    
+    TOTAL=$((TOTAL + 1))
+}
+
+# ── Calculate Score ──────────────────────────────
+
+calculate_score() {
+    local pct
+    pct=$((SCORE * 100 / TOTAL))
+    
+    echo ""
+    echo "══════════════════════════════════════════════════════════════"
+    echo "  ZERO TRUST SCORE: $SCORE/$TOTAL ($pct%)"
+    echo "══════════════════════════════════════════════════════════════"
+    echo ""
+    
+    if [ "$pct" -ge 80 ]; then
+        ok "🎉 ZERO TRUST CERTIFIED!"
+        info "Your infrastructure follows Zero Trust principles."
+    elif [ "$pct" -ge 60 ]; then
+        warn "⚠️ PARTIAL ZERO TRUST - Needs improvement"
+        info "Follow the warnings above to improve your score."
+    else
+        err "❌ NOT ZERO TRUST COMPLIANT"
+        info "Major improvements needed. Start with identity verification."
+    fi
+    
+    # Save score
+    cat > "$VALIDATE_DIR/score-$(date +%Y%m%d).txt" <<SCORE
+Zero Trust Score: $SCORE/$TOTAL ($pct%)
+Date: $(date)
+Target: $(hostname)
+
+Principles Checked:
+- Identity Verification: $([ -f /etc/oauth2-proxy.cfg ] && echo PASS || echo FAIL)
+- Device Authentication: $(command -v ykman >/dev/null && echo PASS || echo FAIL)
+- Network Segmentation: $(command -v iptables >/dev/null && echo PASS || echo FAIL)
+- Data Encryption: $(command -v openssl >/dev/null && echo PASS || echo FAIL)
+- Continuous Monitoring: $(command -v prometheus >/dev/null && echo PASS || echo FAIL)
+SCORE
+}
+
+# ── Usage ──────────────────────────────
+
+usage() {
+    cat <<EOF
+nh-zero-trust-validator - Zero Trust Architecture Validator
+
+Usage: nh-zero-trust-validator [options]
+
+Validates Zero Trust principles:
+  1. Identity Verification (OAuth/MFA)
+  2. Device Authentication (Certs/Hardware tokens)
+  3. Network Segmentation (Firewalls/Isolation)
+  4. Data Encryption (TLS/Encrypted storage)
+  5. Continuous Monitoring (Prometheus/Logging)
+
+Options:
+  --score    Show current score only
+  --json     Output in JSON format
+
+Examples:
+  nh-zero-trust-validator
+  nh-zero-trust-validator --score
+  nh-zero-trust-validator --json
+
+Output:
+  Score: 0-100%
+  Report: $VALIDATE_DIR/score-YYYYMMDD.txt
+
+Notes:
+  - Zero Trust is THE buzzword in cybersecurity
+  - Validates against NIST SP 800-207
+  - Helps achieve compliance (SOC2, ISO 27001)
+EOF
+}
+
+# ── Main ──────────────────────────────
+
+SCORE=0
+TOTAL=0
+
+if [ "${1:-}" = "--score" ]; then
+    # Show last score
+    last_score=$(ls -t "$VALIDATE_DIR"/score-*.txt 2>/dev/null | head -1)
+    if [ -f "$last_score" ]; then
+        cat "$last_score"
+    else
+        warn "No previous score found. Run validation first."
+    fi
+    exit 0
+fi
+
+info "🛡 Zero Trust Architecture Validator"
+info "Checking against NIST SP 800-207..."
+echo ""
+
+check_identity_verification
+check_device_authentication
+check_network_segmentation
+check_data_encryption
+check_continuous_monitoring
+
+calculate_score

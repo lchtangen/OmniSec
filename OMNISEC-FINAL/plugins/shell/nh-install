@@ -1,0 +1,217 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-install - One-command universal device installer
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+TEMP_DIR=/data/local/tmp/nh-install
+NH_VERSION=${NH_VERSION:-2.0.0}
+INSTALL_LOG=$TEMP_DIR/install.log
+
+log() { echo "[$(date '+%H:%M:%S')] $*" >> "$INSTALL_LOG"; echo "  $*"; }
+die() { echo "  ERROR: $*" >&2; log "ERROR: $*"; exit 1; }
+
+detect_device() {
+    echo "── Device Detection ──"
+    local model=$(getprop ro.product.model 2>/dev/null || echo "?")
+    local device=$(getprop ro.product.device 2>/dev/null || echo "?")
+    local release=$(getprop ro.build.version.release 2>/dev/null || echo "?")
+    local sdk=$(getprop ro.build.version.sdk 2>/dev/null || echo "?")
+    local abi=$(getprop ro.product.cpu.abi 2>/dev/null || echo "?")
+    local arch=$(uname -m 2>/dev/null || echo "?")
+
+    echo "  Model:    $model"
+    echo "  Device:   $device"
+    echo "  Android:  $release (SDK $sdk)"
+    echo "  ABI:      $abi"
+    echo "  Arch:     $arch"
+
+    [ "$arch" = "aarch64" ] || [ "$arch" = "arm64" ] || \
+        die "Unsupported architecture: $arch (requires ARM64)"
+
+    local id=$(id -u 2>/dev/null || echo "?")
+    [ "$id" = "0" ] || die "Not root. Run: su -c nh-install"
+
+    echo "$model|$device|$release|$sdk|$abi"
+}
+
+check_requirements() {
+    echo "── Checking Requirements ──"
+    for req in mount df mkdir chmod chown; do
+        command -v "$req" >/dev/null 2>&1 || die "Required command not found: $req"
+    done
+
+    local avail=$(df -k /data 2>/dev/null | tail -1 | awk '{print $4}')
+    if [ -n "$avail" ] && [ "$avail" -lt 1048576 ]; then
+        die "Insufficient storage: $((avail / 1024))MB free (need 1GB)"
+    fi
+    log "Storage: $((avail / 1024))MB available"
+
+    if [ -d "$NHSYSTEM/bin" ] && [ -f "$NHSYSTEM/bin/nh-status" ]; then
+        echo "  NetHunter NextGen already detected"
+        echo "  Run: nh-install upgrade"
+        return 1
+    fi
+    return 0
+}
+
+setup_nhsystem() {
+    echo "── Setting up nhsystem ──"
+    mkdir -p "$NHSYSTEM"/{bin,etc,logs,tmp,backups,var/run,roots,workspaces/main}
+
+    if [ -d "$TEMP_DIR/tools" ]; then
+        log "Deploying tools..."
+        cp -a "$TEMP_DIR/tools/"* "$NHSYSTEM/bin/"
+        chmod +x "$NHSYSTEM/bin/nh-"*
+    fi
+
+    mkdir -p "$NHSYSTEM/workspaces/main"/{projects,notes,backup,config,downloads}
+
+    log "nhsystem initialized"
+    echo "  Location: $NHSYSTEM"
+    echo "  Size: $(du -sh "$NHSYSTEM" 2>/dev/null | cut -f1)"
+}
+
+setup_termux() {
+    echo "── Configuring Termux ──"
+    local termux_home="/data/data/com.termux/files/home"
+
+    if [ ! -d "$termux_home" ]; then
+        echo "  Termux not installed"
+        echo "  Install from F-Droid: org.termux"
+        return 1
+    fi
+
+    if [ -d "$TEMP_DIR/dotfiles" ]; then
+        log "Deploying dotfiles..."
+        cp -a "$TEMP_DIR/dotfiles/". "$termux_home/"
+    fi
+
+    if ! [ -d "$termux_home/storage" ]; then
+        log "Setting up Termux storage access..."
+        termux-setup-storage 2>/dev/null || true
+    fi
+
+    echo "  Termux configured"
+}
+
+setup_arch() {
+    local tarball="${1:-}"
+    echo "── Arch Linux ARM64 Setup ──"
+
+    if [ -d "$NHSYSTEM/roots/archlinux/etc" ]; then
+        echo "  Arch already installed"
+        return 0
+    fi
+
+    if [ -z "$tarball" ]; then
+        echo "  No Arch tarball provided"
+        echo "  Download: wget http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz"
+        return 1
+    fi
+
+    if [ ! -f "$tarball" ]; then
+        die "Tarball not found: $tarball"
+    fi
+
+    log "Installing Arch Linux ARM64..."
+    mkdir -p "$NHSYSTEM/roots/archlinux"
+    bsdtar -xpf "$tarball" -C "$NHSYSTEM/roots/archlinux" 2>/dev/null || \
+        tar -xzf "$tarball" -C "$NHSYSTEM/roots/archlinux"
+
+    echo "nameserver 1.1.1.1" > "$NHSYSTEM/roots/archlinux/etc/resolv.conf"
+    mkdir -p "$NHSYSTEM/roots/archlinux/workspace"
+    ln -sf "$NHSYSTEM/workspaces/main" "$NHSYSTEM/roots/archlinux/workspace/main"
+
+    log "Arch Linux installed"
+    echo "  Rootfs: $NHSYSTEM/roots/archlinux"
+}
+
+verify_installation() {
+    echo "── Verification ──"
+    local errors=0
+
+    for f in nh-status nh-health nh-lib nh-mount nh-enter-arch; do
+        if [ -f "$NHSYSTEM/bin/$f" ]; then
+            echo "  + $f"
+        else
+            echo "  x $f (missing)"
+            errors=$((errors + 1))
+        fi
+    done
+
+    for d in bin etc logs tmp backups roots; do
+        [ -d "$NHSYSTEM/$d" ] && echo "  + $d/" || { echo "  x $d/ (missing)"; errors=$((errors + 1)); }
+    done
+
+    if [ $errors -eq 0 ]; then
+        log "Installation verified successfully"
+        echo "  All checks passed"
+    else
+        log "Installation has $errors errors"
+        echo "  $errors error(s) found"
+    fi
+}
+
+upgrade_tools() {
+    echo "── Upgrading NetHunter Tools ──"
+    if [ -d "$TEMP_DIR/tools" ]; then
+        log "Upgrading tools..."
+        cp -a "$TEMP_DIR/tools/"* "$NHSYSTEM/bin/"
+        chmod +x "$NHSYSTEM/bin/nh-"*
+        echo "  Tools upgraded"
+    else
+        echo "  No upgrade package found"
+        echo "  Place updated tools in: $TEMP_DIR/tools/"
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-install - NetHunter NextGen Universal Installer
+
+Usage: nh-install <command> [args]
+
+Commands:
+  detect          Detect device and check compatibility
+  install [arch-tarball]  Full installation
+  upgrade         Upgrade NetHunter tools
+  verify          Verify installation integrity
+  arch [tarball]  Install/upgrade Arch Linux ARM64 only
+EOF
+    exit 1
+}
+
+mkdir -p "$TEMP_DIR"
+: > "$INSTALL_LOG"
+
+[ $# -ge 1 ] || usage
+case "$1" in
+    detect)
+        detect_device
+        ;;
+    install|full)
+        shift
+        detect_device
+        check_requirements && setup_nhsystem || true
+        setup_termux
+        [ $# -ge 1 ] && setup_arch "$1" || setup_arch ""
+        verify_installation
+        log "Installation complete"
+        echo "NetHunter NextGen v$NH_VERSION installed"
+        echo "Commands: nh-status, nh-health, nh-dev, nh-ai, nh-web"
+        ;;
+    upgrade)
+        upgrade_tools
+        verify_installation
+        ;;
+    verify)
+        verify_installation
+        ;;
+    arch)
+        shift
+        setup_arch "${1:-}"
+        ;;
+    *) usage ;;
+esac

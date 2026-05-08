@@ -1,0 +1,178 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# PRIORITY: P1
+# nh-mon - Real-time system monitor
+set -u
+
+NHSYSTEM=/data/local/nhsystem
+REFRESH=${2:-2}
+
+draw_bar() {
+    local pct=$1
+    local width=${2:-20}
+    local filled=$(( pct * width / 100 ))
+    [ "$filled" -gt "$width" ] && filled=$width
+    local empty=$(( width - filled ))
+    printf '['
+    for i in $(seq 1 $filled); do printf '#'; done
+    for i in $(seq 1 $empty); do printf '.'; done
+    printf '] %d%%' "$pct"
+}
+
+show_resources() {
+    clear
+    echo "╔══ NetHunter Monitor (refreshing every ${REFRESH}s) ══╗"
+    echo "║  Ctrl+C to exit                                     ║"
+    echo "╚══════════════════════════════════════════════════════╝"
+    echo ""
+
+    # Battery
+    local cap=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo 0)
+    local status=$(cat /sys/class/power_supply/battery/status 2>/dev/null || echo "?")
+    printf "  BATTERY: "
+    draw_bar "$cap"
+    echo " ($status)"
+
+    # Temperature
+    local temp="?"
+    for z in /sys/class/thermal/thermal_zone*/temp; do
+        local val=$(cat "$z" 2>/dev/null || echo "")
+        [ -n "$val" ] && [ "$val" -gt 0 ] 2>/dev/null && temp="$((val / 1000))" && break
+    done
+    local temp_color="GREEN"
+    [ "$temp" -gt 60 ] 2>/dev/null && temp_color="YELLOW"
+    [ "$temp" -gt 80 ] 2>/dev/null && temp_color="RED"
+    printf "  TEMP:     %s°C [%s]\n" "$temp" "$temp_color"
+
+    # Memory
+    local mem_total=$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 1)
+    local mem_free=$(awk '/MemFree/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    local mem_avail=$(awk '/MemAvailable/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    local mem_used_pct=$(( (mem_total - mem_avail) * 100 / mem_total ))
+    printf "  MEMORY:   "
+    draw_bar "$mem_used_pct"
+    echo " ($((mem_avail / 1024))MB avail / $((mem_total / 1024))MB total)"
+
+    # Swap
+    local swap_total=$(awk '/SwapTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    local swap_free=$(awk '/SwapFree/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    if [ "$swap_total" -gt 0 ]; then
+        local swap_used_pct=$(( (swap_total - swap_free) * 100 / swap_total ))
+        printf "  SWAP:     "
+        draw_bar "$swap_used_pct"
+        echo " ($((swap_free / 1024))MB free)"
+    fi
+
+    # CPU (simplified - load average)
+    local load=$(cat /proc/loadavg 2>/dev/null | awk '{print $1, $2, $3}')
+    local procs=$(cat /proc/loadavg 2>/dev/null | awk '{print $4}')
+    echo ""
+    echo "  LOAD:     $load  (procs: $procs)"
+
+    # Uptime
+    local up=$(awk '{print int($1)}' /proc/uptime 2>/dev/null || echo 0)
+    local days=$(( up / 86400 ))
+    local hours=$(( (up % 86400) / 3600 ))
+    local mins=$(( (up % 3600) / 60 ))
+    echo "  UPTIME:   ${days}d ${hours}h ${mins}m"
+
+    # Network interfaces
+    echo ""
+    echo "── Interfaces ──"
+    ip -br addr show 2>/dev/null | grep -v '^lo' | while read -r iface addr; do
+        local rx=$(cat "/sys/class/net/$iface/statistics/rx_bytes" 2>/dev/null || echo 0)
+        local tx=$(cat "/sys/class/net/$iface/statistics/tx_bytes" 2>/dev/null || echo 0)
+        printf "  %-8s %-16s RX: %s  TX: %s\n" "$iface" "$(echo $addr | awk '{print $1}')" "$(numfmt $rx)" "$(numfmt $tx)"
+    done
+
+    # Top processes
+    echo ""
+    echo "── Top Processes (by CPU) ──"
+    ps aux 2>/dev/null | sort -k3 -rn | head -10 | awk '{printf "  %-5s %-5s %-5s %s\n", $2, $3"%", $4"%", $NF}'
+}
+
+numfmt() {
+    local val=$1
+    if [ "$val" -gt 1073741824 ]; then
+        echo "$((val / 1073741824))GB"
+    elif [ "$val" -gt 1048576 ]; then
+        echo "$((val / 1048576))MB"
+    elif [ "$val" -gt 1024 ]; then
+        echo "$((val / 1024))KB"
+    else
+        echo "${val}B"
+    fi
+}
+
+simple_output() {
+    echo "── Quick Monitor ──"
+    echo "  Battery: $(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo '?')%"
+    echo "  Memory:  $(( $(awk '/MemAvailable/{print $2}' /proc/meminfo) / 1024 ))MB avail"
+    echo "  Load:    $(cat /proc/loadavg 2>/dev/null | awk '{print $1", "$2", "$3}')"
+    echo "  Uptime:  $(awk '{print int($1/86400)"d "int(($1%86400)/3600)"h "int(($1%3600)/60)"m"}' /proc/uptime)"
+}
+
+show_logs() {
+    local lines="${1:-30}"
+    local log_dir="$NHSYSTEM/logs"
+    echo "── Recent System Logs (last $lines lines) ──"
+    echo ""
+    if [ -d "$log_dir" ]; then
+        for f in "$log_dir"/*.log; do
+            [ -f "$f" ] || continue
+            echo "  File: $(basename $f)"
+            tail -"$lines" "$f" | sed 's/^/    /'
+            echo ""
+        done
+    else
+        echo "  No logs directory"
+    fi
+}
+
+show_processes() {
+    local filter="${1:-}"
+    echo "── Process Table ──"
+    echo ""
+    if [ -n "$filter" ]; then
+        ps aux 2>/dev/null | grep -i "$filter" | awk '{printf "  %-6s %-5s %-5s %-5s %s\n", $2, $3"%", $4"%", $6, $NF}'
+    else
+        ps aux 2>/dev/null | awk '{printf "  %-6s %-5s %-5s %-5s %s\n", $2, $3"%", $4"%", $6, $NF}' | head -30
+    fi
+}
+
+usage() {
+    cat <<EOF
+nh-mon - Real-time system monitor
+
+Usage: nh-mon <command> [args]
+
+Commands:
+  live [interval]  Real-time monitor (default 2s)
+  simple           One-shot quick status
+  logs [lines]     Show recent logs (default 30)
+  ps [filter]      Process table with optional filter
+  top              Alias for live
+
+Examples:
+  nh-mon live
+  nh-mon live 5      # 5 second refresh
+  nh-mon simple
+  nh-mon logs 50
+  nh-mon ps sshd
+EOF
+    exit 1
+}
+
+case "${1:-live}" in
+    live|top|monitor)
+        local interval="${2:-$REFRESH}"
+        while true; do
+            show_resources
+            sleep "$interval"
+        done
+        ;;
+    simple|quick) simple_output ;;
+    logs|log) show_logs "${2:-30}" ;;
+    ps|process) shift; show_processes "${1:-}" ;;
+    *) usage ;;
+esac

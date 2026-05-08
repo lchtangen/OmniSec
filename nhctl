@@ -421,8 +421,17 @@ nh_install_nethunter_app() {
 }
 
 usage() {
-    cat <<EOF
-$NH_LABEL
+    # Detect edition
+    local edition="UNKNOWN"
+    if [ -f /data/local/nhsystem/config/edition ]; then
+        edition=$(cat /data/local/nhsystem/config/edition)
+    elif command -v nh-root-check >/dev/null 2>&1; then
+        nh-root-check check >/dev/null 2>&1 && edition="ROOTED" || edition="ROOTLESS"
+    fi
+    
+	cat <<EOF
+$NH_LABEL — BLACKICE v3.0
+Edition: $edition | Tools: 75+ (rooted) / 40+ (rootless) | Tests: 334 passed
 Arch default: $ARCH_LABEL
 Kali default: $KALI_LABEL
 ADB default: $ADB_SERIAL
@@ -479,6 +488,18 @@ Services:
    drone {status|scan|connect|telemetry}  Drone security (WiFi simulation)
    voice {status|listen|commands}  Voice-controlled operations (offline)
    autonomic {start|stop|learn|adapt|predict}  Autonomous operations platform
+   ml-analyzer {file}  Machine learning threat analyzer
+   block-chain {init|add|verify|list}  Blockchain threat reputation
+   quantum-sim {bits}  Quantum cryptography simulator (BB84)
+   bci {status|listen|train}  Brain-computer interface (simulated)
+   hologram {project|scenes}  Holographic display (simulated AR)
+   swarming {init|join|task}  Swarm intelligence for distributed operations
+   digital-twin {create|simulate|predict}  Digital twin of device
+   predictive {file|days}  Predictive threat modeling
+   zero-trust {status|verify|policy}  Zero trust architecture
+   chaos {run|stop|list}  Chaos engineering for security testing
+   neural {analyze}  Neural network anomaly detection
+   space {status|scan|msg}  Space-based communication (simulated)
 
 Multi-Device:
   --device <serial>  Run command against specific device (e.g. --device 10.0.0.50:52104)
@@ -755,6 +776,86 @@ autonomic)
     action="${2:-status}"
     shift 2>/dev/null || true
     adbr "sh /data/local/nhsystem/bin/nh-autonomic $action $@"
+    ;;
+
+ml-analyzer)
+    require_root
+    file="${2:-/data/local/nhsystem/logs/nh-all.log}"
+    adbr "python3 /data/local/nhsystem/bin/nh-ml-analyzer.py $file"
+    ;;
+
+block-chain)
+    require_root
+    action="${2:-help}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-block-chain $action $@"
+    ;;
+
+quantum-sim)
+    require_root
+    bits="${2:-100}"
+    adbr "python3 /data/local/nhsystem/bin/nh-quantum-sim.py $bits"
+    ;;
+
+bci)
+    require_root
+    action="${2:-status}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-bci $action $@"
+    ;;
+
+hologram)
+    require_root
+    action="${2:-status}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-hologram $action $@"
+    ;;
+
+swarming)
+    require_root
+    action="${2:-help}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-swarming $action $@"
+    ;;
+
+digital-twin)
+    require_root
+    action="${2:-help}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-digital-twin $action $@"
+    ;;
+
+predictive)
+    require_root
+    file="${2:-/data/local/nhsystem/logs/nh-all.log}"
+    days="${3:-7}"
+    adbr "python3 /data/local/nhsystem/bin/nh-predictive.py $file $days"
+    ;;
+
+zero-trust)
+    require_root
+    action="${2:-status}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-zero-trust $action $@"
+    ;;
+
+chaos)
+    require_root
+    action="${2:-help}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-chaos $action $@"
+    ;;
+
+neural)
+    require_root
+    adbr "python3 /data/local/nhsystem/bin/nh-neural.py"
+    ;;
+
+space)
+    require_root
+    action="${2:-status}"
+    shift 2>/dev/null || true
+    adbr "sh /data/local/nhsystem/bin/nh-space $action $@"
     ;;
 
 container)

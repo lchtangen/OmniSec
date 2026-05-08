@@ -1,0 +1,113 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P5
+# nh-perf — System performance monitor
+set -euo pipefail
+
+info()  { echo "  [..] $*"; }
+ok()    { echo "  [OK] $*"; }
+err()   { echo "  [!!] $*" >&2; }
+
+show_usage() {
+    cat <<EOF
+nh-perf - System Performance Monitor
+
+Usage: nh-perf <command> [args]
+
+Commands:
+  status       Show current performance metrics (CPU, mem, disk, net)
+  top          Show top processes by CPU/memory
+  monitor      Real-time performance monitor (5s interval)
+  thermal      Show thermal zone temperatures
+  battery      Show battery stats (if available)
+  disk         Show disk I/O stats
+  net          Show network stats
+  help         Show this message
+EOF
+}
+
+get_cpu_usage() {
+    top -n 1 | grep "User" | awk '{print 100 - $8 "%"}' 2>/dev/null || echo "N/A"
+}
+
+get_mem_usage() {
+    free -m | awk '/Mem:/ {printf "%dMB/%dMB (%.1f%%)", $3, $2, ($3/$2)*100}' 2>/dev/null || echo "N/A"
+}
+
+get_disk_usage() {
+    df -h /data /system 2>/dev/null | awk 'NR>1 {printf "%s:%s ", $6, $5}' || echo "N/A"
+}
+
+get_net_stats() {
+    ip -s link 2>/dev/null | grep -A1 "wlan0\|eth0" | awk '/RX:/ {rx=$2} /TX:/ {tx=$2} END {printf "RX:%s TX:%s", rx, tx}' || echo "N/A"
+}
+
+cmd_status() {
+    echo "══ System Performance Status ═════════════════════════"
+    echo ""
+    echo "  CPU Usage:    $(get_cpu_usage)"
+    echo "  Memory:       $(get_mem_usage)"
+    echo "  Disk Usage:   $(get_disk_usage)"
+    echo "  Network:      $(get_net_stats)"
+    echo "  Load Average: $(cat /proc/loadavg | awk '{print $1, $2, $3}')"
+    echo ""
+}
+
+cmd_top() {
+    echo "══ Top Processes ═════════════════════════════════════"
+    top -n 1 -b | head -20
+}
+
+cmd_monitor() {
+    echo "══ Real-time Performance Monitor (Ctrl+C to stop) ══"
+    while true; do
+        clear
+        cmd_status
+        sleep 5
+    done
+}
+
+cmd_thermal() {
+    echo "══ Thermal Zones ═════════════════════════════════════"
+    for zone in /sys/class/thermal/thermal_zone*; do
+        if [ -f "$zone/temp" ]; then
+            temp=$(cat "$zone/temp")
+            temp_c=$((temp / 1000))
+            echo "  ${zone##*/}: ${temp_c}°C"
+        fi
+    done
+}
+
+cmd_battery() {
+    echo "══ Battery Status ═══════════════════════════════════"
+    if [ -d /sys/class/power_supply/battery ]; then
+        cat /sys/class/power_supply/battery/uevent | grep -E "CAPACITY|STATUS|TEMP" | awk -F= '{
+            if ($1 == "POWER_SUPPLY_CAPACITY") print "  Capacity: " $2 "%"
+            if ($1 == "POWER_SUPPLY_STATUS") print "  Status: " $2
+            if ($1 == "POWER_SUPPLY_TEMP") print "  Temperature: " int($2/10) "°C"
+        }'
+    else
+        echo "  Battery info not available"
+    fi
+}
+
+cmd_disk() {
+    echo "══ Disk I/O Stats ════════════════════════════════════"
+    iostat 2>/dev/null || cat /proc/diskstats | awk 'NR>1 {print $1, $3, $7, $11}' | head -10
+}
+
+cmd_net() {
+    echo "══ Network Stats ═════════════════════════════════════"
+    ip -s link 2>/dev/null | grep -A5 "wlan0\|eth0\|rmnet_data" | grep -E "link|RX:|TX:" | head -20
+}
+
+case "${1:-status}" in
+    status)      cmd_status ;;
+    top)         cmd_top ;;
+    monitor)     cmd_monitor ;;
+    thermal)     cmd_thermal ;;
+    battery)     cmd_battery ;;
+    disk)        cmd_disk ;;
+    net)         cmd_net ;;
+    help|*)      show_usage ;;
+esac

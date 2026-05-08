@@ -1,0 +1,76 @@
+# AUR Package for Aegis Nexus
+# Save as: aur/aegis-nexus-git/PKGBUILD
+
+pkgname=aegis-nexus-git
+pkgver=3.0
+pkgrel=1
+pkgdesc="Next-Gen Mobile Security Platform with AI, Mesh, eBPF, PQ Crypto"
+arch=('aarch64' 'x86_64')
+url="https://aegis-nexus.org"
+license=('Apache-2.0')
+depends=('bash' 'make' 'gcc' 'python3' 'openssl' 'nmap')
+makedepends=('git' 'bats' 'shellcheck')
+optdepends=(
+    'llama.cpp: On-device AI'
+    'rns: Mesh networking'
+    'bpftool: eBPF tools'
+    'liboqs: Post-quantum crypto'
+    'yubikey-manager: HSM integration'
+    'whisper.cpp: Voice control'
+)
+provides=('aegis-nexus')
+conflicts=('nethunter-setup')
+source=("git+https://github.com/AegisNexus/${pkgname}.git")
+md5sums=('SKIP')
+
+pkgver() {
+    cd "$srcdir/${pkgname}"
+    git describe --long --tags 2>/dev/null | sed 's/\([^-]*\)-g.*/\\1/;s/-/./g'
+}
+
+build() {
+    cd "$srcdir/${pkgname}"
+    make stage
+    make build-c
+}
+
+check() {
+    cd "$srcdir/${pkgname}"
+    make test
+}
+
+package() {
+    cd "$srcdir/${pkgname}"
+    
+    # Install main tools
+    install -d "$pkgdir/usr/local/bin"
+    install -m 755 nhctl "$pkgdir/usr/local/bin/"
+    install -m 755 src/device/bin/* "$pkgdir/usr/local/bin/" 2>/dev/null || true
+    
+    # Install C tools
+    install -d "$pkgdir/usr/local/lib/aegis-nexus"
+    install -m 755 build/* "$pkgdir/usr/local/lib/aegis-nexus/" 2>/dev/null || true
+    
+    # Install scripts
+    install -d "$pkgdir/usr/local/share/aegis-nexus/scripts"
+    install -m 755 src/scripts/*.sh "$pkgdir/usr/local/share/aegis-nexus/scripts/" 2>/dev/null || true
+    
+    # Install docs
+    install -d "$pkgdir/usr/local/share/doc/aegis-nexus"
+    install -m 644 README.md VERSION.md "$pkgdir/usr/local/share/doc/aegis-nexus/" 2>/dev/null || true
+    
+    # Install config
+    install -d "$pkgdir/etc/aegis-nexus"
+    install -m 644 nh-defaults.sh "$pkgdir/etc/aegis-nexus/" 2>/dev/null || true
+}
+
+post_install() {
+    echo "✅ Aegis Nexus installed!"
+    echo "   Run: nhctl help"
+    echo "   Docs: https://aegis-nexus.org/docs"
+}
+
+post_upgrade() {
+    echo "✅ Aegis Nexus upgraded!"
+    echo "   Don't forget to run: nhctl update"
+}

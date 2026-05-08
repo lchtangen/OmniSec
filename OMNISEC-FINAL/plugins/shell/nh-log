@@ -1,0 +1,66 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 2.0 nextgen
+# nh-log - Log viewer for nhsystem logs
+set -u
+. /data/local/nhsystem/bin/nh-lib
+
+LOG_DIR="$NHSYSTEM/logs"
+mkdir -p "$LOG_DIR"
+
+list_logs() {
+    echo "── Available Logs ──"
+    if [ -z "$(ls -A "$LOG_DIR" 2>/dev/null)" ]; then
+        echo "  no logs in $LOG_DIR"
+        return
+    fi
+    for f in "$LOG_DIR"/*; do
+        SIZE=$(du -sh "$f" 2>/dev/null | awk '{print $1}')
+        MOD=$(stat -c '%y' "$f" 2>/dev/null | cut -d. -f1 || echo "?")
+        echo "  $(basename "$f")  ($SIZE, $MOD)"
+    done
+}
+
+tail_log() {
+    name="$1"
+    lines="${2:-30}"
+    path="$LOG_DIR/$name"
+    [ -f "$path" ] || path="$LOG_DIR/$name.log"
+    [ -f "$path" ] || { echo "log not found: $name (try: nh-log list)"; return 1; }
+    echo "── $path ──"
+    tail -n "$lines" "$path"
+}
+
+follow_log() {
+    name="$1"
+    path="$LOG_DIR/$name"
+    [ -f "$path" ] || path="$LOG_DIR/$name.log"
+    [ -f "$path" ] || { echo "log not found: $name"; return 1; }
+    echo "following: $path (Ctrl+C to stop)"
+    tail -f "$path" 2>/dev/null || cat "$path"
+}
+
+clear_logs() {
+    echo "clearing all logs in $LOG_DIR"
+    for f in "$LOG_DIR"/*; do
+        : > "$f" 2>/dev/null && echo "  cleared: $(basename "$f")"
+    done
+}
+
+case "${1:-list}" in
+    list|ls)
+        list_logs
+        ;;
+    tail)
+        tail_log "${2:-}" "${3:-30}"
+        ;;
+    follow|f)
+        follow_log "${2:-}"
+        ;;
+    clear)
+        clear_logs
+        ;;
+    *)
+        echo "usage: nh-log {list|tail <name> [lines]|follow <name>|clear}" >&2
+        exit 2
+        ;;
+esac

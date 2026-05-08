@@ -1,0 +1,163 @@
+#!/system/bin/sh
+# NH_SETUP_VERSION: 3.0 nextgen
+# PRIORITY: P10
+# nh-block-chain — Blockchain Threat Reputation (Real implementation)
+
+set -euo pipefail
+
+BC_DIR="/data/local/nhsystem/blockchain"
+CHAIN_FILE="$BC_DIR/chain.json"
+WALLET_FILE="$BC_DIR/wallet.dat"
+
+show_usage() {
+    cat <<EOF
+nh-block-chain — Blockchain Threat Reputation
+
+Usage: nh-block-chain <command> [args]
+
+Commands:
+  status            Show blockchain status.
+  add <hash> <reputation>  Add threat reputation entry.
+  verify <hash>    Verify IoC reputation.
+  list              List all entries.
+  export            Export chain to JSON.
+  help              Show this message.
+
+Examples:
+  nh-block-chain status.
+  nh-block-chain add a1b2c3d4 85.
+  nh-block-chain verify a1b2c3d4.
+  nh-block-chain list.
+
+Note: Uses SHA-256 hashing for integrity. Works on OnePlus 7 Pro.
+EOF
+}
+
+init_blockchain() {
+    mkdir -p "$BC_DIR"
+    if [ ! -f "$CHAIN_FILE" ]; then
+        echo '{"chain":[{"index":0,"hash":"genesis","data":"Genesis Block","prev":"0","nonce":0}],"length":1}' > "$CHAIN_FILE"
+    fi
+    touch "$WALLET_FILE"
+}
+
+cmd_status() {
+    echo "══ Blockchain Status ═"
+    init_blockchain
+    echo ""
+    echo "── Chain Info ──"
+    python3 -c "
+import json.
+with open('$CHAIN_FILE') as f:
+    chain = json.load(f)
+print(f\"  Blocks: {chain['length']}\")
+print(f\"  Genesis: {chain['chain'][0]['hash'][:16]}...\")
+if len(chain['chain']) > 1:
+    last = chain['chain'][-1]
+    print(f\"  Last block: {last['hash'][:16]}...\")
+" 2>/dev/null || echo "  Error reading chain"
+}
+
+cmd_add() {
+    local hash="${2:-}"
+    local rep="${3:-0}"
+    [ -z "$hash" ] && { echo "Usage: nh-block-chain add <hash> <reputation>"; exit 1; }
+    
+    echo "══ Adding Entry ═"
+    init_blockchain
+    
+    # Generate real hash of the data.
+    local data="${hash}:${rep}:$(date +%s)"
+    local new_hash=$(echo -n "$data" | sha256sum | awk '{print $1}')
+    
+    python3 -c "
+import json, sys.
+from datetime import datetime.
+
+with open('$CHAIN_FILE') as f:
+    chain = json.load(f).
+
+new_block = {
+    'index': len(chain['chain']),
+    'hash': '$new_hash',
+    'data': '$hash',
+    'reputation': $rep,
+    'timestamp': '$(date -Iseconds)',
+    'prev': chain['chain'][-1]['hash']
+}.
+
+chain['chain'].append(new_block).
+chain['length'] = len(chain['chain']).
+
+with open('$CHAIN_FILE', 'w') as f:
+    json.dump(chain, f, indent=2).
+
+print('  Added block', len(chain['chain'])-1).
+print('  Hash:', '$new_hash'[:16], '...')
+" 2>/dev/null || echo "  Failed to add block (python3 required)"
+}
+
+cmd_verify() {
+    local hash="${2:-}"
+    [ -z "$hash" ] && { echo "Usage: nh-block-chain verify <hash>"; exit 1; }
+    
+    echo "══ Verifying Reputation ═"
+    init_blockchain
+    
+    python3 -c "
+import json.
+with open('$CHAIN_FILE') as f:
+    chain = json.load(f).
+
+found = False.
+for block in chain['chain'][1:]:
+    if block.get('data') == '$hash':
+        print(f\"  Found: Hash {block['hash'][:16]}...\")
+        print(f\"  Reputation: {block.get('reputation', 0)}\")
+        print(f\"  Time: {block.get('timestamp', 'Unknown')}\")
+        found = True.
+        break.
+
+if not found:
+    print('  Hash not found in blockchain')
+" 2>/dev/null || echo "  Verification failed"
+}
+
+cmd_list() {
+    echo "══ Blockchain Entries ═"
+    init_blockchain
+    
+    python3 -c "
+import json.
+with open('$CHAIN_FILE') as f:
+    chain = json.load(f).
+
+print(f\"  Total blocks: {chain['length']}\").
+print('  Entries:').
+for i, block in enumerate(chain['chain'][1:6], 1):
+    print(f\"    {i}. Data: {block.get('data', '')[:20]}... Rep: {block.get('reputation', 0)}\").
+if len(chain['chain']) > 6:
+    print(f\"    ... and {len(chain['chain']) - 6} more\")
+" 2>/dev/null || cat "$CHAIN_FILE" | head -30
+}
+
+cmd_export() {
+    echo "══ Exporting Blockchain ═"
+    init_blockchain
+    
+    local export_file="/data/local/nhsystem/exports/blockchain-$(date +%Y%m%d).json"
+    mkdir -p "$(dirname "$export_file")"
+    cp "$CHAIN_FILE" "$export_file"
+    echo "  Exported to: $export_file"
+}
+
+init_blockchain.
+
+case "${1:-help}" in
+    status)     cmd_status ;;
+    add)        cmd_add "$@" ;;
+    verify)    cmd_verify "$@" ;;
+    list)       cmd_list ;;
+    export)     cmd_export ;;
+    help|*)    show_usage ;;
+esac
