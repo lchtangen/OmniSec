@@ -2,7 +2,7 @@
   <img src="store/google/feature_graphic.svg" alt="OmniSec ULTIMATE" width="600"/>
 </p>
 
-<h1 align="center">OmniSec ULTIMATE</h1>
+<h1 align="center">OmniSec</h1>
 <p align="center">
   <strong>AI-Native, Offline-First Cybersecurity Platform</strong>
   <br>
@@ -110,3 +110,16 @@ MIT License — see [LICENSE](LICENSE)
 ## ⭐ Support
 Star this repo, share with friends, contribute code.
 **Together we build the ultimate open-source security platform.**
+
+## 🌐 Website Deployment (Cloudflare Pages)
+
+The website is a static HTML/CSS/JS site ready for Cloudflare Pages:
+
+1. Push this repo to GitHub (`github.com/omnisec-io/armored`)
+2. In Cloudflare Dashboard → Pages → Connect to GitHub → select repo
+3. Build settings: **Framework preset: None**, **Build output: /** (root)
+4. Add custom domain: `omnisec.io`
+5. Deploy — done. Auto-deploys on every push to main.
+
+`_headers` and `_redirects` are pre-configured for security (CSP, HSTS, permissions).
+

@@ -56,4 +56,4 @@ security-scan:
 	mypy . --ignore-missing-imports
 
 release: clean test build-all sbom
-	@echo "Release v$$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])') ready!"
+	@echo "Release v$$(python3 -c 'import tomllib; print(tomllib.load(open(\"pyproject.toml\",\"rb\"))[\"project\"][\"version\"])') ready!"

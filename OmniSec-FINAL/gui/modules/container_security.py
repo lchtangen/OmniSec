@@ -2,7 +2,8 @@
 from gui.modules import OmniSecModule
 from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
                              QListWidget, QTextEdit, QFrame, QTabWidget,
-                             QTableWidget, QTableWidgetItem, QComboBox, QCheckBox)
+                             QTableWidget, QTableWidgetItem, QComboBox, QCheckBox,
+                             QLineEdit)
 
 class ContainerSecurity(OmniSecModule):
     name = "Container Security"

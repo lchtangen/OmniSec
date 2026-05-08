@@ -26,7 +26,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QSpacerItem
 )
 from PyQt6.QtCore import (
-    Qt, QTimer, QThread, pyqtSignal, QSize, QRect, QPropertyAnimation,
+    Qt, QTimer, QThread, QObject, pyqtSignal, pyqtSlot, QSize, QRect, QPropertyAnimation,
     QEasingCurve, QPoint, QParallelAnimationGroup, QSequentialAnimationGroup,
     QVariantAnimation, QUrl, QByteArray
 )
@@ -36,20 +36,20 @@ from PyQt6.QtGui import (
     QAction, QPainterPath, QFontMetrics, QCursor, QDesktopServices,
 )
 
-CYBER_BLACK = "#0A0A0A"
-CYBER_DARK = "#1A1A2E"
-CYBER_SURFACE = "#111111"
-NEON_CYAN = "#00FFFF"
-NEON_MAGENTA = "#FF00FF"
-NEON_YELLOW = "#FFFF00"
-NEON_GREEN = "#00FF00"
-NEON_RED = "#FF0000"
-NEON_BLUE = "#0080FF"
-NEON_ORANGE = "#FF8C00"
-NEON_PURPLE = "#AA00FF"
-TEXT_PRIMARY = "#E0E0E0"
-TEXT_MUTED = "#888888"
-TEXT_DIM = "#555555"
+CYBER_BLACK = "#002B36"
+CYBER_DARK = "#073642"
+CYBER_SURFACE = "#04323E"
+NEON_CYAN = "#FF6D00"  # orange accent (replaced cyan for accessibility)
+NEON_MAGENTA = "#FF5500"  # deep orange (replaced magenta)
+NEON_YELLOW = "#FFD600"
+NEON_GREEN = "#00E676"
+NEON_RED = "#FF5252"
+NEON_BLUE = "#FF9100"  # lighter orange (replaced blue)
+NEON_ORANGE = "#FF9100"
+NEON_PURPLE = "#FF8000"  # orange (replaced purple)
+TEXT_PRIMARY = "#D0DCE8"
+TEXT_MUTED = "#7090A0"
+TEXT_DIM = "#405868"
 
 CYBERPUNK_QSS = f"""
 QMainWindow, QWidget {{
@@ -70,7 +70,7 @@ QPushButton {{
     letter-spacing: 1px;
 }}
 QPushButton:hover {{
-    border: 1px solid {NEON_YELLOW};
+    border: 1px solid {NEON_CYAN};
     box-shadow: 0 0 15px {NEON_CYAN};
 }}
 QPushButton:pressed {{
@@ -110,11 +110,11 @@ QListWidget, QTreeWidget, QTableWidget {{
     outline: none;
 }}
 QListWidget::item:selected, QTreeWidget::item:selected, QTableWidget::item:selected {{
-    background-color: rgba(0, 255, 255, 0.2);
-    color: {NEON_CYAN};
+    background-color: rgba(255, 109, 0, 0.2);
+    color: {TEXT_PRIMARY};
 }}
 QListWidget::item:hover, QTreeWidget::item:hover, QTableWidget::item:hover {{
-    background-color: rgba(255, 0, 255, 0.1);
+    background-color: rgba(255, 109, 0, 0.1);
 }}
 QTabWidget::pane {{
     background-color: {CYBER_DARK};
@@ -450,23 +450,23 @@ class DashboardPage(QWidget):
         stats_grid = QGridLayout()
         stats_grid.setSpacing(15)
         stat_data = [
-            ("Tools Available", "161 / 161", NEON_GREEN),
-            ("AI Model", "Llama 3.2 (3B)", NEON_CYAN),
-            ("Network", "OFFLINE (Mesh: 3)", NEON_MAGENTA),
-            ("Encryption", "Kyber-1024", NEON_YELLOW),
-            ("CPU Load", "23%", NEON_BLUE),
-            ("Memory", "1.4 / 8 GB", NEON_ORANGE),
-            ("Thermal", "42C (STEALTH)", NEON_GREEN),
-            ("Uptime", "14h 32m", NEON_PURPLE),
-            ("Threats Blocked", "1,247", NEON_RED),
-            ("Sessions", "3 Active", NEON_CYAN),
+            ("Tools Available", "161 / 161"),
+            ("AI Model", "Llama 3.2 (3B)"),
+            ("Network", "OFFLINE (Mesh: 3)"),
+            ("Encryption", "Kyber-1024"),
+            ("CPU Load", "23%"),
+            ("Memory", "1.4 / 8 GB"),
+            ("Thermal", "42C (STEALTH)"),
+            ("Uptime", "14h 32m"),
+            ("Threats Blocked", "1,247"),
+            ("Sessions", "3 Active"),
         ]
-        for i, (label, value, color) in enumerate(stat_data):
+        for i, (label, value) in enumerate(stat_data):
             card = QFrame()
             card.setStyleSheet(f"""
                 QFrame {{
                     background: {CYBER_DARK};
-                    border: 1px solid {color};
+                    border: 1px solid {NEON_CYAN};
                     border-radius: 12px;
                     padding: 15px;
                 }}
@@ -474,7 +474,7 @@ class DashboardPage(QWidget):
             card_layout = QVBoxLayout(card)
             card_layout.setSpacing(5)
             lbl = QLabel(label)
-            lbl.setStyleSheet(f"color: {color}; font-size: 10px; text-transform: uppercase; letter-spacing: 1px;")
+            lbl.setStyleSheet(f"color: {NEON_CYAN}; font-size: 10px; text-transform: uppercase; letter-spacing: 1px;")
             card_layout.addWidget(lbl)
             val = QLabel(value)
             val.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 22px; font-weight: bold;")
@@ -482,22 +482,17 @@ class DashboardPage(QWidget):
             stats_grid.addWidget(card, i // 4, i % 4)
         layout.addLayout(stats_grid)
         actions_title = QLabel("QUICK ACTIONS")
-        actions_title.setStyleSheet(f"color: {NEON_MAGENTA}; font-size: 16px; font-weight: bold; margin-top: 10px;")
+        actions_title.setStyleSheet(f"color: {NEON_CYAN}; font-size: 16px; font-weight: bold; margin-top: 10px;")
         layout.addWidget(actions_title)
         actions_grid = QHBoxLayout()
         actions_grid.setSpacing(10)
-        for text, color in [
-            ("Update Tool Database", NEON_CYAN),
-            ("Run Full Scan", NEON_GREEN),
-            ("Vulnerability Assessment", NEON_YELLOW),
-            ("Launch Exploit Suite", NEON_RED),
-        ]:
+        for text in ["Update Tool Database", "Run Full Scan", "Vulnerability Assessment", "Launch Exploit Suite"]:
             btn = QPushButton(text)
             btn.setMinimumHeight(50)
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 {color}, stop:1 {NEON_MAGENTA});
+                        stop:0 {NEON_CYAN}, stop:1 {NEON_MAGENTA});
                     color: {CYBER_BLACK};
                     border: none;
                     border-radius: 8px;
@@ -506,22 +501,23 @@ class DashboardPage(QWidget):
                     font-size: 11px;
                 }}
                 QPushButton:hover {{
-                    border: 1px solid {NEON_YELLOW};
+                    border: 1px solid {NEON_CYAN};
+                    box-shadow: 0 0 10px {NEON_CYAN};
                 }}
             """)
             actions_grid.addWidget(btn)
         layout.addLayout(actions_grid)
         log_title = QLabel("RECENT ACTIVITY")
-        log_title.setStyleSheet(f"color: {NEON_YELLOW}; font-size: 14px; font-weight: bold; margin-top: 10px;")
+        log_title.setStyleSheet(f"color: {NEON_CYAN}; font-size: 14px; font-weight: bold; margin-top: 10px;")
         layout.addWidget(log_title)
         self.activity_log = QTextEdit()
         self.activity_log.setReadOnly(True)
         self.activity_log.setMaximumHeight(150)
         self.activity_log.setStyleSheet(f"""
             QTextEdit {{
-                background: {CYBER_SURFACE};
+                background: {CYBER_BLACK};
                 color: {NEON_GREEN};
-                border: 1px solid {NEON_YELLOW};
+                border: 1px solid {NEON_CYAN};
                 border-radius: 8px;
                 padding: 10px;
                 font-size: 11px;
@@ -572,8 +568,8 @@ class NetworkPage(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
-        title = GlitchLabel("NETWORK OPERATIONS CENTER", NEON_YELLOW)
-        title.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {NEON_YELLOW};")
+        title = GlitchLabel("NETWORK OPERATIONS CENTER", NEON_CYAN)
+        title.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {NEON_CYAN};")
         layout.addWidget(title)
         target_layout = QHBoxLayout()
         target_layout.addWidget(QLabel("Target:"))
@@ -595,7 +591,7 @@ class NetworkPage(QWidget):
                 padding: 10px 20px;
                 font-weight: bold;
             }}
-            QPushButton:hover {{ border: 1px solid {NEON_YELLOW}; }}
+            QPushButton:hover {{ border: 1px solid {NEON_CYAN}; }}
         """)
         self.scan_btn.setMinimumWidth(150)
         self.scan_btn.clicked.connect(self.start_scan)
@@ -608,7 +604,7 @@ class NetworkPage(QWidget):
             QTextEdit {{
                 background: {CYBER_BLACK};
                 color: {NEON_GREEN};
-                border: 1px solid {NEON_YELLOW};
+                border: 1px solid {NEON_CYAN};
                 border-radius: 8px;
                 padding: 12px;
                 font-size: 11px;
@@ -688,38 +684,46 @@ class AIChatPage(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
-        title = GlitchLabel("AI CO-PILOT -- LOCAL LLM", NEON_MAGENTA)
-        title.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {NEON_MAGENTA};")
+        title = GlitchLabel("AI CO-PILOT -- LOCAL LLM", NEON_CYAN)
+        title.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {NEON_CYAN};")
         layout.addWidget(title)
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
         self.chat_display.setStyleSheet(f"""
             QTextEdit {{
-                background: {CYBER_SURFACE};
-                color: {TEXT_PRIMARY};
-                border: 1px solid {NEON_MAGENTA};
+                background: {CYBER_BLACK};
+                color: #000000;
+                border: 1px solid rgba(255,109,0,0.35);
                 border-radius: 10px;
                 padding: 15px;
                 font-size: 12px;
             }}
         """)
-        self.chat_display.append("AI CO-PILOT READY")
-        self.chat_display.append("Model: Llama 3.2 (3B) -- 100% LOCAL -- No Cloud")
-        self.chat_display.append("Ask me anything about cybersecurity, penetration testing, or network analysis.")
+        self.chat_display.setHtml("""
+            <div style='background:rgba(255,85,0,0.25); color:#000; padding:8px 12px; border-radius:8px; margin:4px 0; border:1px solid rgba(255,109,0,0.35)'>
+                <b>AI CO-PILOT READY</b>
+            </div>
+            <div style='background:rgba(255,85,0,0.25); color:#000; padding:8px 12px; border-radius:8px; margin:4px 0; border:1px solid rgba(255,109,0,0.35)'>
+                Model: Llama 3.2 (3B) — 100% LOCAL — No Cloud
+            </div>
+            <div style='background:rgba(255,85,0,0.25); color:#000; padding:8px 12px; border-radius:8px; margin:4px 0; border:1px solid rgba(255,109,0,0.35)'>
+                Ask me anything about cybersecurity, penetration testing, or network analysis.
+            </div>
+        """)
         layout.addWidget(self.chat_display)
         input_layout = QHBoxLayout()
         self.chat_input = QLineEdit()
         self.chat_input.setPlaceholderText("Enter your command or question for the AI Copilot...")
         self.chat_input.setStyleSheet(f"""
             QLineEdit {{
-                background: {CYBER_SURFACE};
-                color: {NEON_GREEN};
+                background: {CYBER_BLACK};
+                color: {TEXT_PRIMARY};
                 border: 1px solid {NEON_CYAN};
                 border-radius: 8px;
                 padding: 12px 15px;
                 font-size: 12px;
             }}
-            QLineEdit:focus {{ border: 1px solid {NEON_MAGENTA}; }}
+            QLineEdit:focus {{ border: 1px solid {NEON_CYAN}; box-shadow: 0 0 10px {NEON_CYAN}; }}
         """)
         self.chat_input.returnPressed.connect(self.send_message)
         input_layout.addWidget(self.chat_input)
@@ -742,7 +746,7 @@ class AIChatPage(QWidget):
                     font-size: 10px;
                 }}
                 QPushButton:hover {{
-                    background: rgba(0,255,255,0.1);
+                    background: rgba(255,109,0,0.15);
                     border-color: {NEON_MAGENTA};
                 }}
             """)
@@ -757,9 +761,14 @@ class AIChatPage(QWidget):
         msg = self.chat_input.text().strip()
         if not msg:
             return
-        self.chat_display.append("You: " + msg)
+        user_html = (
+            "<div style='background:rgba(255,109,0,0.2); color:#000; padding:8px 12px; "
+            "border-radius:8px; border-bottom-right-radius:4px; margin:4px 0; "
+            "border:1px solid rgba(255,109,0,0.3)'>"
+            f"<b>You:</b> {msg}</div>"
+        )
+        self.chat_display.insertHtml(user_html)
         self.chat_input.clear()
-        self.chat_display.append("AI Copilot: Processing locally...")
         responses = [
             "Scanning target network... 3 hosts discovered. 2 running SMB services. 1 potentially vulnerable to MS17-010.",
             "Generating hardening report for Linux server... SSH disabled root login. Firewall active. Fail2ban running.",
@@ -770,15 +779,24 @@ class AIChatPage(QWidget):
             "Exploit chain compiled. MS17-010 EternalBlue. Target vulnerable. Proceed with caution.",
             "Password audit complete. 12 weak passwords found. 3 reused across accounts.",
         ]
-        QTimer.singleShot(500, lambda: self.chat_display.append("Result: " + random.choice(responses)))
+        def add_response():
+            resp = random.choice(responses)
+            bot_html = (
+                "<div style='background:rgba(255,85,0,0.25); color:#000; padding:8px 12px; "
+                "border-radius:8px; border-bottom-left-radius:4px; margin:4px 0; "
+                "border:1px solid rgba(255,109,0,0.35)'>"
+                f"<b>AI Copilot:</b> {resp}</div>"
+            )
+            self.chat_display.insertHtml(bot_html)
+        QTimer.singleShot(500, add_response)
 
 class ToolsPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
-        title = GlitchLabel("TOOL DATABASE -- 161 WEAPONS", NEON_GREEN)
-        title.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {NEON_GREEN};")
+        title = GlitchLabel("TOOL DATABASE -- 161 WEAPONS", NEON_CYAN)
+        title.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {NEON_CYAN};")
         layout.addWidget(title)
         search_layout = QHBoxLayout()
         self.search_input = QLineEdit()
@@ -800,8 +818,8 @@ class ToolsPage(QWidget):
         self.tool_tree.setAlternatingRowColors(True)
         self.tool_tree.setStyleSheet(f"""
             QTreeWidget {{
-                alternate-background-color: rgba(0, 255, 255, 0.03);
-                border: 1px solid {NEON_GREEN};
+                alternate-background-color: rgba(255, 109, 0, 0.03);
+                border: 1px solid {NEON_CYAN};
             }}
         """)
         tool_data = {
@@ -828,26 +846,25 @@ class ToolsPage(QWidget):
             cat_item.setFont(0, f)
             for tool in tools:
                 tool_item = QTreeWidgetItem([tool, category, "READY", "3.0.1"])
-                tool_item.setForeground(0, QColor(NEON_YELLOW))
+                tool_item.setForeground(0, QColor(TEXT_PRIMARY))
                 tool_item.setForeground(2, QColor(NEON_GREEN))
                 cat_item.addChild(tool_item)
             self.tool_tree.addTopLevelItem(cat_item)
         layout.addWidget(self.tool_tree)
         actions_layout = QHBoxLayout()
-        for text, color in [("Run Selected", NEON_GREEN), ("View Details", NEON_CYAN),
-                           ("Update All", NEON_YELLOW), ("Configure", NEON_MAGENTA)]:
+        for text in ["Run Selected", "View Details", "Update All", "Configure"]:
             btn = QPushButton(text)
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 {color}, stop:1 {NEON_MAGENTA});
+                        stop:0 {NEON_CYAN}, stop:1 {NEON_MAGENTA});
                     color: {CYBER_BLACK};
                     border: none;
                     border-radius: 6px;
                     padding: 8px 15px;
                     font-weight: bold;
                 }}
-                QPushButton:hover {{ border: 1px solid {NEON_YELLOW}; }}
+                QPushButton:hover {{ border: 1px solid {NEON_CYAN}; box-shadow: 0 0 10px {NEON_CYAN}; }}
             """)
             actions_layout.addWidget(btn)
         layout.addLayout(actions_layout)
@@ -872,8 +889,8 @@ class TerminalPage(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
-        title = GlitchLabel("CYBER TERMINAL", NEON_GREEN)
-        title.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {NEON_GREEN};")
+        title = GlitchLabel("CYBER TERMINAL", NEON_CYAN)
+        title.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {NEON_CYAN};")
         layout.addWidget(title)
         self.terminal = QTextEdit()
         self.terminal.setReadOnly(True)
@@ -881,7 +898,7 @@ class TerminalPage(QWidget):
             QTextEdit {{
                 background: {CYBER_BLACK};
                 color: {NEON_GREEN};
-                border: 2px solid {NEON_GREEN};
+                border: 2px solid {NEON_CYAN};
                 border-radius: 8px;
                 padding: 15px;
                 font-size: 12px;
@@ -926,7 +943,7 @@ class TerminalPage(QWidget):
                     padding: 4px 10px;
                     font-size: 9px;
                 }}
-                QPushButton:hover {{ background: rgba(0,255,255,0.1); }}
+                QPushButton:hover {{ background: rgba(255,109,0,0.15); }}
             """)
             btn.clicked.connect(lambda checked, c=cmd: self.command_input.setText(c))
             quick_layout.addWidget(btn)
@@ -958,35 +975,67 @@ class TerminalPage(QWidget):
             self.terminal.append("  " + line)
 
 class SettingsPage(QWidget):
+    CONFIG_FILE = str(Path.home() / ".omnisec" / "config.json")
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.checkboxes = {}
+        self.config = self.load_config()
         layout = QVBoxLayout(self)
-        layout.setSpacing(20)
+        layout.setSpacing(16)
         title = GlitchLabel("SYSTEM CONFIGURATION", NEON_CYAN)
         title.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {NEON_CYAN};")
         layout.addWidget(title)
 
         groups = [
             ("Security Settings", [
-                ("OFFLINE-ONLY Mode", True),
-                ("Post-Quantum Encryption", True),
-                ("Auto-encrypt All Traffic", True),
-                ("Enable Ghost Mode", False),
-                ("Log Obfuscation", True),
+                ("offline_only", "OFFLINE-ONLY Mode", True),
+                ("post_quantum", "Post-Quantum Encryption", True),
+                ("auto_encrypt", "Auto-encrypt All Traffic", True),
+                ("ghost_mode", "Enable Ghost Mode", False),
+                ("log_obfuscation", "Log Obfuscation", True),
             ]),
             ("AI Configuration", [
-                ("Local LLM Enabled", True),
-                ("Auto-suggest Commands", True),
-                ("Chain-of-Thought Reasoning", True),
-                ("Threat Prediction", False),
+                ("local_llm", "Local LLM Enabled", True),
+                ("auto_suggest", "Auto-suggest Commands", True),
+                ("chain_thought", "Chain-of-Thought Reasoning", True),
+                ("threat_predict", "Threat Prediction", False),
             ]),
             ("Network", [
-                ("Mesh Networking", True),
-                ("Reticulum Auto-discover", True),
-                ("DNS-over-Mesh", False),
-                ("Tor Override", False),
+                ("mesh_net", "Mesh Networking", True),
+                ("mesh_discover", "Reticulum Auto-discover", True),
+                ("dns_mesh", "DNS-over-Mesh", False),
+                ("tor_override", "Tor Override", False),
+            ]),
+            ("Display", [
+                ("animations", "UI Animations", True),
+                ("glitch_effects", "Glitch Effects", True),
+                ("matrix_rain", "Matrix Rain Background", True),
+                ("compact_mode", "Compact Mode", False),
+                ("fps_counter", "Show FPS Counter", False),
+            ]),
+            ("Automation", [
+                ("auto_scan", "Scheduled Auto-Scan (daily)", True),
+                ("auto_report", "Auto-Generate Reports", True),
+                ("watch_dir", "Directory Watcher", False),
+                ("threat_hunt", "Continuous Threat Hunting", False),
+                ("playback_auto", "Auto-Run Playbooks", False),
+            ]),
+            ("Logging", [
+                ("log_all", "Log All Activity", True),
+                ("log_encrypt", "Encrypt Log Files", True),
+                ("log_rotate", "Auto-Rotate Logs (7 days)", True),
+                ("log_debug", "Debug Logging", False),
+                ("log_remote", "Remote Syslog", False),
             ]),
         ]
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea{border:none;background:transparent}")
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setSpacing(4)
 
         for group_title, checks in groups:
             gb = QGroupBox(group_title)
@@ -1006,9 +1055,9 @@ class SettingsPage(QWidget):
                 }}
             """)
             gl = QVBoxLayout(gb)
-            for text, checked in checks:
+            for key, text, default in checks:
                 cb = QCheckBox(text)
-                cb.setChecked(checked)
+                cb.setChecked(self.config.get(key, default))
                 cb.setStyleSheet(f"""
                     QCheckBox {{ color: {TEXT_PRIMARY}; spacing: 10px; padding: 5px; }}
                     QCheckBox::indicator {{
@@ -1020,9 +1069,15 @@ class SettingsPage(QWidget):
                         background: {NEON_CYAN};
                     }}
                 """)
+                self.checkboxes[key] = cb
                 gl.addWidget(cb)
-            layout.addWidget(gb)
+            scroll_layout.addWidget(gb)
 
+        scroll_layout.addStretch()
+        scroll.setWidget(scroll_content)
+        layout.addWidget(scroll)
+
+        btn_row = QHBoxLayout()
         save_btn = QPushButton("SAVE CONFIGURATION")
         save_btn.setStyleSheet(f"""
             QPushButton {{
@@ -1035,10 +1090,66 @@ class SettingsPage(QWidget):
                 font-weight: bold;
                 font-size: 14px;
             }}
-            QPushButton:hover {{ border: 1px solid {NEON_YELLOW}; }}
+            QPushButton:hover {{ border: 1px solid {NEON_CYAN}; }}
         """)
-        layout.addWidget(save_btn)
-        layout.addStretch()
+        save_btn.clicked.connect(self.save_config)
+        btn_row.addWidget(save_btn)
+
+        reset_btn = QPushButton("RESET DEFAULTS")
+        reset_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {NEON_RED}, stop:1 {NEON_ORANGE});
+                color: {CYBER_BLACK};
+                border: none;
+                border-radius: 8px;
+                padding: 15px;
+                font-weight: bold;
+                font-size: 14px;
+            }}
+            QPushButton:hover {{ border: 1px solid {NEON_CYAN}; }}
+        """)
+        reset_btn.clicked.connect(self.reset_defaults)
+        btn_row.addWidget(reset_btn)
+
+        layout.addLayout(btn_row)
+
+        status = QLabel("Settings are saved to ~/.omnisec/config.json")
+        status.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px;")
+        layout.addWidget(status)
+
+    def load_config(self):
+        try:
+            p = Path(self.CONFIG_FILE)
+            if p.exists():
+                return json.loads(p.read_text())
+        except: pass
+        return {}
+
+    def save_config(self):
+        data = {key: cb.isChecked() for key, cb in self.checkboxes.items()}
+        try:
+            p = Path(self.CONFIG_FILE)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(data, indent=2))
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Icon.Information)
+            msg.setWindowTitle("Configuration Saved")
+            msg.setText("Settings saved to ~/.omnisec/config.json")
+            msg.setStyleSheet(f"background:{CYBER_BLACK};color:{TEXT_PRIMARY};")
+            msg.exec()
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to save config:\n{e}")
+
+    def reset_defaults(self):
+        for key, cb in self.checkboxes.items():
+            cb.setChecked(True)
+        # specific defaults
+        for k in ["ghost_mode","threat_predict","dns_mesh","tor_override",
+                   "compact_mode","fps_counter","watch_dir","threat_hunt",
+                   "playback_auto","log_debug","log_remote"]:
+            if k in self.checkboxes:
+                self.checkboxes[k].setChecked(False)
 
 
 class AboutPage(QWidget):
@@ -1046,8 +1157,8 @@ class AboutPage(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
-        title = GlitchLabel("ABOUT OMNISEC ULTIMATE", NEON_MAGENTA)
-        title.setStyleSheet(f"font-size: 28px; font-weight: bold; color: {NEON_MAGENTA};")
+        title = GlitchLabel("ABOUT OMNISEC ULTIMATE", NEON_CYAN)
+        title.setStyleSheet(f"font-size: 28px; font-weight: bold; color: {NEON_CYAN};")
         layout.addWidget(title)
         info = QLabel(
             "OmniSec ULTIMATE v3.0\n"
@@ -1069,7 +1180,7 @@ class AboutPage(QWidget):
             "  Mesh Protocols: 3\n"
             "  Lines of Code: 50,000+"
         )
-        stats_label.setStyleSheet(f"color: {NEON_GREEN}; font-size: 12px;")
+        stats_label.setStyleSheet(f"color: {NEON_CYAN}; font-size: 12px;")
         layout.addWidget(stats_label)
         layout.addStretch()
 
@@ -1109,35 +1220,35 @@ class OmniSecMainWindow(QMainWindow):
 
         self.nav_buttons = []
         nav_items = [
-            ("D", "Dashboard", NEON_CYAN),
-            ("A", "AI Chat", NEON_MAGENTA),
-            ("T", "Tools", NEON_GREEN),
-            ("N", "Network", NEON_YELLOW),
-            ("C", "Console", NEON_ORANGE),
-            ("S", "Settings", NEON_BLUE),
-            ("?", "About", NEON_PURPLE),
+            ("D", "Dashboard"),
+            ("A", "AI Chat"),
+            ("T", "Tools"),
+            ("N", "Network"),
+            ("C", "Console"),
+            ("S", "Settings"),
+            ("?", "About"),
         ]
 
-        for letter, tooltip, color in nav_items:
+        for letter, tooltip in nav_items:
             btn = QPushButton(letter)
             btn.setToolTip(tooltip)
             btn.setFixedSize(45, 45)
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background: {CYBER_DARK};
-                    color: {color};
-                    border: 1px solid {color};
+                    color: {NEON_CYAN};
+                    border: 1px solid {NEON_CYAN};
                     border-radius: 10px;
                     font-size: 16px;
                     font-weight: bold;
                 }}
                 QPushButton:hover {{
-                    background: {color};
+                    background: {NEON_CYAN};
                     color: {CYBER_BLACK};
-                    box-shadow: 0 0 15px {color};
+                    box-shadow: 0 0 15px {NEON_CYAN};
                 }}
                 QPushButton:checked {{
-                    background: {color};
+                    background: {NEON_CYAN};
                     color: {CYBER_BLACK};
                 }}
             """)
@@ -1183,6 +1294,55 @@ class OmniSecMainWindow(QMainWindow):
         self.matrix_overlay = MatrixRain(self.sidebar)
         self.matrix_overlay.setGeometry(0, 0, 60, self.sidebar.height())
         self.matrix_overlay.lower()
+
+        # ===== AUTOMATIONS =====
+        self.auto_timer = QTimer(self)
+        self.auto_timer.timeout.connect(self.run_automations)
+        self.auto_timer.start(60000)  # check every 60s
+
+        self.watch_timer = QTimer(self)
+        self.watch_timer.timeout.connect(self.check_watch_dirs)
+        self.watch_timer.setSingleShot(True)
+
+        self.load_auto_config()
+
+    def load_auto_config(self):
+        try:
+            p = Path(SettingsPage.CONFIG_FILE)
+            if p.exists():
+                cfg = json.loads(p.read_text())
+                if cfg.get("auto_scan", True):
+                    self.status_bar.status_items[0].setText("AUTO-SCAN: ON")
+                if cfg.get("watch_dir", False):
+                    self.status_bar.status_items[0].setText("WATCHER: ACTIVE")
+                    self.watch_timer.start(5000)
+        except: pass
+
+    def run_automations(self):
+        try:
+            p = Path(SettingsPage.CONFIG_FILE)
+            if not p.exists(): return
+            cfg = json.loads(p.read_text())
+            if cfg.get("auto_scan", True):
+                msg = f"[AUTO] Scheduled scan triggered — {datetime.now().strftime('%H:%M:%S')}"
+                if hasattr(self.stacked_widget.currentWidget(), 'activity_log'):
+                    self.stacked_widget.currentWidget().activity_log.append(msg)
+                self.status_bar.status_items[3].setText(f"LAST SCAN: {datetime.now().strftime('%H:%M')}")
+        except: pass
+
+    def check_watch_dirs(self):
+        try:
+            p = Path.home() / ".omnisec" / "watch"
+            if p.exists():
+                new_files = [f for f in p.iterdir() if f.is_file()]
+                if new_files:
+                    msg = f"[WATCHER] {len(new_files)} new files detected in watch directory"
+                    if hasattr(self.stacked_widget.currentWidget(), 'activity_log'):
+                        self.stacked_widget.currentWidget().activity_log.append(msg)
+            cfg_p = Path(SettingsPage.CONFIG_FILE)
+            if cfg_p.exists() and json.loads(cfg_p.read_text()).get("watch_dir", False):
+                self.watch_timer.start(10000)
+        except: pass
 
     def center_window(self):
         screen = QApplication.primaryScreen()

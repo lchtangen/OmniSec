@@ -23,7 +23,7 @@ def test_offline_capable():
             continue
         with open(py_file) as f:
             content = f.read().lower()
-            assert "requests.get(" not in content or "telemetry" not in content
+            assert "requests.get(" not in content and "telemetry" not in content
 
 def test_no_hardcoded_credentials():
     """Check for hardcoded passwords/keys"""

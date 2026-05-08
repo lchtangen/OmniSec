@@ -40,8 +40,8 @@ Documentation = "https://docs.omnisec.io"
 Donate = "https://omnisec.io/donate"
 
 [project.scripts]
-omnisec = "omnisec_desktop.main:cli"
-omnisec-gui = "omnisec_desktop.main:gui"
+omnisec = "omnisec_desktop.main:run_cli"
+omnisec-gui = "omnisec_desktop.main:run_gui"
 
 [tool.setuptools.packages.find]
 include = ["omnisec_desktop*", "gui*", "security*", "i18n*"]
