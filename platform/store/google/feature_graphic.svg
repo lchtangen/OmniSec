@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0A0A0A"/>
+      <stop offset="100%" style="stop-color:#1A0033"/>
+    </linearGradient>
+    <linearGradient id="neon" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00FFFF"/>
+      <stop offset="50%" style="stop-color:#FF00FF"/>
+      <stop offset="100%" style="stop-color:#00FF00"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="500" fill="url(#bg)"/>
+  <text x="512" y="160" text-anchor="middle" font-family="monospace" font-size="64" font-weight="bold" fill="url(#neon)" letter-spacing="4">OmniSec</text>
+  <text x="512" y="220" text-anchor="middle" font-family="monospace" font-size="28" fill="#00FFFF" letter-spacing="8">ULTIMATE</text>
+  <text x="512" y="300" text-anchor="middle" font-family="monospace" font-size="18" fill="#888">AI-Powered Security Platform</text>
+  <text x="512" y="340" text-anchor="middle" font-family="monospace" font-size="14" fill="#666">161 Tools | AI Copilot | Zero Cloud | Post-Quantum Crypto</text>
+  <rect x="362" y="380" width="300" height="4" rx="2" fill="#FF00FF" opacity="0.8"/>
+  <circle cx="200" cy="420" r="3" fill="#00FFFF" opacity="0.6"/><circle cx="250" cy="430" r="2" fill="#FF00FF" opacity="0.6"/>
+  <circle cx="300" cy="415" r="4" fill="#00FF00" opacity="0.6"/><circle cx="750" cy="425" r="3" fill="#FFFF00" opacity="0.6"/>
+  <circle cx="800" cy="410" r="2" fill="#00FFFF" opacity="0.6"/><circle cx="850" cy="435" r="4" fill="#FF00FF" opacity="0.6"/>
+</svg>

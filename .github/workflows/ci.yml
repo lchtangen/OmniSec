@@ -1,7 +1,7 @@
-# GitHub Actions CI — Aegis Nexus
+# GitHub Actions CI — OmniSec
 # Runs 334 tests, zero failures tolerated
 
-name: Aegis Nexus CI
+name: OmniSec CI
 
 on:
   push:
@@ -66,7 +66,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: aegis-nexus-payload
+          name: omnisec-payload
           path: payload/
 
   docker:
@@ -76,9 +76,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build Docker image
-        run: docker build -t aegis-nexus:latest .
+        run: docker build -t omnisec:latest .
       - name: Test Docker image
-        run: docker run --rm aegis-nexus:latest nhctl help
+        run: docker run --rm omnisec:latest nhctl help
 
   notify:
     name: Notify Success
@@ -87,4 +87,4 @@ jobs:
     if: success()
     steps:
       - name: Notify
-        run: echo "✅ Aegis Nexus CI passed — 334 tests, 0 failures"
+        run: echo "OmniSec CI passed — 334 tests, 0 failures"

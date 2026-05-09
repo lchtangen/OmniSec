@@ -1,0 +1,17 @@
+Categories:Security,Network,Connectivity
+License:MIT
+Author Name:OmniSec Team
+Author Email:team@omnisec.io
+Source Code:https://github.com/omnisec-io/armored
+Issue Tracker:https://github.com/omnisec-io/armored/issues
+Donate:https://omnisec.io/donate
+Web Site:https://omnisec.io
+
+Summary:AI-native cybersecurity platform with 161 offline tools
+Description:
+OmniSec ULTIMATE is a complete cybersecurity platform.
+Features AI copilot, post-quantum crypto, mesh networking.
+100% offline. Zero telemetry. Open source forever.
+
+Requires Root:Optional
+AntiFeatures:None

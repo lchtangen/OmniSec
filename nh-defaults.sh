@@ -2,15 +2,15 @@
 # NH_SETUP_VERSION: 2.0 nextgen
 # Profile: Universal — auto-detected device profile
 # NetHunter setup v2.0 nextgen — dual Arch ARM64 + Kali ARM64 chroot environment
-# Device: auto-detected via getprop, override with env vars or devices/<codename>.sh
+# Device: auto-detected via getprop, override with env vars or device-profiles/<codename>.sh
 
 NH_SETUP_VERSION="${NH_SETUP_VERSION:-2.0}"
 NH_SETUP_PROFILE="${NH_SETUP_PROFILE:-full}"
 
 # Load device profile if available
 NH_SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null || true)"
-if [ -n "$NH_SCRIPT_DIR" ] && [ -f "$NH_SCRIPT_DIR/devices/loader.sh" ]; then
-    . "$NH_SCRIPT_DIR/devices/loader.sh"
+if [ -n "$NH_SCRIPT_DIR" ] && [ -f "$NH_SCRIPT_DIR/device-profiles/loader.sh" ]; then
+    . "$NH_SCRIPT_DIR/device-profiles/loader.sh"
 fi
 
 # Device identity — auto-detected or overridden

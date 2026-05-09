@@ -43,6 +43,19 @@ workspace/
 # Binary artifacts
 *.deb
 *.zip
+*.apk
+
+# Local binary assets (rootfs, firmware, APKs)
+assets/
+
+# Nested repos (separate projects, not submodules)
+linux-omnisec/
+
+# Local device backup data
+device-backup/
+
+# Buildozer Python-for-Android nested repo
+platform/mobile/kivy_app/.buildozer/
 
 # OS/editor noise
 .DS_Store

@@ -1,0 +1,1 @@
+"""OmniSec Desktop GUI"""

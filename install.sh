@@ -1,26 +1,26 @@
 #!/bin/bash
-# Aegis Nexus — One-Line Installer
-# Usage: curl -sSL https://aegis-nexus.org/install | bash
+# OmniSec — One-Line Installer
+# Usage: curl -sSL https://raw.githubusercontent.com/lchtangen/OmniSec/main/install.sh | bash
 
 set -euo pipefail
 
-AEGIS_VERSION="3.0"
-AEGIS_REPO="https://github.com/AegisNexus/aegis-nexus.git"
-INSTALL_DIR="$HOME/.aegis-nexus"
+OMNISEC_VERSION="3.0"
+OMNISEC_REPO="https://github.com/lchtangen/OmniSec.git"
+INSTALL_DIR="$HOME/.omnisec"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-info()  { echo -e "${GREEN}[Aegis Nexus]${NC} $*"; }
+info()  { echo -e "${GREEN}[OmniSec]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[Warning]${NC} $*"; }
 err()   { echo -e "${RED}[Error]${NC} $*"; exit 1; }
 
 echo ""
 echo "╔════════════════════════════════════════════╗"
-echo "║   🛡️  Aegis Nexus v${AEGIS_VERSION} Installer     ║"
-echo "║   The Next-Gen Mobile Security Platform  ║"
+echo "║   OmniSec v${OMNISEC_VERSION} Installer                  ║"
+echo "║   Next-Gen Mobile Security Platform        ║"
 echo "╚════════════════════════════════════════════╝"
 echo ""
 
@@ -65,8 +65,8 @@ if [ -d "$INSTALL_DIR" ]; then
     cd "$INSTALL_DIR"
     git pull origin main
 else
-    info "Cloning Aegis Nexus..."
-    git clone "$AEGIS_REPO" "$INSTALL_DIR"
+    info "Cloning OmniSec..."
+    git clone "$OMNISEC_REPO" "$INSTALL_DIR"
     cd "$INSTALL_DIR"
 fi
 
@@ -98,10 +98,9 @@ esac
 
 echo ""
 echo "╔════════════════════════════════════════════╗"
-echo "║  ✅ Installation Complete!                   ║"
-echo "║                                          ║"
-echo "║  Run: nhctl help                       ║"
-echo "║  Docs: https://aegis-nexus.org/docs      ║"
-echo "║  Community: https://discord.gg/aegis-nexus ║"
+echo "║  Installation Complete!                    ║"
+echo "║                                            ║"
+echo "║  Run: nhctl help                           ║"
+echo "║  Docs: https://github.com/lchtangen/OmniSec║"
 echo "╚════════════════════════════════════════════╝"
 echo ""

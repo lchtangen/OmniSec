@@ -1,5 +1,5 @@
 #!/bin/bash
-# Aegis Nexus — Ubuntu/Debian Build Script
+# OmniSec — Ubuntu/Debian Build Script
 # Builds for both ARM64 and x86_64
 
 set -euo pipefail
@@ -8,7 +8,7 @@ ARCH="${1:-$(uname -m)}"
 DISTRO="${2:-ubuntu}"
 VERSION="${3:-24.04}"
 
-info()  { echo "[Aegis] $*"; }
+info()  { echo "[OmniSec] $*"; }
 err()   { echo "[Error] $*" >&2; exit 1; }
 
 PKGS_UBUNTU="bash git make gcc python3 openssl nmap curl wget tcpdump"
@@ -27,19 +27,19 @@ install_deps() {
     esac
 }
 
-build_aegis() {
-    info "Building Aegis Nexus for $ARCH..."
-    
+build_omnisec() {
+    info "Building OmniSec for $ARCH..."
+
     # Clone if needed
-    if [ ! -d aegis-nexus ]; then
-        git clone https://github.com/AegisNexus/aegis-nexus.git
+    if [ ! -d omnisec ]; then
+        git clone https://github.com/lchtangen/OmniSec.git omnisec
     fi
-    
-    cd aegis-nexus
-    
+
+    cd omnisec
+
     # Stage build
     make stage
-    
+
     # Build C tools with architecture-specific flags
     case "$ARCH" in
         aarch64|arm64)
@@ -49,56 +49,56 @@ build_aegis() {
             export CC="gcc"
             ;;
     esac
-    
+
     make build-c
-    
+
     info "Build complete!"
 }
 
-install_aegis() {
+install_omnisec() {
     info "Installing to system..."
-    cd aegis-nexus
+    cd omnisec
     sudo make install
     info "Installed! Run: nhctl help"
 }
 
 create_deb_package() {
     info "Creating .deb package..."
-    cd aegis-nexus
-    
+    cd omnisec
+
     # Create DEB structure
-    mkdir -p deb-build/aegis-nexus_3.0/DEBIAN
-    
+    mkdir -p deb-build/omnisec_3.0/DEBIAN
+
     # Control file
-    cat > deb-build/aegis-nexus_3.0/DEBIAN/control <<EOF
-Package: aegis-nexus
+    cat > deb-build/omnisec_3.0/DEBIAN/control <<EOF
+Package: omnisec
 Version: 3.0
 Section: security
 Priority: optional
 Architecture: ${ARCH}
 Depends: bash, git, make, gcc, python3, openssl, nmap
-Maintainer: Aegis Nexus Team <team@aegis-nexus.org>
+Maintainer: OmniSec Team <lchtangen@gmail.com>
 Description: Next-Generation Mobile Security Platform
- Aegis Nexus brings enterprise-grade security to mobile devices
+ OmniSec brings enterprise-grade security to mobile devices
  with on-device AI, mesh networking, eBPF kernel defense,
  post-quantum cryptography, and hardware security modules.
 EOF
-    
+
     # Install files
-    mkdir -p deb-build/aegis-nexus_3.0/usr/local/bin
-    cp -a payload/nhsystem-bin/* deb-build/aegis-nexus_3.0/usr/local/bin/
-    cp payload/nhsystem-bin/nh-ebpf deb-build/aegis-nexus_3.0/usr/local/bin/ 2>/dev/null || true
-    
+    mkdir -p deb-build/omnisec_3.0/usr/local/bin
+    cp -a payload/nhsystem-bin/* deb-build/omnisec_3.0/usr/local/bin/
+    cp payload/nhsystem-bin/nh-ebpf deb-build/omnisec_3.0/usr/local/bin/ 2>/dev/null || true
+
     # Build package
-    dpkg-deb --build deb-build/aegis-nexus_3.0
-    info "Created: deb-build/aegis-nexus_3.0.deb"
+    dpkg-deb --build deb-build/omnisec_3.0
+    info "Created: deb-build/omnisec_3.0.deb"
 }
 
 case "${1:-build}" in
     deps)      install_deps ;;
-    build)     install_deps && build_aegis ;;
-    install)   install_aegis ;;
-    deb)       install_deps && build_aegis && create_deb_package ;;
+    build)     install_deps && build_omnisec ;;
+    install)   install_omnisec ;;
+    deb)       install_deps && build_omnisec && create_deb_package ;;
     help|*)
         echo "Usage: $0 [deps|build|install|deb] [ubuntu|debian] [version]"
         echo "Example: $0 build ubuntu 24.04"

@@ -1,11 +1,11 @@
 #!/bin/bash
-# Aegis Nexus — macOS Build Script
+# OmniSec — macOS Build Script
 # Supports both Apple Silicon (arm64) and Intel (x86_64)
 
 set -euo pipefail
 
 ARCH="$(uname -m)"
-info()  { echo "[Aegis] $*"; }
+info()  { echo "[OmniSec] $*"; }
 err()   { echo "[Error] $*" >&2; exit 1; }
 
 check_homebrew() {
@@ -18,57 +18,57 @@ check_homebrew() {
 install_deps() {
     info "Installing dependencies for macOS ($ARCH)..."
     check_homebrew
-    
+
     brew install bash git make gcc python3 openssl nmap curl wget
 }
 
-build_aegis() {
-    info "Building Aegis Nexus for macOS ($ARCH)..."
-    
+build_omnisec() {
+    info "Building OmniSec for macOS ($ARCH)..."
+
     # Clone if needed
-    if [ ! -d aegis-nexus ]; then
-        git clone https://github.com/AegisNexus/aegis-nexus.git
+    if [ ! -d omnisec ]; then
+        git clone https://github.com/lchtangen/OmniSec.git omnisec
     fi
-    
-    cd aegis-nexus
-    
+
+    cd omnisec
+
     # Stage build
     make stage
-    
+
     # Build C tools
     make build-c
-    
+
     info "Build complete!"
 }
 
-install_aegis() {
+install_omnisec() {
     info "Installing to system..."
-    cd aegis-nexus
-    
+    cd omnisec
+
     # Install with Homebrew
-    if [ -d "$(brew --prefix)/Cellar/aegis-nexus" ]; then
-        brew reinstall ./homebrew/aegis-nexus.rb
+    if [ -d "$(brew --prefix)/Cellar/omnisec" ]; then
+        brew reinstall ./homebrew/omnisec.rb
     else
-        brew install --HEAD ./homebrew/aegis-nexus.rb
+        brew install --HEAD ./homebrew/omnisec.rb
     fi
-    
+
     info "Installed! Run: nhctl help"
 }
 
 create_release() {
     info "Creating macOS release package..."
-    cd aegis-nexus
-    
+    cd omnisec
+
     # Create .tar.gz
-    tar -czf "aegis-nexus-macos-${ARCH}-3.0.tar.gz" -C payload/ .
-    info "Created: aegis-nexus-macos-${ARCH}-3.0.tar.gz"
+    tar -czf "omnisec-macos-${ARCH}-3.0.tar.gz" -C payload/ .
+    info "Created: omnisec-macos-${ARCH}-3.0.tar.gz"
 }
 
 case "${1:-build}" in
     deps)      install_deps ;;
-    build)     install_deps && build_aegis ;;
-    install)   install_aegis ;;
-    release)   install_deps && build_aegis && create_release ;;
+    build)     install_deps && build_omnisec ;;
+    install)   install_omnisec ;;
+    release)   install_deps && build_omnisec && create_release ;;
     help|*)
         echo "Usage: $0 [deps|build|install|release]"
         echo "Example: $0 build"
