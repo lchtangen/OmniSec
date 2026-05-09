@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# NH_KERNEL_VERSION: 2.0.0
-# NetHunter NextGen Kernel Build System — Matrix Edition
+# NH_KERNEL_VERSION: 3.0.0
+# OmniSec Kernel Build System — Clang-First Edition
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -11,7 +11,7 @@ DIST_DIR="$KERNEL_DIR/dist"
 FRAGMENTS_DIR="$KERNEL_DIR/configs/fragments"
 DEVICE_DIR="$KERNEL_DIR/device"
 
-NH_VERSION="2.0.0"
+NH_VERSION="3.0.0"
 KERNEL_BASE="4.14"
 KERNEL_REL="356"
 KERNEL_VERSION="${KERNEL_BASE}.${KERNEL_REL}"
@@ -24,7 +24,7 @@ die() { printf "\033[31m  ERROR: %s\033[0m\n" "$*"; exit 1; }
 header() { printf "\033[36m=== %s ===\033[0m\n" "$*"; }
 
 # ── Build Matrix ───────────────────────────────────────────────────
-# Each variant defines which config fragments to merge
+# Each variant defines which config fragments to merge (in order)
 declare -A VARIANTS
 VARIANTS=(
 	[stable]="base containers security"
@@ -33,6 +33,10 @@ VARIANTS=(
 	[nethunter]="base containers security nethunter performance"
 	[debug]="base containers security performance debug"
 	[minimal]="base containers"
+	# ── OmniSec variants ────────────────────────────────────────────
+	[omnisec]="base containers security nethunter offensive wireless-extended hardware-hacking performance"
+	[offensive]="base containers nethunter offensive wireless-extended hardware-hacking performance"
+	[exploit-dev]="base containers security nethunter offensive exploit-dev debug"
 )
 
 declare -A VARIANT_DESC
@@ -43,6 +47,9 @@ VARIANT_DESC=(
 	[nethunter]="Full NetHunter — all security tools, HID, monitor mode, injection"
 	[debug]="Development build — full debug, tracing, KGDB"
 	[minimal]="Minimal — base + containers only, stripped"
+	[omnisec]="ULTIMATE — nethunter + offensive + wireless-extended + hardware-hacking + performance"
+	[offensive]="Offensive — MITM, injection, protocol exploitation, hardware attacks"
+	[exploit-dev]="Exploit Dev — kprobes, BPF override, KASAN, UBSAN, KGDB, raw memory access"
 )
 
 declare -A VARIANT_COLOR
@@ -53,18 +60,33 @@ VARIANT_COLOR=(
 	[nethunter]="35"
 	[debug]="36"
 	[minimal]="37"
+	[omnisec]="91"
+	[offensive]="31"
+	[exploit-dev]="93"
 )
 
 # ── Device Registry ────────────────────────────────────────────────
 declare -A DEVICES
 DEVICES=(
 	[guacamole]="OnePlus 7 Pro GM1911:sm8150:lineageos_guacamole_defconfig:https://github.com/LineageOS/android_kernel_oneplus_sm8150.git"
+	[oneplus7t]="OnePlus 7T HD1903:sm8150:lineageos_hotdog_defconfig:https://github.com/LineageOS/android_kernel_oneplus_sm8150.git"
+	[pixel6]="Google Pixel 6:gs101:lineageos_oriole_defconfig:https://github.com/LineageOS/android_kernel_google_gs101.git"
+	[pixel7]="Google Pixel 7:gs201:lineageos_panther_defconfig:https://github.com/LineageOS/android_kernel_google_gs201.git"
+	[pixel8]="Google Pixel 8:gs301:lineageos_shiba_defconfig:https://github.com/LineageOS/android_kernel_google_gs201.git"
 )
 
-# ── Toolchain ──────────────────────────────────────────────────────
-TOOLCHAIN="${CROSS_COMPILE:-aarch64-linux-gnu-}"
+# ── Toolchain — Clang-first, ccache-accelerated ────────────────────
+# Override: USE_CLANG=0 to fall back to GCC
+USE_CLANG="${USE_CLANG:-1}"
+# Override: USE_CCACHE=0 to disable
+USE_CCACHE="${USE_CCACHE:-1}"
+CROSS_COMPILE_GCC="${CROSS_COMPILE:-aarch64-linux-gnu-}"
+CLANG_TRIPLE="aarch64-linux-gnu-"
 TOOLCHAIN_DIR="$KERNEL_DIR/toolchain"
 KERNEL_SUFFIX="${KERNEL_SUFFIX:-}"
+
+# Populated by setup_make_vars — used in every make call
+MAKE_VARS=""
 
 # ── Helpers ────────────────────────────────────────────────────────
 device_info() {
@@ -98,19 +120,50 @@ get_variant_out() {
 }
 
 # ── Toolchain Setup ────────────────────────────────────────────────
-check_toolchain() {
-	say "Checking toolchain..."
-	if command -v "${TOOLCHAIN}gcc" &>/dev/null; then
-		"${TOOLCHAIN}gcc" --version | head -1
-	elif [ -f "$TOOLCHAIN_DIR/bin/aarch64-linux-android-gcc" ]; then
-		TOOLCHAIN="$TOOLCHAIN_DIR/bin/aarch64-linux-android-"
-		say "Using NDK toolchain: $TOOLCHAIN"
+setup_make_vars() {
+	# Build the MAKE_VARS string used in every kernel make invocation
+	if [[ "$USE_CLANG" == "1" ]] && command -v clang &>/dev/null; then
+		local cc="clang"
+		local cxx="clang++"
+		if [[ "$USE_CCACHE" == "1" ]] && command -v ccache &>/dev/null; then
+			export CCACHE_DIR="${CCACHE_DIR:-$HOME/.cache/ccache}"
+			export CCACHE_SLOPPINESS=random_seed,locale,time_macros
+			export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-20G}"
+			cc="ccache clang"
+			cxx="ccache clang++"
+			say "ccache + Clang toolchain active (CCACHE_DIR=$CCACHE_DIR)"
+		else
+			say "Clang toolchain active (no ccache)"
+		fi
+		MAKE_VARS="CC=\"$cc\" CXX=\"$cxx\" LD=ld.lld AR=llvm-ar NM=llvm-nm \
+STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf \
+HOSTCC=\"$cc\" HOSTCXX=\"$cxx\" HOSTAR=llvm-ar \
+CROSS_COMPILE=$CLANG_TRIPLE CLANG_TRIPLE=$CLANG_TRIPLE LLVM=1 LLVM_IAS=1"
+		clang --version | head -1
+	elif command -v "${CROSS_COMPILE_GCC}gcc" &>/dev/null; then
+		local cc="${CROSS_COMPILE_GCC}gcc"
+		if [[ "$USE_CCACHE" == "1" ]] && command -v ccache &>/dev/null; then
+			export CCACHE_DIR="${CCACHE_DIR:-$HOME/.cache/ccache}"
+			export CCACHE_SLOPPINESS=random_seed,locale,time_macros
+			cc="ccache ${cc}"
+		fi
+		MAKE_VARS="CROSS_COMPILE=$CROSS_COMPILE_GCC"
+		warn "Clang not found — falling back to GCC"
+		"${CROSS_COMPILE_GCC}gcc" --version | head -1
+	elif [ -f "$TOOLCHAIN_DIR/bin/aarch64-linux-android-clang" ]; then
+		export PATH="$TOOLCHAIN_DIR/bin:$PATH"
+		MAKE_VARS="CC=aarch64-linux-android-clang CROSS_COMPILE=$CLANG_TRIPLE CLANG_TRIPLE=$CLANG_TRIPLE LLVM=1 LLVM_IAS=1"
+		say "Using NDK Clang: $TOOLCHAIN_DIR/bin"
 	else
-		warn "System toolchain not found."
-		warn "Install: sudo apt install gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu"
+		warn "No toolchain found. Install: pacman -S clang lld aarch64-linux-gnu-gcc"
 		warn "Or run: $0 toolchain"
 		die "No toolchain available"
 	fi
+}
+
+check_toolchain() {
+	say "Checking toolchain..."
+	setup_make_vars
 }
 
 setup_toolchain() {
@@ -171,29 +224,42 @@ update_kernel_source() {
 }
 
 # ── Patch System ───────────────────────────────────────────────────
+# Patch sets applied per-variant (cumulative — higher sets include lower)
+declare -A PATCH_SETS
+PATCH_SETS=(
+	[stable]="generic"
+	[performance]="generic"
+	[battery]="generic"
+	[minimal]="generic"
+	[nethunter]="generic nethunter"
+	[debug]="generic nethunter"
+	[omnisec]="generic nethunter offensive"
+	[offensive]="generic nethunter offensive"
+	[exploit-dev]="generic nethunter offensive exploit-dev"
+)
+
+apply_patch_dir() {
+	local src_dir="$1" patch_dir="$2"
+	[ -d "$patch_dir" ] || return 0
+	local count=0
+	for p in $(ls "$patch_dir"/*.patch 2>/dev/null | sort); do
+		[ -f "$p" ] || continue
+		say "  patch: $(basename "$p")"
+		patch -p1 -N < "$p" 2>/dev/null && (( count++ )) || warn "  (skip — already applied or conflict)"
+	done
+	[ "$count" -gt 0 ] && say "  $count patch(es) applied from $(basename "$patch_dir")"
+}
+
 add_patches() {
 	local dev="$1" variant="$2"
 	local src_dir="$SRC_DIR/$dev"
+	local sets="${PATCH_SETS[$variant]:-generic}"
 
-	if [ -d "$KERNEL_DIR/patches/generic" ]; then
-		say "Applying generic patches..."
-		cd "$src_dir"
-		for p in "$KERNEL_DIR/patches/generic/"*.patch; do
-			[ -f "$p" ] || continue
-			say "  $(basename "$p")"
-			patch -p1 -N < "$p" 2>/dev/null || warn "  (skip, may already apply)"
-		done
-	fi
-
-	if [ -d "$KERNEL_DIR/patches/$variant" ]; then
-		say "Applying variant patches ($variant)..."
-		cd "$src_dir"
-		for p in "$KERNEL_DIR/patches/$variant/"*.patch; do
-			[ -f "$p" ] || continue
-			say "  $(basename "$p")"
-			patch -p1 -N < "$p" 2>/dev/null || warn "  (skip)"
-		done
-	fi
+	say "Applying patches for variant: $variant (sets: $sets)"
+	cd "$src_dir"
+	for set in $sets; do
+		apply_patch_dir "$src_dir" "$KERNEL_DIR/patches/$set"
+	done
 }
 
 # ── Config Generation ──────────────────────────────────────────────
@@ -228,14 +294,14 @@ generate_config() {
 	if [ -n "$fragment_list" ]; then
 		say "Merging fragments: ${VARIANTS[$variant]}"
 		cd "$src_dir"
-		ARCH=arm64 CROSS_COMPILE="$TOOLCHAIN" \
+		eval ARCH=arm64 $MAKE_VARS \
 		scripts/kconfig/merge_config.sh -m -O "$out_dir" \
 			"$stock_defconfig" $fragment_list 2>/dev/null || true
 	fi
 
-	# Step 3: Apply config for variant
+	# Step 3: Resolve all dependencies
 	cd "$src_dir"
-	make O="$out_dir" ARCH=arm64 CROSS_COMPILE="$TOOLCHAIN" olddefconfig 2>/dev/null
+	eval make O="$out_dir" ARCH=arm64 $MAKE_VARS -j"$(nproc)" olddefconfig 2>/dev/null
 
 	say "Config generated: $(wc -l < "$out_dir/.config") options"
 }
@@ -252,8 +318,8 @@ build_variant_kernel() {
 	generate_config "$dev" "$variant"
 
 	say "Compiling kernel image + DTBs..."
-	make -C "$src_dir" O="$out_dir" \
-		ARCH=arm64 CROSS_COMPILE="$TOOLCHAIN" \
+	eval make -C "$src_dir" O="$out_dir" \
+		ARCH=arm64 $MAKE_VARS \
 		-j"$(nproc)" \
 		Image.gz dtbs 2>&1 | tail -5
 
@@ -273,14 +339,14 @@ build_variant_modules() {
 	local mod_dir="$(get_variant_dir "$dev" "$variant")/modules"
 
 	say "Building kernel modules..."
-	make -C "$src_dir" O="$out_dir" \
-		ARCH=arm64 CROSS_COMPILE="$TOOLCHAIN" \
+	eval make -C "$src_dir" O="$out_dir" \
+		ARCH=arm64 $MAKE_VARS \
 		-j"$(nproc)" \
 		modules 2>&1 | tail -3
 
 	mkdir -p "$mod_dir"
-	make -C "$src_dir" O="$out_dir" \
-		ARCH=arm64 CROSS_COMPILE="$TOOLCHAIN" \
+	eval make -C "$src_dir" O="$out_dir" \
+		ARCH=arm64 $MAKE_VARS \
 		INSTALL_MOD_PATH="$mod_dir" \
 		modules_install 2>&1 | tail -3
 
