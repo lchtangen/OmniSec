@@ -23,14 +23,14 @@ All scripts must account for these constraints.
 - Use ADB for device communication
 - Every "risky" operation must call `run_backup()` first
 
-### Device-side scripts (`src/device/setup/`)
+### Device-side scripts (`payload/`)
 - Shebang: `#!/system/bin/sh`
 - Options: `set -euo pipefail` (where supported by mksh)
-- Source `../bin/nh-lib` for helpers (or at deploy path `nhsystem-bin/nh-lib`)
+- Source `nhsystem-bin/nh-lib` for helpers
 - Only use commands available in Android's minimal shell
 - No assumptions about `$PATH` — use full paths
 
-### nhsystem-bin scripts (`src/device/bin/`)
+### Shell plugins (`plugins/`)
 - Shebang: `#!/system/bin/sh`
 - Source `nh-lib` for shared functions
 - Keep functions reusable and composable
@@ -72,7 +72,7 @@ area: brief description
 Optional body explaining motivation and approach.
 ```
 
-Areas: `nhctl`, `src/device/setup`, `src/device/bin`, `kernel`, `device`, `docs`, `build`, `ci`, `magisk`
+Areas: `nhctl`, `payload`, `plugins`, `kernel`, `device-maintenance`, `docs`, `build`, `ci`, `package-recipes`
 
 ## Testing
 

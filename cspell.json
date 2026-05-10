@@ -1,0 +1,36 @@
+{
+    "version": "0.2",
+    "language": "en,en-US",
+    "words": [
+        "OmniSec",
+        "NetHunter",
+        "nhctl",
+        "Termux",
+        "kalifs",
+        "Archlinux",
+        "magisk",
+        "yggdrasil",
+        "Reticulum",
+        "YubiKey",
+        "SoloKey",
+        "PQC",
+        "ebpf",
+        "buildozer",
+        "chroot",
+        "rootfs",
+        "LineageOS"
+    ],
+    "ignorePaths": [
+        "**/.git/**",
+        "**/node_modules/**",
+        "**/build/**",
+        "**/dist/**",
+        "**/payload/**",
+        "**/*.tar.gz",
+        "**/*.zst",
+        "**/*.sig",
+        "kernel-build-arch-package/**",
+        "device-backup/**",
+        "audits/**"
+    ]
+}

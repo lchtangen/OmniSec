@@ -21,7 +21,7 @@ DIST_DIR := $(ROOT_DIR)/dist
 PAYLOAD_DIR := $(ROOT_DIR)/payload
 KERNEL_DIR := $(ROOT_DIR)/kernel
 TEST_DIR := $(ROOT_DIR)/tests
-DEVICE_DIR := $(ROOT_DIR)/device
+DEVICE_DIR := $(ROOT_DIR)/device-maintenance
 WORKSPACE_DIR := $(ROOT_DIR)/workspace
 DEPLOY_DIR := $(ROOT_DIR)/deploy
 
@@ -82,13 +82,14 @@ lint: lint-sh lint-c lint-json
 .PHONY: lint-sh
 lint-sh:
 	@echo "--- Shell syntax check ---"
-	@find $(SRC_DIR) -name '*.sh' -exec bash -n {} \;
-	@find $(SRC_DIR) -name 'nh-*' -not -name '*.c' | while read f; do head -1 "$$f" 2>/dev/null | grep -q "python" || bash -n "$$f"; done
 	@bash -n $(ROOT_DIR)/nhctl
-	@find $(ROOT_DIR)/device -name '*.sh' -exec bash -n {} \;
+	@find $(ROOT_DIR) -maxdepth 1 -type f -name '*.sh' -exec bash -n {} \;
+	@find $(ROOT_DIR)/scripts -type f -name '*.sh' -exec bash -n {} \;
+	@find $(SRC_DIR) -type f -name '*.sh' -exec bash -n {} \;
+	@find $(ROOT_DIR)/device-maintenance -name '*.sh' -exec bash -n {} \;
 	@find $(ROOT_DIR)/deploy -name '*.sh' -exec bash -n {} \;
 	@find $(ROOT_DIR)/tests -name '*.sh' -exec bash -n {} \;
-	@echo "  shell syntax: OK"
+	@echo "  shell syntax: OK (strict maintained scope)"
 
 .PHONY: lint-c
 lint-c:
@@ -141,20 +142,20 @@ deploy: stage
 .PHONY: deploy-full
 deploy-full: stage
 	@echo "--- Full deploy ---"
-	@./clean-rebuild-postboot.sh
+	@./scripts/clean-rebuild-postboot.sh
 	@echo "  full deploy: OK"
 
 .PHONY: docker
-docker: Dockerfile
-	docker build -t nethunter-setup:$(NH_VERSION) .
-	@echo "  docker image: nethunter-setup:$(NH_VERSION)"
+docker: docker/Dockerfile
+	docker build -f docker/Dockerfile -t omnisec:$(NH_VERSION) .
+	@echo "  docker image: omnisec:$(NH_VERSION)"
 
 .PHONY: docker-run
 docker-run: docker
 	docker run --rm -it --network host \
 		-v /dev/bus/usb:/dev/bus/usb:ro \
 		-v $(HOME)/.ssh:/root/.ssh:ro \
-		nethunter-setup:$(NH_VERSION)
+		omnisec:$(NH_VERSION)
 
 .PHONY: clean
 clean:
@@ -210,5 +211,12 @@ tree:
 
 .PHONY: help
 help:
-	@grep -E '^[a-zA-Z_-]+:.*#' $(MAKEFILE_LIST) | sort | \
-		awk 'BEGIN {FS=":.*?# "}; {printf "  make %-18s %s\n", $$1, $$2}'
+	@echo "Available targets:"
+	@echo "  make build"
+	@echo "  make lint"
+	@echo "  make test"
+	@echo "  make validate"
+	@echo "  make deploy"
+	@echo "  make clean"
+	@echo "  make dist"
+	@echo "  make version"

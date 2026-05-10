@@ -48,14 +48,21 @@ workspace/
 # Local binary assets (rootfs, firmware, APKs)
 assets/
 
+# Build output (created by make dist, make build-c)
+dist/
+
+# Untracked local development directories
+src/
+deploy/
+
 # Nested repos (separate projects, not submodules)
-linux-omnisec/
+kernel-build-arch-package/
 
 # Local device backup data
 device-backup/
 
 # Buildozer Python-for-Android nested repo
-platform/mobile/kivy_app/.buildozer/
+platform-legacy/mobile/kivy_app/.buildozer/
 
 # OS/editor noise
 .DS_Store

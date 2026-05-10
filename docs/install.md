@@ -159,7 +159,7 @@ adb shell "su -c 'mount | grep chroot'"
 
 Once chroots are setup, install buildozer and build:
 ```bash
-cd ~/nethunter-setup/OmniSec-FINAL/mobile/kivy_app
+cd ~/OmniSec/platform-legacy/mobile/kivy_app
 python3 -m pip install --user buildozer cython
 buildozer android debug
 adb -s 10.0.0.118:39119 install -r bin/*.apk

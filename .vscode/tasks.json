@@ -244,6 +244,80 @@
                 "clear": true
             },
             "problemMatcher": []
+        },
+
+        // ── Local Quality Gates ─────────────────────────────────────────────
+        {
+            "label": "Dev: Make Lint",
+            "type": "shell",
+            "command": "make lint",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "Dev: Make Test",
+            "type": "shell",
+            "command": "make test",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Dev: Make Validate",
+            "type": "shell",
+            "command": "make validate",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Gate: Full Quality Check",
+            "type": "shell",
+            "command": "./repo-doctor.sh && make lint && make test",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Refactor: Rename Audit",
+            "type": "shell",
+            "command": "./scripts/pre-rename-audit.sh",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Refactor: Rename Quality Gate",
+            "type": "shell",
+            "command": "./scripts/pre-rename-audit.sh && ./repo-doctor.sh && make lint && make test",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
         }
     ]
 }

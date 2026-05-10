@@ -60,7 +60,7 @@
 | Ubuntu/Debian (ARM64+x86_64) | 🔄 Porting | Cross-compile | P1 |
 | macOS (Apple Silicon+Intel) | 🔄 Porting | `nh-defaults.sh` | P1 |
 | Termux compatibility | ✅ Done | `nh-lib` | P1 |
-| Docker containers | 🔄 Creating | `Dockerfile` | P2 |
+| Docker containers | 🔄 Creating | `docker/Dockerfile` | P2 |
 | Live USB/ISO | 🔄 Creating | `mkisofs` | P2 |
 
 ---
@@ -72,9 +72,9 @@
 | 334-test CI pipeline | ✅ Done | `tests/test_scripts.bats` | P0 |
 | GitHub Actions + pre-commit | 🔄 Creating | `.github/workflows/` | P0 |
 | One-line installer | 🔄 Creating | `install.sh` | P0 |
-| F-Droid repository | 🔄 Creating | `fdroid/` | P1 |
-| AUR package | 🔄 Creating | `aur/` | P1 |
-| Homebrew tap | 🔄 Creating | `homebrew/` | P1 |
+| F-Droid repository | 🔄 Creating | `package-recipes/fdroid/` | P1 |
+| AUR package | 🔄 Creating | `package-recipes/aur/` | P1 |
+| Homebrew tap | 🔄 Creating | `package-recipes/homebrew/` | P1 |
 | Ansible playbooks | 🔄 Creating | `ansible/` | P2 |
 | Digital twin simulation | ✅ Done | `nh-digital-twin` | P2 |
 
@@ -89,16 +89,16 @@
 - [ ] Update ALL references in 207 files
 
 ### Phase B: Platform Ports (Hour 4-12)
-- [ ] Create `platforms/ubuntu/` build scripts
-- [ ] Create `platforms/macos/` build scripts  
-- [ ] Create `Dockerfile.multiarch` for containerization
-- [ ] Create `live-cd/` for ISO generation
+- [ ] Expand `ci/ubuntu/` build scripts
+- [ ] Expand `ci/macos/` build scripts
+- [ ] Expand `docker/Dockerfile.multiarch` for containerization
+- [ ] Expand `live-iso-build/` for ISO generation
 
 ### Phase C: DevOps Automation (Hour 12-24)
 - [ ] Create `.github/workflows/ci.yml` (334 tests)
 - [ ] Create `install.sh` (one-line curl installer)
-- [ ] Create `fdroid/` repository structure
-- [ ] Create `aur/aegis-nexus-git/` PKGBUILD
+- [ ] Create `distribution-fdroid/` repository structure
+- [ ] Create `package-recipes/aur/aegis-nexus-git/` PKGBUILD
 - [ ] Create `homebrew/` tap formula
 
 ### Phase D: Advanced Features (Hour 24-48)
