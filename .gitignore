@@ -102,3 +102,9 @@ OmniSec-dev/
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Kernel generated/cloned source and build outputs
+kernel/src/
+kernel/dist/
+kernel/toolchain/
+kernel/**/out/
