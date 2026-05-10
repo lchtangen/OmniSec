@@ -19,7 +19,7 @@ optdepends=(
     'whisper.cpp: Voice control'
 )
 provides=('aegis-nexus')
-conflicts=('nethunter-setup')
+conflicts=('omnisec')
 source=("git+https://github.com/AegisNexus/${pkgname}.git")
 md5sums=('SKIP')
 

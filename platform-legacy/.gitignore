@@ -61,6 +61,7 @@ config/
 .gemini/
 .codeium/
 .copilot/
+.opencode/
 .github/copilot-instructions.local.md
 
 # Logs
