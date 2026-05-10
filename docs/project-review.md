@@ -1,4 +1,4 @@
-# NetHunter Setup — Master Review & Next-Gen Roadmap
+# OmniSec — Master Review & Next-Gen Roadmap
 
 **Profile:** `v2.0-full` · **Device:** OnePlus 7 Pro (GM1911) · **Android:** 16 · **LineageOS:** 23.2 · **ABI:** arm64-v8a  
 **Chroots:** Arch ARM64 (dev workstation) + Kali ARM64 (security)

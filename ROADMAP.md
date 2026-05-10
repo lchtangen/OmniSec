@@ -84,7 +84,7 @@
 
 ### Phase A: Repository Rebrand (Hour 0-4)
 - [ ] Create `AegisNexus` GitHub org
-- [ ] Migrate `nethunter-setup` → `aegis-nexus/core`
+- [ ] Migrate `OmniSec` → `aegis-nexus/core`
 - [ ] Rename all `nh-*` → `an-*` (Aegis Nexus prefix)
 - [ ] Update ALL references in 207 files
 

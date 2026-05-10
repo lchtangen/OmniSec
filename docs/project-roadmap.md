@@ -3,7 +3,7 @@
 
 # Personal 25 Project Roadmap
 
-Default profile: `NetHunter setup v2.0 (default)` with `Arch ARM64 v2.0 (default)` and `Kali ARM64 v2.0 (default)`.
+Default profile: `OmniSec v2.0 (default)` with `Arch ARM64 v2.0 (default)` and `Kali ARM64 v2.0 (default)`.
 
 Date: 2026-05-07
 

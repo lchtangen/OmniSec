@@ -1,4 +1,4 @@
-# NetHunter Matrix v3.0 — 293+ Tools Feature Matrix
+# OmniSec v3.0 — 293+ Tools Feature Matrix
 
 ## 🚀 WAY BEYOND Kali NetHunter!
 

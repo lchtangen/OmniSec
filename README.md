@@ -1,4 +1,4 @@
-# 🔰 NetHunter Matrix v3.0
+# 🔰 OmniSec v3.0
 
 > **The Ultimate Mobile Security & Development Platform**
 >
@@ -6,12 +6,15 @@
 
 [![Stars](https://img.shields.io/github/stars/lchtangen/OmniSec?style=social)](https://github.com/lchtangen/OmniSec)
 [![Downloads](https://img.shields.io/github/downloads/lchtangen/OmniSec/total?style=social)](https://github.com/lchtangen/OmniSec/releases)
-[![License](https://img.shields.io/github/license/lchtangen/OmniSec?style=social)](LICENSE)
-[![Website](https://img.shields.io/badge/website-nethunter--matrix.com-blue?style=social)](https://nethunter-matrix.com)
+[![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/lchtangen/OmniSec/ci.yml?branch=main&label=ci)](https://github.com/lchtangen/OmniSec/actions/workflows/ci.yml)
+[![Code of Conduct](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Website](https://img.shields.io/badge/web-omnisec.dev-blue)](https://omnisec.dev)
 
 ---
 
-## 🎯 Why NetHunter Matrix?
+## 🎯 Why OmniSec?
 
 ### Before (The Problem)
 - ❌ Kali: Great tools, locked to one distro
@@ -28,7 +31,7 @@
 - ✅ **AI Copilot** (local LLMs, no cloud needed)
 - ✅ **Mesh Ready** (Reticulum, LXMF, Yggdrasil)
 - ✅ **Quantum-Safe** (Post-quantum cryptography)
-- ✅ **Open-Source** (AGPL-3.0, free for personal use)
+- ✅ **Open-Source** (GPLv3, free for everyone)
 
 ---
 
@@ -105,7 +108,7 @@
 ## 📦 Quick Install
 
 ```bash
-curl -fsSL https://nethunter-matrix.com/install.sh | bash
+curl -fsSL https://omnisec.dev/install.sh | bash
 ```
 
 Or manual install:
@@ -156,12 +159,52 @@ nhctl threat intel update
 
 ## 🤝 Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+All contributors must follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+
+### Quick Start
+
+```bash
+git clone https://github.com/lchtangen/OmniSec.git
+cd OmniSec
+make              # lint, build, stage, test
+```
+
+### Report Issues
+
+- [Bug Report](https://github.com/lchtangen/OmniSec/issues/new?labels=bug&template=bug_report.md)
+- [Feature Request](https://github.com/lchtangen/OmniSec/issues/new?labels=enhancement&template=feature_request.md)
+- [Security Vulnerability](SECURITY.md)
+
+## 💬 Community
+
+| Resource | Link |
+|----------|------|
+| **Discord** | [OmniSec Community](https://discord.gg/omnisec) |
+| **Matrix** | `#omnisec:matrix.org` |
+| **IRC** | `#omnisec` on Libera.Chat |
+| **Discussions** | [GitHub Discussions](https://github.com/lchtangen/OmniSec/discussions) |
+| **Support** | [SUPPORT.md](SUPPORT.md) |
+| **Service Status** | [status.omnisec.dev](https://status.omnisec.dev) |
 
 ## 📄 License
 
-AGPL-3.0 - See [LICENSE](LICENSE) for details.
+**GNU General Public License v3.0** — See [LICENSE](LICENSE) for details.
+
+This is free software: you can use, modify, and redistribute it under the terms of the GPLv3.
+No warranty is provided — use at your own risk.
+
+### Third-party licenses
+
+This project builds on these open source works:
+- **Kali Linux** — GPLv3 | [kali.org](https://www.kali.org)
+- **Arch Linux** — GPLv2 | [archlinux.org](https://archlinux.org)
+- **NetHunter** — GPLv3 | [gitlab.com/kalilinux/nethunter](https://gitlab.com/kalilinux/nethunter)
+- **OpenVPN** — GPLv2 | [openvpn.net](https://openvpn.net)
+- **WireGuard** — GPLv2 | [wireguard.com](https://www.wireguard.com)
+- **OpenCode** — Apache 2.0 | [opencode.ai](https://opencode.ai)
+- **easy-rsa** — GPLv2 | [github.com/OpenVPN/easy-rsa](https://github.com/OpenVPN/easy-rsa)
 
 ---
 
-**NetHunter Matrix v3.0 - Security Without Boundaries**
+**OmniSec — Open Source. Free. For Everyone.**

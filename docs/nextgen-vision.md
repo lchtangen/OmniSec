@@ -1,4 +1,4 @@
-# NetHunter Setup — Next-Generation Vision (v3.0)
+# OmniSec — Next-Generation Vision (v3.0)
 
 **10 Phases · 50+ Tasks · Platform-Defining Features**
 
@@ -146,7 +146,7 @@ The platform runs itself — self-healing, self-optimizing, self-defending. It l
 
 ## Competitive Landscape — How We Win
 
-| Feature | NetHunter | Stryker | PentestGPT | LLMtary | Termux | **nethunter-setup v3.0** |
+| Feature | NetHunter | Stryker | PentestGPT | LLMtary | Termux | **OmniSec v3.0** |
 |---------|-----------|---------|------------|---------|--------|--------------------------|
 | Dual chroot (Arch + Kali) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | On-device AI agent | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ Phase 1 |
@@ -242,6 +242,6 @@ Phase 1 ──▶ Phase 2 ──▶ Phase 4 ──▶ Phase 5 ──▶ Phase 6
 
 No mobile security platform — NetHunter, Stryker, PentestKit, or any other — today offers on-device AI agents, mesh networking, 5G cellular security testing, eBPF kernel defense, post-quantum cryptography, HSM integration, decentralized threat intelligence, cyber-physical systems testing, immersive interfaces, or autonomous operations.
 
-**nethunter-setup v3.0 can be the first platform to bring all of these together in a single, cohesive system that runs on a standard rooted Android phone.**
+**OmniSec v3.0 can be the first platform to bring all of these together in a single, cohesive system that runs on a standard rooted Android phone.**
 
 The immediate build order (Phases 1, 5, 6) can begin today with existing packages and hardware. Each subsequent phase builds on the foundation of the previous ones, creating a platform with capabilities no competitor can match.

@@ -8,7 +8,7 @@ flashable `.zip` for Magisk v27+ (API 28+).
 ## Contents
 
 ```
-nethunter-setup-v2.0.0.zip
+OmniSec-v2.0.0.zip
 ├── module.prop         # Module metadata
 ├── customize.sh        # Installation script
 ├── uninstall.sh        # Clean uninstall
@@ -30,7 +30,7 @@ nethunter-setup-v2.0.0.zip
 make build-c
 make build-module
 
-# Output: deploy/magisk/dist/nethunter-setup-v2.0.0.zip
+# Output: deploy/magisk/dist/OmniSec-v2.0.0.zip
 ```
 
 Or manually:
@@ -54,7 +54,7 @@ delay (to ensure system is ready). It:
 ## Uninstall
 
 1. Magisk app → Modules → Remove
-2. Or flash uninstaller: `adb shell sh /data/adb/modules/nethunter-setup/uninstall.sh`
+2. Or flash uninstaller: `adb shell sh /data/adb/modules/OmniSec/uninstall.sh`
 
 The uninstaller preserves:
 - `/data/local/nhsystem/` (chroot filesystems)
@@ -90,8 +90,8 @@ For Magisk's built-in update check:
 {
   "version": "2.0.0",
   "versionCode": 200,
-  "zipUrl": "https://github.com/tangen/nethunter-setup/releases/latest/download/nethunter-setup-v2.0.0.zip",
-  "changelog": "https://github.com/tangen/nethunter-setup/releases/latest"
+  "zipUrl": "https://github.com/lchtangen/OmniSec/releases/latest/download/OmniSec-v2.0.0.zip",
+  "changelog": "https://github.com/lchtangen/OmniSec/releases/latest"
 }
 ```
 

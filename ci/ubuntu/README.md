@@ -1,10 +1,10 @@
-# NetHunter Matrix - Ubuntu/Debian Package
+# OmniSec - Ubuntu/Debian Package
 
 ## Quick Install
 
 ```bash
 # Ubuntu/Debian
-curl -fsSL https://nethunter-matrix.com/install.sh | bash -s ubuntu
+curl -fsSL https://omnisec.dev/install.sh | bash -s ubuntu
 
 # Or manual
 sudo apt-get install -y bash git make gcc python3 openssl nmap curl wget tcpdump

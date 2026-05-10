@@ -38,7 +38,7 @@ P3 LOW ────────────────────────�
 Every file and directory is tagged with its priority level.
 
 ```
-nethunter-setup/                          [P0 CRITICAL]
+OmniSec/                          [P0 CRITICAL]
 ├── kernel/                               [P0] Matrix kernel build system
 │   ├── build-kernel.sh                   [P0] Primary build entrypoint
 │   ├── configs/fragments/                [P0] Modular config fragments

@@ -1,11 +1,11 @@
-# NetHunter Matrix Version
+# OmniSec Version
 
 NH_SETUP_VERSION=3.0.0-beta
 
 Current version: `3.0.0-beta`
 
-- Release: `NetHunter Matrix v3.0.0 Beta`
-- Host profile: `NetHunter Matrix v3.0 (beta)`
+- Release: `OmniSec v3.0.0 Beta`
+- Host profile: `OmniSec v3.0 (beta)`
 - Arch profile: `Arch ARM64 v3.0 (beta)`
 - Kali profile: `Kali ARM64 v3.0 (beta)`
 - Android target: `OnePlus 7 Pro GM1911`, Android `16`, ABI `arm64-v8a`

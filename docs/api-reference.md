@@ -25,7 +25,7 @@ Shared library sourced by all scripts. Sets:
 | `NHWORK` | `$NHSYSTEM/workspaces/main` | Shared workspace |
 | `ARCH_LABEL` | `Arch ARM64 v2.0` | Arch label |
 | `KALI_LABEL` | `Kali ARM64 v2.0` | Kali label |
-| `NH_LABEL` | `NetHunter setup v2.0` | Project label |
+| `NH_LABEL` | `OmniSec v2.0` | Project label |
 
 Functions:
 

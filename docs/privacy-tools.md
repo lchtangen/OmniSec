@@ -1,6 +1,6 @@
 # Privacy Tools Documentation
 
-NetHunter Setup includes a suite of privacy-focused tools designed for Android devices running NetHunter with Arch ARM64 and Kali Linux chroots.
+OmniSec includes a suite of privacy-focused tools designed for Android devices running NetHunter with Arch ARM64 and Kali Linux chroots.
 
 ## Overview
 
@@ -109,7 +109,7 @@ Identity management tool for MAC, hostname, and user-agent randomization.
 
 Most tools require:
 - Root access (for certain operations)
-- `nh-lib` (included in NetHunter Setup)
+- `nh-lib` (included in OmniSec)
 - Standard Linux utilities (ip, ss, mount, etc.)
 
 ## Chroot Support

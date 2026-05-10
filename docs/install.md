@@ -8,7 +8,7 @@
 - ADB connected: `10.0.0.118:39119`
 
 ## 📦 Downloaded Files Ready
-Location: `~/nethunter-setup/`
+Location: `~/OmniSec/`
 - `kalifs-arm64-minimal.tar.xz` (132 MB) - Kali rootfs
 - `ArchLinuxARM-aarch64-latest.tar.gz` (941 MB) - Arch rootfs
 
@@ -28,7 +28,7 @@ Location: `~/nethunter-setup/`
 ### Option B: Use Pre-Downloaded File
 ```bash
 # Push the file (this will take time)
-adb -s 10.0.0.118:39119 push ~/nethunter-setup/kalifs-arm64-minimal.tar.xz /sdcard/Download/
+adb -s 10.0.0.118:39119 push ~/OmniSec/kalifs-arm64-minimal.tar.xz /sdcard/Download/
 
 # Then on device:
 # 1. Open NetHunter app

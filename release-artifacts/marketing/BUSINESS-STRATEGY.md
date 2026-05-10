@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-**ARMored Core** (formerly NetHunter Setup) is the world's first **AI-Native, Cross-Platform Security Platform** that unifies 158+ tools across Linux (Ubuntu, Kali, Arch, Fedora), Android, macOS, and Windows.
+**ARMored Core** (formerly OmniSec) is the world's first **AI-Native, Cross-Platform Security Platform** that unifies 158+ tools across Linux (Ubuntu, Kali, Arch, Fedora), Android, macOS, and Windows.
 
 ### The Problem
 - Security tools are scattered across platforms

@@ -13,7 +13,7 @@
 | Old Name | Problem | New Name | Why Better |
 |----------|--------|----------|-------------|
 | ARMored Core | Sounds like hardware/battery | **OmniSec** | **Omni** = All/Everywhere |
-| NetHunter Setup | Sounds like a setup script | **OmniSec** | **Sec** = Security (clear) |
+| OmniSec | Sounds like a setup script | **OmniSec** | **Sec** = Security (clear) |
 | Matrix Platform | Confusing (Matrix protocol?) | **OmniSec** | **Memorable, brandable** |
 
 ### Taglines (Test These - Vote Your Favorite!)

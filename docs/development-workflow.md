@@ -29,7 +29,7 @@ adb shell su -c "nh-enter-kali id"
 
 ```bash
 git clone <repo>
-cd nethunter-setup
+cd OmniSec
 
 # Check dependencies
 make deps  # or: src/scripts/check-deps.sh
@@ -82,7 +82,7 @@ make build-module
 make dist
 
 # Create release tarball
-tar czf dist/nethunter-setup-v2.0.0.tar.gz \
+tar czf dist/OmniSec-v2.0.0.tar.gz \
   --exclude='.git' --exclude='node_modules' \
   --exclude='audits' --exclude='build' \
   -C . .
@@ -165,7 +165,7 @@ Update all with:
 ## Project Map
 
 ```
-nethunter-setup/
+OmniSec/
 ├── nhctl                  # Main orchestration script
 ├── Makefile               # Build system
 ├── nh-defaults.sh         # Configuration defaults

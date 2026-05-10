@@ -7,7 +7,7 @@ Default profile: `Arch ARM64 v2.0 (default)` with `Kali ARM64 v2.0 (default)` re
 
 Date: 2026-05-07
 
-Scope: personal learning lab for the OnePlus 7 Pro, Arch Linux chroot, and future NetHunter setup. Use only your own access points, lab networks, and hardware you control or have explicit written permission to test.
+Scope: personal learning lab for the OnePlus 7 Pro, Arch Linux chroot, and future OmniSec. Use only your own access points, lab networks, and hardware you control or have explicit written permission to test.
 
 ## Current Assumptions
 

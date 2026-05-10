@@ -3,14 +3,14 @@
 
 # Project Audit And Todo
 
-Default profile: `NetHunter setup v2.0 (nextgen)` for `Arch ARM64 v2.0 (nextgen)` and `Kali ARM64 v2.0 (nextgen)`.
+Default profile: `OmniSec v2.0 (nextgen)` for `Arch ARM64 v2.0 (nextgen)` and `Kali ARM64 v2.0 (nextgen)`.
 
 Audit date: 2026-05-07
 Last updated: 2026-05-07
 
 ## Current State
 
-- [x] Host project exists at `/home/tangen/nethunter-setup`.
+- [x] Host project exists at `/home/tangen/OmniSec`.
 - [x] Arch ARM64 rootfs tarball exists: `ArchLinuxARM-aarch64-latest.tar.gz`.
 - [x] Host rebuild runner exists: `clean-rebuild-postboot.sh`.
 - [x] Host Termux runner exists: `setup-termux.sh`.

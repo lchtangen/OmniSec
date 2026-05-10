@@ -87,7 +87,7 @@ make build-c CC=aarch64-linux-gnu-gcc
 # Build the flashable zip
 make build-module
 
-# Output: deploy/magisk/dist/nethunter-setup-v2.0.0.zip
+# Output: deploy/magisk/dist/OmniSec-v2.0.0.zip
 ```
 
 The module includes:
