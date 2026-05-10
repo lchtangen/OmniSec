@@ -1,177 +1,138 @@
 #!/system/bin/sh
-# NH_SETUP_VERSION: 3.0 nextgen
-# PRIORITY: P2/P5
-# nh-key - SSH, GPG, and Post-Quantum key management
-set -u
+# PRIORITY: P1
+# Device-side key management — WireGuard keys, API key store,
+# authorized_keys management for chroot SSH access.
 
-NHSYSTEM=/data/local/nhsystem
-KEY_DIR=$NHSYSTEM/etc/keys
-PQC_DIR=$NHSYSTEM/etc/pqc
-SSH_DIR=$HOME/.ssh
-
-# PQ algorithm aliases
-PQ_ALGOS="ml-kem-512 ml-kem-768 ml-kem-1024 ml-dsa-44 ml-dsa-65 ml-dsa-87 slh-dsa-sha2-128s"
-PQ_ALIASES="kyber512 kyber768 kyber1024 dilithium2 dilithium3 dilithium5 sphincs-sha2-128s"
-
-ensure_dirs() {
-    mkdir -p $KEY_DIR $SSH_DIR $PQC_DIR/keys
-    chmod 700 $SSH_DIR 2>/dev/null || true
-}
-
-list_keys() {
-    ensure_dirs
-    echo "── SSH Keys ──"
-    local has_ssh=0
-    for key in $SSH_DIR/id_*; do
-        [ -f "$key" ] || continue
-        has_ssh=1
-        local pub="${key}.pub"
-        local fingerprint=""
-        if [ -f "$pub" ]; then
-            fingerprint=$(ssh-keygen -lf "$pub" 2>/dev/null | awk '{print $2}')
-        fi
-        printf "  %-20s %s\n" "$(basename "$key")" "${fingerprint:-no pub}"
-    done
-    [ "$has_ssh" -eq 0 ] && echo "  (no SSH keys)"
-    echo ""
-    echo "── GPG Keys ──"
-    if command -v gpg >/dev/null 2>&1; then
-        local has_gpg=0
-        gpg --list-keys --keyid-format SHORT 2>/dev/null | grep -E '^   |pub|uid' | head -20 || has_gpg=0
-    else
-        echo "  gpg not available"
-    fi
-    echo ""
-    echo "── Post-Quantum Keys ──"
-    local has_pq=0
-    for f in $PQC_DIR/keys/*.pqkey; do
-        [ -f "$f" ] || continue
-        has_pq=1
-        printf "  %-20s\n" "$(basename "$f" .pqkey)"
-    done
-    [ "$has_pq" -eq 0 ] && echo "  (no PQ keys. Generate: nh-key pq-generate ml-kem-768)"
-}
-
-generate_ssh() {
-    local type="${1:-ed25519}"
-    local comment="${2:-nethunter-$(hostname 2>/dev/null || echo device)}"
-    ensure_dirs
-    local key_file="$SSH_DIR/id_${type}"
-    if [ -f "$key_file" ]; then
-        echo "  Key already exists: $key_file" >&2
-        exit 1
-    fi
-    echo "  Generating $type SSH key..."
-    ssh-keygen -t "$type" -C "$comment" -f "$key_file" -N "" 2>/dev/null
-    echo "  Key generated: $key_file"
-    echo "  Public key: ${key_file}.pub"
-    cat "${key_file}.pub"
-}
-
-generate_pq() {
-    local algo="${1:-ml-kem-768}"
-    local name="${2:-}"
-    ensure_dirs
-
-    # Resolve PQ aliases
-    case "$algo" in
-        kyber512) algo=ml-kem-512 ;;
-        kyber768) algo=ml-kem-768 ;;
-        kyber1024) algo=ml-kem-1024 ;;
-        dilithium2) algo=ml-dsa-44 ;;
-        dilithium3) algo=ml-dsa-65 ;;
-        dilithium5) algo=ml-dsa-87 ;;
-        sphincs*|sphincs-sha2-128s) algo=slh-dsa-sha2-128s ;;
-    esac
-
-    # Validate algorithm
-    local valid=0
-    for a in $PQ_ALGOS; do
-        [ "$a" = "$algo" ] && { valid=1; break; }
-    done
-    [ "$valid" -eq 0 ] && {
-        echo "  Unknown PQ algorithm: $algo" >&2
-        echo "  Supported: ml-kem-512|768|1024, ml-dsa-44|65|87, slh-dsa-sha2-128s" >&2
-        echo "  Aliases: kyber512|768|1024, dilithium2|3|5, sphincs-sha2-128s" >&2
-        exit 1
-    }
-
-    if [ -z "$name" ]; then
-        name="pq-${algo}-$(date +%s)"
-    fi
-
-    nh-pqc keygen "$algo" "$name"
-}
-
-import_ssh() {
-    local path="$1"
-    if [ ! -f "$path" ]; then
-        echo "  File not found: $path" >&2
-        exit 1
-    fi
-    ensure_dirs
-    cp "$path" "$SSH_DIR/"
-    if [ -f "${path}.pub" ]; then
-        cp "${path}.pub" "$SSH_DIR/"
-    fi
-    chmod 600 $SSH_DIR/id_* 2>/dev/null || true
-    echo "  Imported: $path"
-}
-
-export_key() {
-    local name="${1:-nethunter-key}"
-    local archive="$KEY_DIR/${name}.tar.gz"
-    ensure_dirs
-    tar czf "$archive" -C "$SSH_DIR" . 2>/dev/null
-    if command -v gpg >/dev/null 2>&1; then
-        gpg --export --armor > "$KEY_DIR/gpg-public.asc" 2>/dev/null || true
-        gpg --export-secret-keys --armor > "$KEY_DIR/gpg-private.asc" 2>/dev/null || true
-        tar czf "$archive" -C "$SSH_DIR" . -C "$KEY_DIR" gpg-*.asc 2>/dev/null || true
-    fi
-    # Include PQ keys if any exist
-    local pq_count
-    pq_count=$(find $PQC_DIR/keys -name "*.pqkey" 2>/dev/null | wc -l)
-    if [ "$pq_count" -gt 0 ]; then
-        tar czf "$archive" -C "$SSH_DIR" . -C "$KEY_DIR" gpg-*.asc -C "$PQC_DIR" keys/*.pqkey keys/*.pqkey.pub 2>/dev/null || true
-    fi
-    echo "  Exported: $archive"
-}
-
-backup_keys() {
-    local backup="$NHSYSTEM/backups/keys-$(date +%Y%m%d).tar.gz"
-    ensure_dirs
-    mkdir -p $NHSYSTEM/backups
-    tar czf "$backup" "$SSH_DIR" "$HOME/.gnupg" "$PQC_DIR/keys" 2>/dev/null || \
-        tar czf "$backup" "$SSH_DIR" 2>/dev/null
-    echo "  Backed up: $backup ($(du -h "$backup" | cut -f1))"
-}
+NHSYSTEM="${NHSYSTEM:-/data/local/nhsystem}"
+OMNISEC_DIR="${NHSYSTEM}/omnisec"
+OMNISEC_KEYS="${OMNISEC_DIR}/keys"
+OMNISEC_CONFIG="${OMNISEC_DIR}/config"
 
 usage() {
     cat <<EOF
-usage: nh-key <command> [args]
+Usage: nh-key <command> [args]
 
-Commands:
-  list                    List SSH, GPG, and Post-Quantum keys
-  generate [type] [comment]  Generate SSH key (default: ed25519)
-  pq-generate <algo> [name]   Generate Post-Quantum keypair
-                            algos: ml-kem-512|768|1024, ml-dsa-44|65|87, slh-dsa-sha2-128s
-                            aliases: kyber512|768|1024, dilithium2|3|5, sphincs-sha2-128s
-  import <path>           Import SSH key from file
-  export [name]           Export keys to archive
-  backup                  Backup all keys to nhsystem
+Device-side key management commands:
+  wg-gen [name]      Generate WireGuard key pair on-device
+  wg-show [name]     Show WireGuard public key
+  ssh-auth [key]     Add SSH public key to chroot authorized_keys
+  api-store <name> <key>  Store an API key for service auth
+  api-get <name>     Retrieve an API key
+  api-list           List stored API keys and hashes
+  init               Initialize on-device key store
 EOF
-    exit 1
 }
 
-[ $# -ge 1 ] || usage
-case "$1" in
-    list) list_keys ;;
-    generate) shift; generate_ssh "$1" "$2" ;;
-    pq-generate|pq-gen|pqgen)
-        shift; [ $# -ge 1 ] || usage; generate_pq "$1" "$2"
-        ;;
-    import) shift; [ $# -ge 1 ] || usage; import_ssh "$1" ;;
-    export) shift; export_key "$1" ;;
-    backup) backup_keys ;;
-    *) usage ;;
+init_store() {
+    mkdir -p "${OMNISEC_KEYS}" 2>/dev/null
+    mkdir -p "${OMNISEC_KEYS}/wg" 2>/dev/null
+    mkdir -p "${OMNISEC_KEYS}/api" 2>/dev/null
+    mkdir -p "${OMNISEC_KEYS}/ssh" 2>/dev/null
+    chmod 0700 "${OMNISEC_DIR}" "${OMNISEC_KEYS}" 2>/dev/null || true
+    echo "key store initialized at ${OMNISEC_KEYS}"
+}
+
+wg_gen() {
+    name="${1:-wg0}"
+    mkdir -p "${OMNISEC_KEYS}/wg" 2>/dev/null
+    priv="${OMNISEC_KEYS}/wg/${name}.key"
+    pub="${OMNISEC_KEYS}/wg/${name}.pub"
+    if [ -f "$priv" ]; then
+        echo "key '$name' already exists" >&2
+        exit 1
+    fi
+    wg genkey > "$priv" 2>/dev/null || {
+        echo "wg not available — is wireguard-tools installed?" >&2
+        exit 1
+    }
+    chmod 0600 "$priv"
+    wg pubkey < "$priv" > "$pub"
+    chmod 0644 "$pub"
+    echo "generated: $name"
+    echo "  public: $(cat "$pub")"
+}
+
+wg_show() {
+    name="${1:-wg0}"
+    pub="${OMNISEC_KEYS}/wg/${name}.pub"
+    if [ -f "$pub" ]; then
+        echo "$(cat "$pub")"
+    else
+        echo "key not found: $name" >&2
+        exit 1
+    fi
+}
+
+ssh_auth() {
+    key="${1:-}"
+    if [ -z "$key" ]; then
+        echo "usage: nh-key ssh-auth <public-key>" >&2
+        exit 1
+    fi
+    # Add to all chroot authorized_keys
+    for root in archlinux kali-arm64; do
+        dir="${NHSYSTEM}/roots/${root}"
+        if [ -d "$dir" ]; then
+            auth="$dir/root/.ssh/authorized_keys"
+            mkdir -p "$(dirname "$auth")" 2>/dev/null
+            echo "$key" >> "$auth"
+            chmod 0600 "$auth" 2>/dev/null || true
+            echo "added to $root/root/.ssh/authorized_keys"
+        fi
+    done
+    # Also store in omnisec store
+    echo "$key" >> "${OMNISEC_KEYS}/ssh/authorized_keys"
+    chmod 0600 "${OMNISEC_KEYS}/ssh/authorized_keys" 2>/dev/null || true
+}
+
+api_store() {
+    name="${1:-}"
+    key="${2:-}"
+    if [ -z "$name" ] || [ -z "$key" ]; then
+        echo "usage: nh-key api-store <name> <key>" >&2
+        exit 1
+    fi
+    mkdir -p "${OMNISEC_KEYS}/api" 2>/dev/null
+    echo "$key" > "${OMNISEC_KEYS}/api/${name}.key"
+    chmod 0600 "${OMNISEC_KEYS}/api/${name}.key"
+    echo "stored: api key '$name'"
+}
+
+api_get() {
+    name="${1:-}"
+    if [ -z "$name" ]; then
+        echo "usage: nh-key api-get <name>" >&2
+        exit 1
+    fi
+    if [ -f "${OMNISEC_KEYS}/api/${name}.key" ]; then
+        cat "${OMNISEC_KEYS}/api/${name}.key"
+    else
+        echo "key not found: $name" >&2
+        exit 1
+    fi
+}
+
+api_list() {
+    mkdir -p "${OMNISEC_KEYS}/api" 2>/dev/null
+    for f in "${OMNISEC_KEYS}/api/"*.key; do
+        [ -f "$f" ] || continue
+        name=$(basename "$f" .key)
+        hash=$(sha256sum "$f" 2>/dev/null | cut -c1-16)
+        echo "  $name (hash: ${hash}...) "
+    done
+}
+
+cmd="${1:-help}"
+shift 2>/dev/null || true
+
+case "$cmd" in
+    init)      init_store ;;
+    wg-gen)    wg_gen "$@" ;;
+    wg-show)   wg_show "$@" ;;
+    ssh-auth)  ssh_auth "$@" ;;
+    api-store) api_store "$@" ;;
+    api-get)   api_get "$@" ;;
+    api-list)  api_list ;;
+    help|--help|-h) usage ;;
+    *)         usage >&2; exit 2 ;;
 esac

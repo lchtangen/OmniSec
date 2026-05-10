@@ -1,7 +1,7 @@
 #!/bin/bash
 # NH_SETUP_VERSION: 2.0 default
 # Profile: Arch ARM64 v2.0 default; Kali ARM64 v2.0 default
-# nhctl - host-side NetHunter/Arch operations controller
+# nhctl - host-side OmniSec/Arch operations controller
 
 set -euo pipefail
 
@@ -465,6 +465,9 @@ SSH & Connectivity:
   termux              SSH into Termux through ADB forward
   setup-ssh [IP]      Generate ~/.ssh/config and deploy keys
 
+Security:
+  key {init|ssh|gpg|wg|api|ovpn|list|fingerprint|export|import}  Key management system
+
 Services:
   kex {start|stop|restart|status|log}  Manage Kali KEX/VNC session
   wifi {status|scan|monitor|adapters}  Wi-Fi diagnostics and monitor mode
@@ -481,6 +484,7 @@ Services:
   pqc {status|keygen|encrypt|decrypt|sign|verify|keys}  Post-Quantum cryptography toolkit
   hsm {detect|status|setup|ssh-key|ssh-keys|piv|openpgp|nfc}  Hardware Security Module (YubiKey/SoloKey)
    mesh {status|setup|start|stop|identity|peers|yggdrasil}  Resilient mesh networking (Reticulum/Yggdrasil)
+   groq {ask [prompt]|setup|key|test}  Groq AI inference CLI
    ebpf {status|list|monitor|trace|watch|audit}  eBPF kernel defense, syscall tracing, file integrity
    threat {status|collect|share|fetch|analyze}  Autonomous threat intelligence (IoC, mesh sharing)
    cellular {status|scan|imsi|detect|c2}  Cellular security (WiFi-sim, no SDR needed)
@@ -721,6 +725,34 @@ case "$cmd" in
         shift 2>/dev/null || true
         adbr "sh /data/local/nhsystem/bin/nh-hsm $action $@"
         ;;
+    groq)
+        shift 2>/dev/null || true
+        case "${1:-help}" in
+            setup|install)
+                "$SCRIPT_DIR/scripts/groq-setup.sh" install
+                ;;
+            key|set-key)
+                "$SCRIPT_DIR/scripts/groq-setup.sh" set-key
+                ;;
+            test)
+                "$SCRIPT_DIR/scripts/groq-setup.sh" test
+                ;;
+            ask)
+                shift 2>/dev/null || true
+                groq "$@"
+                ;;
+            help|--help|-h)
+                echo "Usage: nhctl groq {ask|setup|key|test}"
+                echo "  ask <prompt>   Ask Groq AI a question"
+                echo "  setup          Install groq SDK and CLI wrapper"
+                echo "  key            Configure Groq API key"
+                echo "  test           Test API connection"
+                ;;
+            *)
+                groq "$@"
+                ;;
+        esac
+        ;;
 mesh|reticulum)
     require_root
     action="${2:-status}"
@@ -899,6 +931,15 @@ container)
         ;;
     vscode-tunnel|vscode)
         "$SCRIPT_DIR/scripts/setup-vscode-tunnel.sh" "$@"
+        ;;
+    key)
+        KEY_SCRIPT="$SCRIPT_DIR/src/keys/nh-key-gen"
+        if [[ -x "$KEY_SCRIPT" ]]; then
+            exec "$KEY_SCRIPT" "$@"
+        else
+            echo "key system not staged — run 'make stage' first" >&2
+            exit 1
+        fi
         ;;
     version)
         echo "$NH_LABEL"

@@ -95,7 +95,7 @@ a { color: #58a6ff; }
 <div class="row"><span class="label">ADB</span><span class="value">adb connect $(getprop ro.product.board 2>/dev/null || echo 'device'):52104</span></div>
 </div>
 
-<footer>Generated $(date) by nh-dashboard · NetHunter Setup v2.0</footer>
+<footer>Generated $(date) by nh-dashboard · OmniSec v2.0</footer>
 </body>
 </html>
 HTML

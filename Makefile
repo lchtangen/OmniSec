@@ -38,6 +38,7 @@ stage-payload: build-c
 	mkdir -p $(PAYLOAD_DIR)/termux-home
 	mkdir -p $(PAYLOAD_DIR)/kali-skel
 	mkdir -p $(PAYLOAD_DIR)/chroot-bin
+	mkdir -p $(PAYLOAD_DIR)/etc
 	cp -a $(SRC_DIR)/device/bin/* $(PAYLOAD_DIR)/nhsystem-bin/
 	cp -a $(SRC_DIR)/device/setup/* $(PAYLOAD_DIR)/
 	find $(SRC_DIR)/device/dotfiles -maxdepth 1 -type f -exec cp -a {} $(PAYLOAD_DIR)/termux-home/ \;
@@ -46,6 +47,7 @@ stage-payload: build-c
 	cp $(SRC_DIR)/c/nh-sudo.c $(PAYLOAD_DIR)/
 	cp $(SRC_DIR)/c/no-close-range.c $(PAYLOAD_DIR)/
 	cp -a $(DEPLOY_DIR)/chroot/* $(PAYLOAD_DIR)/chroot-bin/ 2>/dev/null || true
+	cp -a $(SRC_DIR)/device/etc/* $(PAYLOAD_DIR)/etc/ 2>/dev/null || true
 	chmod +x $(PAYLOAD_DIR)/*.sh $(PAYLOAD_DIR)/nhsystem-bin/nh-* 2>/dev/null || true
 	@echo "  staged: $$(find $(PAYLOAD_DIR) -type f | wc -l) files"
 
@@ -189,6 +191,11 @@ ai-daily-ops-full:
 ai-daily-ops-device:
 	@$(ROOT_DIR)/scripts/ai-daily-ops.sh --full --with-device
 
+.PHONY: opencode
+opencode:
+	@echo "Starting OpenCode agent session..."
+	@opencode "$(CURDIR)"
+
 .PHONY: ai-summary
 ai-summary:
 	@echo "=== OmniSec AI Tooling Summary ==="
@@ -268,7 +275,7 @@ dist: build stage build-module
 	mkdir -p $(DIST_DIR)
 	cp -r $(BUILD_DIR)/* $(DIST_DIR)/
 	cp -r $(DEPLOY_DIR)/magisk/dist/* $(DIST_DIR)/ 2>/dev/null || true
-	tar czf $(DIST_DIR)/nethunter-setup-v$(NH_VERSION).tar.gz \
+	tar czf $(DIST_DIR)/OmniSec-v$(NH_VERSION).tar.gz \
 		--exclude='.git' --exclude='node_modules' \
 		--exclude='build' --exclude='dist' \
 		--exclude='audits' --exclude='*.tar.gz' \
@@ -284,7 +291,7 @@ workspace-init:
 
 .PHONY: version
 version:
-	@echo "nethunter-setup v$(NH_VERSION)"
+	@echo "OmniSec v$(NH_VERSION)"
 	@echo "  device:  $(DEVICE_NAME) ($(DEVICE))"
 	@echo "  android: $(ANDROID_VERSION) (API $(ANDROID_API))"
 	@echo "  lineage: $(LINEAGE_VERSION)"
@@ -305,6 +312,78 @@ tree:
 		-not -path './*.tar.gz' \
 		| sort | head -60
 
+# ── Key Management ────────────────────────────────────────────────────────────
+.PHONY: keys
+keys:
+	@echo "=== OmniSec Key Management ==="
+	@echo "  nh-key-gen <command>   — Master key command"
+	@echo ""
+	@echo "Commands:"
+	@echo "  nhctl key init        Initialize ~/.omnisec key store"
+	@echo "  nhctl key ssh         Generate SSH key pair"
+	@echo "  nhctl key gpg         Generate GPG signing key"
+	@echo "  nhctl key wg          Generate WireGuard key pair"
+	@echo "  nhctl key api         Generate API key"
+	@echo "  nhctl key ovpn <name> Generate OpenVPN client cert"
+	@echo "  nhctl key list        List all stored keys"
+	@echo "  nhctl key fingerprint Show key fingerprints"
+	@echo "  nhctl key export      Export keys to encrypted archive"
+	@echo "  nhctl key import      Import keys from archive"
+
+# ── AI Tooling ─────────────────────────────────────────────────────────────────
+.PHONY: tools tools-check ai-cli-install
+
+tools-check:
+	@echo "=== Installed AI Tools ==="
+	@for tool in codex claude copilot gemini aider opencode kilo gh; do \
+		if which $$tool &>/dev/null; then \
+			echo "  [OK]  $$tool"; \
+		else \
+			echo "  [MISS] $$tool"; \
+		fi; \
+	done
+	@echo ""
+	@echo "=== Python AI Packages ==="
+	@which pip3 &>/dev/null && pip3 list 2>/dev/null | grep -iE 'openai|anthropic|google|aider|codex' || echo "  (none or pip not available)"
+
+tools: tools-check
+	@echo ""
+	@echo "=== Installing Missing Tools ==="
+	@command -v codex &>/dev/null || npm install -g @openai/codex 2>/dev/null && echo "  installed: codex"
+	@command -v kilo &>/dev/null || npm install -g @kilocode/cli 2>/dev/null && echo "  installed: kilo"
+	@command -v aider &>/dev/null || pip3 install --user aider-chat 2>/dev/null || echo "  try: pip install aider-chat in a venv"
+	@command -v gemini &>/dev/null || npm install -g @google/gemini-cli 2>/dev/null || echo "  already present"
+
+ai-cli-install:
+	@echo "=== AI CLI Installer ==="
+	@echo "  npm-based: codex, claude, copilot, gemini — check npm ls -g"
+	@echo "  python-based: aider — needs venv (make ai-venv)"
+	@echo "  built-in: opencode"
+
+# ── Groq AI ───────────────────────────────────────────────────────────────────
+.PHONY: groq groq-setup groq-test
+
+groq:
+	@test -x $(HOME)/.local/bin/groq || { echo "run 'make groq-setup' first"; exit 1; }
+	@$(HOME)/.local/bin/groq "$(filter-out $@,$(MAKECMDGOALS))"
+
+groq-setup:
+	@bash $(ROOT_DIR)/scripts/groq-setup.sh install
+	@echo "Next: make groq-setup-key"
+
+groq-setup-key:
+	@bash $(ROOT_DIR)/scripts/groq-setup.sh set-key
+
+groq-test:
+	@bash $(ROOT_DIR)/scripts/groq-setup.sh test
+
+ai-venv:
+	@test -d $(ROOT_DIR)/.venv || python3 -m venv $(ROOT_DIR)/.venv
+	@echo "  activate: source $(ROOT_DIR)/.venv/bin/activate"
+	@$(ROOT_DIR)/.venv/bin/pip install --upgrade pip setuptools wheel 2>/dev/null || true
+	@echo "  to install AI tools: source .venv/bin/activate && pip install aider-chat google-generativeai openai"
+
+# ── Help ──────────────────────────────────────────────────────────────────────
 .PHONY: help
 help:
 	@echo "Available targets:"
@@ -316,10 +395,17 @@ help:
 	@echo "  make deploy"
 	@echo "  make clean"
 	@echo "  make dist"
-	@echo "  make version"
+	@echo "  make keys"
+	@echo "  make tools"
+	@echo "  make tools-check"
+	@echo "  make ai-venv"
 	@echo "  make ai-cli-doctor"
 	@echo "  make ai-context"
 	@echo "  make ai-context-deep"
+	@echo "  make groq"
+	@echo "  make groq-setup"
+	@echo "  make groq-setup-key"
+	@echo "  make groq-test"
 	@echo "  make ai-bootstrap"
 	@echo "  make ai-bootstrap-full"
 	@echo "  make ai-prompt-lint"

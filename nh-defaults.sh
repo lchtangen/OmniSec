@@ -1,7 +1,7 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # NH_SETUP_VERSION: 2.0 nextgen
 # Profile: Universal — auto-detected device profile
-# NetHunter setup v2.0 nextgen — dual Arch ARM64 + Kali ARM64 chroot environment
+# OmniSec v2.0 nextgen — dual Arch ARM64 + Kali ARM64 chroot environment
 # Device: auto-detected via getprop, override with env vars or device-target-profiles/<codename>.sh
 
 NH_SETUP_VERSION="${NH_SETUP_VERSION:-2.0}"
@@ -11,6 +11,11 @@ NH_SETUP_PROFILE="${NH_SETUP_PROFILE:-full}"
 NH_SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P || true)"
 if [[ -n "${NH_SCRIPT_DIR}" ]] && [[ -f "${NH_SCRIPT_DIR}/device-target-profiles/loader.sh" ]]; then
     . "${NH_SCRIPT_DIR}/device-target-profiles/loader.sh" || true
+fi
+
+# Load service infrastructure defaults
+if [[ -n "${NH_SCRIPT_DIR}" ]] && [[ -f "${NH_SCRIPT_DIR}/src/services/service-config.sh" ]]; then
+    . "${NH_SCRIPT_DIR}/src/services/service-config.sh" || true
 fi
 
 # Device identity — auto-detected or overridden
@@ -42,7 +47,7 @@ KALI_ROOT_PATH="${KALI_ROOT_PATH:-${NHROOTS}/${KALI_ROOT_NAME}}"
 # Labels
 ARCH_LABEL="${ARCH_LABEL:-Arch ARM64 v${NH_SETUP_VERSION} (${NH_SETUP_PROFILE})}"
 KALI_LABEL="${KALI_LABEL:-Kali ARM64 v${NH_SETUP_VERSION} (${NH_SETUP_PROFILE})}"
-NH_LABEL="${NH_LABEL:-NetHunter setup v${NH_SETUP_VERSION} (${NH_SETUP_PROFILE})}"
+NH_LABEL="${NH_LABEL:-OmniSec v${NH_SETUP_VERSION} (${NH_SETUP_PROFILE})}"
 
 # SSH defaults
 ARCH_SSH_USER="${ARCH_SSH_USER:-archlinux}"
@@ -51,3 +56,11 @@ KALI_SSH_USER="${KALI_SSH_USER:-kali}"
 KALI_SSH_PORT="${KALI_SSH_PORT:-22}"
 TERMUX_SSH_USER="${TERMUX_SSH_USER:-u0_a171}"
 TERMUX_SSH_PORT="${TERMUX_SSH_PORT:-8022}"
+
+# Key management paths
+OMNISEC_HOME="${OMNISEC_HOME:-$HOME/.omnisec}"
+OMNISEC_KEYS="${OMNISEC_KEYS:-$OMNISEC_HOME/keys}"
+OMNISEC_KEY_TYPE="${OMNISEC_KEY_TYPE:-ed25519}"
+
+# Key system script location
+NH_KEY_DIR="${NH_KEY_DIR:-${NH_SCRIPT_DIR}/src/keys}"

@@ -1,7 +1,7 @@
 {
-  "name": "nethunter-setup",
+  "name": "omnisec",
   "version": "2.0.0",
-  "description": "NetHunter setup v2.0 default profile for Arch ARM64 and Kali ARM64. OnePlus 7 Pro (GM1911) / Android 16 / LineageOS 23.2.",
+  "description": "OmniSec v2.0 default profile for Arch ARM64 and Kali ARM64. OnePlus 7 Pro (GM1911) / Android 16 / LineageOS 23.2.",
   "private": true,
   "scripts": {
     "lint": "make lint",
@@ -14,6 +14,6 @@
     "version": "make version"
   },
   "dependencies": {
-    "@openai/codex": "^0.128.0"
+    "@openai/codex": "^0.130.0"
   }
 }
