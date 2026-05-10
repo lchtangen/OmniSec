@@ -1,5 +1,5 @@
 """
-NetHunter Matrix Platform - Cross-Platform Abstraction Layer
+OmniSec Platform - Cross-Platform Abstraction Layer
 
 Supports: Android, Linux, macOS, Windows, WSL, Chroot
 """

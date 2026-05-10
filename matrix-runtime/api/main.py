@@ -1,5 +1,5 @@
 """
-NetHunter Matrix Platform - Web API
+OmniSec Platform - Web API
 FastAPI-based RESTful API for all 151+ tools.
 
 Provides:
@@ -21,7 +21,7 @@ from pathlib import Path
 import json
 
 app = FastAPI(
-    title="NetHunter Matrix API",
+    title="OmniSec API",
     description="Unified API for 151+ security tools, AI agent, mesh networking, and more",
     version="3.0.0",
 )
@@ -154,7 +154,7 @@ async def health_check():
 async def root():
     """API root - redirects to docs."""
     return {
-        "name": "NetHunter Matrix Platform API",
+        "name": "OmniSec Platform API",
         "version": "3.0.0",
         "docs": "/docs",
         "tools": "/api/tools"

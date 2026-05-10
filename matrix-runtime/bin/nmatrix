@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NetHunter Matrix Platform v3.0 - UNIFIED MASTER ENTRY
+OmniSec Platform v3.0 - UNIFIED MASTER ENTRY
 
 ALL-IN-ONE: 151+ tools, 10 phases, cross-platform, web API, Matrix protocol.
 
@@ -309,7 +309,7 @@ class SubsystemRouter:
 # ── Matrix CLI ─────────────────────────────────────────────────────
 
 class MatrixCLI:
-    """Main CLI interface for NetHunter Matrix Platform."""
+    """Main CLI interface for OmniSec Platform."""
 
     def __init__(self):
         self.platform = Platform()
@@ -329,7 +329,7 @@ class MatrixCLI:
 ║   ██║ ╚████║██║  ██║   ██║   ██║  ██║╚██████╔╝██████╔╝     ║
 ║   ╚═╝  ╚═══╝╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═════╝      ║
 ║                                                                   ║
-║   NetHunter Matrix Platform v{MATRIX_VERSION} "{MATRIX_CODENAME}"       ║
+║   OmniSec Platform v{MATRIX_VERSION} "{MATRIX_CODENAME}"       ║
 ║   Build: {MATRIX_BUILD} | Platform: {self.platform.get_platform_name()}                    ║
 ║                                                                   ║
 ╚═══════════════════════════════════════════════════════════════════════╝
@@ -364,7 +364,7 @@ class MatrixCLI:
             return 0
 
         if args[0] == "--version" or args[0] == "-v":
-            print(f"NetHunter Matrix Platform v{MATRIX_VERSION} ({MATRIX_CODENAME})")
+            print(f"OmniSec Platform v{MATRIX_VERSION} ({MATRIX_CODENAME})")
             return 0
 
         if args[0] == "status":
