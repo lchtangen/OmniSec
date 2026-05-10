@@ -1,0 +1,46 @@
+# OmniSec Windsurf AI Rules
+
+## Project Overview
+OmniSec is a host/device automation system for NetHunter-style Android security workflows. The project orchestrates Kali/Arch chroots, manages ADB connections, and provides 192+ security tools across 7 platforms.
+
+## Quick Start for AI
+1. **Read first**: `AGENTS.md`, `ARCHITECTURE.md`, `.github/copilot-instructions.md`
+2. **Main entrypoint**: `nhctl` — the host orchestration controller
+3. **Source**: Everything under `src/` is the source of truth
+4. **Build**: `make lint && make test && make stage`
+5. **Config**: `nh-defaults.sh` for shared config values
+
+## File Type Conventions
+
+### `.sh` files (host)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+```
+
+### `.sh` files (device in src/device/)
+```sh
+#!/system/bin/sh
+```
+
+### `.c` files
+```c
+// C17, static link, snake_case
+```
+
+### `.py` files
+- Black-formatted, type hints, f-strings
+
+## AI CLI Tooling Available
+- `nhctl ai` — Device AI operations (status, diagnose, models, sessions, setup)
+- `./scripts/ai-cli-doctor.sh` — Check AI tool availability
+- `./scripts/ai-context-snapshot.sh` — Generate repo context
+- `./scripts/ai-bootstrap.sh` — Workspace bootstrap
+- `./scripts/ai-agent-router.sh` — Agent usage guide
+
+## Do NOT
+- Edit `payload/`, `build/`, `dist/`, `release-artifacts/` directly
+- Introduce secrets or local paths
+- Use bashisms in device scripts
+- Refactor outside the scope of the task
+- Make silent changes — prefer explicit failure messages

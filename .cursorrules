@@ -1,0 +1,97 @@
+# OmniSec Cursor AI Rules
+
+## Project Identity
+- **Name**: OmniSec (NetHunter Matrix v3.0)
+- **Main controller**: `nhctl`
+- **Source of truth**: `src/`
+- **Generated artifacts**: `payload/` (`make stage`)
+- **Build system**: `Makefile`
+- **CI reference**: `.github/workflows/ci.yml`
+- **Language**: Bash (host), POSIX sh (device), C (native helpers), Python (AI/ML tools)
+
+## Core Workflow
+1. Read `.github/copilot-instructions.md` and `AGENTS.md` first
+2. Edit source files (`src/`, `scripts/`, `deploy/`, `tests/`)
+3. Never edit generated artifacts (`payload/`, `build/`, `dist/`) unless explicitly asked
+4. Run `make lint && make test` before concluding
+5. Run `make stage` if source-to-payload files changed
+6. Run `make validate` for deploy-impacting changes
+
+## Code Conventions
+
+### Host Scripts (Bash)
+- Shebang: `#!/usr/bin/env bash`
+- Strict mode: `set -euo pipefail`
+- Source config: `. nh-defaults.sh`
+- Color helpers: `say` (green), `warn` (yellow), `die` (red), `header` (cyan)
+- Formatting: 4-space indent, 100-char ruler
+- Functions: `snake_case`
+- Variables: `UPPER_CASE` for constants, `lower_case` for locals
+- Quote all variable expansions: `"$var"`
+
+### Device Scripts (Android sh)
+- Shebang: `#!/system/bin/sh`
+- POSIX-compatible only (no bashisms)
+- Minimal dependencies on external tools
+- Use `nh-lib` for shared helpers
+
+### C Code
+- Standard: C17, static linking for helpers
+- Flags: `-Wall -Wextra -pedantic`
+- Naming: `snake_case`
+- Avoid glibc-only assumptions (Android/Bionic compatibility)
+
+### Python Code
+- Format with Black
+- Type hints preferred
+- f-strings over concatenation
+
+## Project Map
+```
+nhctl                    Host orchestration controller
+src/device/bin/          Device-side nh-* tools (391 entries)
+src/device/setup/        Setup/recovery scripts (15 files)
+src/device/ai/           On-device AI agent (agent.py)
+src/c/                   Native C helpers
+src/device/dotfiles/     Termux dotfiles
+deploy/magisk/           Magisk module packaging
+deploy/android/          Android build props
+scripts/                 Host automation scripts (33 files)
+tests/                   BATS + C tests
+kernel/                  Kernel build system
+plugins/                 nh-* plugin ecosystem (161 files)
+docs/                    Documentation
+```
+
+## Quality Gates
+- `make lint` — Shell syntax, C syntax, JSON validation
+- `make test` — BATS tests + C unit tests
+- `make validate` — lint + test + validate.sh
+- `make stage` — Stage src/ to payload/
+
+## AI Agent Context Commands
+- `make ai-cli-doctor` — Check AI CLI tool availability
+- `make ai-context` — Generate repo context snapshot
+- `make ai-bootstrap` — Standard workspace bootstrap
+- `make ai-bootstrap-full` — Full workspace bootstrap
+
+## Safety Rules
+- No secrets, keys, or credentials in code
+- No machine-specific paths
+- Host scripts: Bash only
+- Device scripts: Android `/system/bin/sh` only
+- Prefer explicit failures over silent fallbacks
+- Keep user-facing commands stable
+- No refactoring unrelated files
+
+## Memory Bank
+This project uses a memory bank system for persistent AI context:
+- `AGENTS.md` — Primary agent instructions
+- `.github/copilot-instructions.md` — Copilot-specific instructions
+- `.github/prompts/` — Workflow-specific prompt templates
+- `.github/instructions/` — Scope-specific file instructions
+- `ARCHITECTURE.md` — System architecture
+- `docs/coding-standards.md` — Detailed coding standards
+- `docs/priority.md` — Priority classification system
+- `docs/security.md` — Security guidelines
+- `docs/style-guide.md` — Output style guide

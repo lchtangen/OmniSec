@@ -1,0 +1,25 @@
+{
+    "folders": [
+        {
+            "name": "OmniSec",
+            "path": "."
+        }
+    ],
+    "settings": {
+        "chat.useCustomizationsInParentRepositories": true,
+        "chat.promptFilesLocations": [
+            ".github/prompts"
+        ],
+        "chat.agentFilesLocations": [
+            ".github/agents",
+            ".claude/agents"
+        ],
+        "chat.agentSkillsLocations": [
+            ".github/skills",
+            ".agents/skills",
+            ".claude/skills"
+        ],
+        "chat.promptFilesRecommendations": true,
+        "terminal.integrated.cwd": "${workspaceFolder}"
+    }
+}
