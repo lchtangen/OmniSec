@@ -18,22 +18,22 @@ adb -s $DEVICE shell "su -c 'magisk -v'"
 
 # Install NetHunter Store
 echo "[3/7] Installing NetHunter Store..."
-adb -s $DEVICE install -r ~/nethunter-setup/nethunter-store.apk
+adb -s $DEVICE install -r ~/OmniSec/nethunter-store.apk
 
 # Install NetHunter App
 echo "[4/7] Installing NetHunter App 2026.1..."
-adb -s $DEVICE install -r ~/nethunter-setup/nethunter-app-2026.1.apk
+adb -s $DEVICE install -r ~/OmniSec/nethunter-app-2026.1.apk
 
 # Download Kali rootfs (using direct mirror)
 echo "[5/7] Downloading Kali NetHunter rootfs (minimal ~330MB)..."
-if [ ! -f ~/nethunter-setup/kalifs-arm64-minimal.tar.xz ]; then
-    curl -L -o ~/nethunter-setup/kalifs-arm64-minimal.tar.xz \
+if [ ! -f ~/OmniSec/kalifs-arm64-minimal.tar.xz ]; then
+    curl -L -o ~/OmniSec/kalifs-arm64-minimal.tar.xz \
         "https://kali.download/nethunter-images/current/rootfs/kalifs-arm64-minimal.tar.xz"
 fi
 
 # Push rootfs to device
 echo "[6/7] Pushing Kali rootfs to device..."
-adb -s $DEVICE push ~/nethunter-setup/kalifs-arm64-minimal.tar.xz /sdcard/Download/
+adb -s $DEVICE push ~/OmniSec/kalifs-arm64-minimal.tar.xz /sdcard/Download/
 
 echo "[7/7] Installation complete!"
 echo ""

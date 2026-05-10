@@ -15,7 +15,7 @@ prompt() {
 
 CURRENT_VERSION=$(grep -oP 'NH_VERSION_CODE\s*=\s*"\K[^"]+' "$DEFAULTS_FILE" 2>/dev/null || echo "2.0.0")
 
-echo "=== nethunter-setup version updater ==="
+echo "=== OmniSec version updater ==="
 echo "Current version: $CURRENT_VERSION"
 
 VERSION=$(prompt VERSION "New version")
@@ -31,7 +31,7 @@ cat > "$VERSION_FILE" <<EOF
 <!-- Android: 16 (API 36) -->
 <!-- LineageOS: 23.2 -->
 
-# NetHunter Setup v${VERSION}
+# OmniSec v${VERSION}
 
 ## Version Labels
 

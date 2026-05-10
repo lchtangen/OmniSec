@@ -19,7 +19,7 @@ check() {
 	fi
 }
 
-echo "--- nethunter-setup validation ---"
+echo "--- OmniSec validation ---"
 
 check "nh-defaults.sh syntax" bash -n "$ROOT_DIR/nh-defaults.sh"
 check "nhctl syntax" bash -n "$ROOT_DIR/nhctl"
@@ -31,6 +31,8 @@ done
 
 for f in "$ROOT_DIR"/src/device/bin/nh-*; do
 	[ -f "$f" ] || continue
+	# Skip Python files
+	head -1 "$f" 2>/dev/null | grep -q "python" && continue
 	check "nhsystem-bin/$(basename "$f") syntax" bash -n "$f"
 done
 

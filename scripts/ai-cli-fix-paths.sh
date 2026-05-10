@@ -39,8 +39,9 @@ AUGGIE_PATH="$(command -v auggie 2>/dev/null || true)"
 CODEX_PATH="$(command -v codex 2>/dev/null || true)"
 CLAUDE_PATH="$(command -v claude 2>/dev/null || true)"
 OPENCODE_PATH="$(command -v opencode 2>/dev/null || true)"
+KILO_PATH="$(command -v kilo 2>/dev/null || true)"
 
-for p in "${CN_PATH}" "${AUGGIE_PATH}" "${CODEX_PATH}" "${CLAUDE_PATH}" "${OPENCODE_PATH}"; do
+for p in "${CN_PATH}" "${AUGGIE_PATH}" "${CODEX_PATH}" "${CLAUDE_PATH}" "${OPENCODE_PATH}" "${KILO_PATH}"; do
     [[ -n "${p}" ]] && fix_exec "${p}"
 done
 
@@ -72,13 +73,14 @@ if [[ "${have_sudo}" -eq 1 ]]; then
     [[ -n "${CODEX_PATH}" ]] && sudo_link "${CODEX_PATH}" "codex"
     [[ -n "${CLAUDE_PATH}" ]] && sudo_link "${CLAUDE_PATH}" "claude"
     [[ -n "${OPENCODE_PATH}" ]] && sudo_link "${OPENCODE_PATH}" "opencode"
+    [[ -n "${KILO_PATH}" ]] && sudo_link "${KILO_PATH}" "kilo"
 else
     printf "${YELLOW}[warn]${NC} sudo non-interactive access unavailable; skipping /usr/local/bin links\n"
     printf "       run manually if needed: sudo %s\n" "$0"
 fi
 
 printf "\n${CYAN}Resolved commands:${NC}\n"
-for cmd in codex claude gh cn auggie augment continue-cli opencode; do
+for cmd in codex claude gh cn auggie augment continue-cli opencode kilo; do
     if command -v "${cmd}" >/dev/null 2>&1; then
         printf "  ${GREEN}[ok]${NC} %-12s %s\n" "${cmd}" "$(command -v "${cmd}")"
     else

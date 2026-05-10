@@ -21,7 +21,7 @@ check() {
 }
 
 echo "============================================"
-echo "  nethunter-setup test suite"
+echo "  OmniSec test suite"
 echo "  $(date)"
 echo "============================================"
 echo ""

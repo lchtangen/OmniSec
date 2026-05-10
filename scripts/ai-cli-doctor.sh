@@ -58,6 +58,7 @@ check_cmd "Cody" "cody" "npx cody --version" "install from official Sourcegraph 
 check_cmd "Continue (cn)" "cn" "cn --version || true" "npm install -g --prefix \$HOME/.local @continuedev/cli"
 check_cmd "Augment (auggie)" "auggie" "auggie --version || true" "npm install -g --prefix \$HOME/.local @augmentcode/auggie"
 check_cmd "OpenCode" "opencode" "opencode --version 2>/dev/null || true" "npm install -g @opencode/cli"
+check_cmd "Kilo" "kilo" "kilo --version 2>/dev/null || true" "npm install -g @kilocode/cli"
 check_cmd "Windsurf" "windsurf" "windsurf --version 2>/dev/null || true" "install from official Windsurf docs"
 
 printf "\n${CYAN}--- Agent Config Files ---${NC}\n"

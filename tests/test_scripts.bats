@@ -22,7 +22,7 @@ setup() {
 @test "nhctl version shows version" {
 	run bash -c "cd $ROOT_DIR && ./nhctl version"
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"NetHunter"* ]]
+	[[ "$output" == *"OmniSec"* ]]
 }
 
 @test "all scripts are executable" {

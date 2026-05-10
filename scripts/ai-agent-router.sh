@@ -23,6 +23,7 @@ usage() {
     printf "  ${GREEN}continue${NC}  Continue.dev CLI (cn)\n"
     printf "  ${GREEN}augment${NC}   Augment CLI (auggie)\n"
     printf "  ${GREEN}opencode${NC}  OpenCode CLI\n"
+    printf "  ${GREEN}kilo${NC}      Kilo Code CLI\n"
     printf "  ${GREEN}windsurf${NC}  Windsurf CLI\n"
     printf "  ${GREEN}roo${NC}       Roo CLI\n"
     printf "  ${GREEN}list${NC}      Show which agents are installed\n"
@@ -72,6 +73,9 @@ case "$agent" in
     opencode)
         exec opencode "$@"
         ;;
+    kilo)
+        exec kilo "$@"
+        ;;
     windsurf)
         exec windsurf "$@"
         ;;
@@ -90,6 +94,7 @@ case "$agent" in
         if type -P cn >/dev/null 2>&1; then printf "  ${GREEN}[ok]${NC} continue (cn)\n"; else printf "  ${YELLOW}[--]${NC} continue (cn)\n"; fi
         if type -P auggie >/dev/null 2>&1; then printf "  ${GREEN}[ok]${NC} augment (auggie)\n"; else printf "  ${YELLOW}[--]${NC} augment (auggie)\n"; fi
         if type -P opencode >/dev/null 2>&1; then printf "  ${GREEN}[ok]${NC} opencode\n"; else printf "  ${YELLOW}[--]${NC} opencode\n"; fi
+        if type -P kilo >/dev/null 2>&1; then printf "  ${GREEN}[ok]${NC} kilo\n"; else printf "  ${YELLOW}[--]${NC} kilo\n"; fi
         ;;
     help|--help|-h)
         usage

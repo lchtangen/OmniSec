@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# BATS test helpers for nethunter-setup
+# BATS test helpers for OmniSec
 
 setup() {
 	export ROOT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
