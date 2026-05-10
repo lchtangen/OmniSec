@@ -1,0 +1,10 @@
+# old_path	new_path	status	reason
+linux-omnisec	kernel-build-arch-package	done	Canonical rename completed; old path removed (no compatibility symlink).
+platform	platform-legacy	done	Canonical rename completed; old path removed (no compatibility symlink).
+matrix	matrix-runtime	done	Canonical rename completed; old path removed (no compatibility symlink).
+fdroid	distribution-fdroid	done	Canonical rename completed; old path removed (no compatibility symlink).
+iso	live-iso-build	done	Canonical rename completed; old path removed (no compatibility symlink).
+device-ops	device-maintenance	done	Canonical rename completed; old path removed (no compatibility symlink).
+device-profiles	device-target-profiles	done	Canonical rename completed; old path removed (no compatibility symlink).
+packaging	package-recipes	done	Canonical rename completed; old path removed (no compatibility symlink).
+release	release-artifacts	done	Canonical rename completed; old path removed (no compatibility symlink).
