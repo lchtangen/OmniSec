@@ -1,12 +1,12 @@
 # 🔰 NetHunter Matrix v3.0
 
 > **The Ultimate Mobile Security & Development Platform**
-> 
+>
 > 192+ tools. 7 platforms. 1 command. Now with AI, mesh networking, and quantum-resistant crypto.
 
-[![Stars](https://img.shields.io/github/stars/nethunter-matrix/nethunter-setup?style=social)](https://github.com/nethunter-matrix/nethunter-setup)
-[![Downloads](https://img.shields.io/github/downloads/nethunter-matrix/nethunter-setup/total?style=social)](https://github.com/nethunter-matrix/nethunter-setup/releases)
-[![License](https://img.shields.io/github/license/nethunter-matrix/nethunter-setup?style=social)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/lchtangen/OmniSec?style=social)](https://github.com/lchtangen/OmniSec)
+[![Downloads](https://img.shields.io/github/downloads/lchtangen/OmniSec/total?style=social)](https://github.com/lchtangen/OmniSec/releases)
+[![License](https://img.shields.io/github/license/lchtangen/OmniSec?style=social)](LICENSE)
 [![Website](https://img.shields.io/badge/website-nethunter--matrix.com-blue?style=social)](https://nethunter-matrix.com)
 
 ---
@@ -111,8 +111,8 @@ curl -fsSL https://nethunter-matrix.com/install.sh | bash
 Or manual install:
 
 ```bash
-git clone https://github.com/nethunter-matrix/nethunter-setup.git
-cd nethunter-setup
+git clone https://github.com/lchtangen/OmniSec.git
+cd OmniSec
 ./install.sh
 ```
 
