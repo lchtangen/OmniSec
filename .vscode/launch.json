@@ -36,6 +36,52 @@
             "cwd": "${workspaceFolder}",
             "externalConsole": false,
             "MIMode": "gdb"
+        },
+        {
+            "name": "C/C++: Launch nh-sudo",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/nh-sudo",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "externalConsole": false,
+            "MIMode": "gdb"
+        },
+        {
+            "name": "AI: OpenCode CLI (Debug)",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "opencode",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "AI: Claude CLI (Debug)",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "claude",
+            "args": ["--debug"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Bash: Debug nhctl deploy-tools",
+            "type": "bashdb",
+            "request": "launch",
+            "program": "${workspaceFolder}/nhctl",
+            "args": ["deploy-tools"],
+            "cwd": "${workspaceFolder}",
+            "terminalKind": "integrated"
+        },
+        {
+            "name": "Bash: Debug nhctl ai status",
+            "type": "bashdb",
+            "request": "launch",
+            "program": "${workspaceFolder}/nhctl",
+            "args": ["ai", "status"],
+            "cwd": "${workspaceFolder}",
+            "terminalKind": "integrated"
         }
     ]
 }

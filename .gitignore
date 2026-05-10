@@ -34,15 +34,26 @@ backups/partitions/
 .claude/cache/
 .codex/
 .aider*
+# Track the base project Aider config, ignore user overrides
+!.aider.conf.yml
+.aider.conf.local.yml
 .cursorrules.local
 .clinerules.local
 .cursor/
-.roo/
 .windsurf/
 .continue/
+# Track the base project Continue config, ignore user overrides
+!.continue/config.json
+.continue/config.local.json
 .gemini/
 .codeium/
+.cody/
+.sourcegraph/
 .copilot/
+.opencode/
+.agents.local/
+.github/prompts/*.local.prompt.md
+.github/prompts/*.private.prompt.md
 .github/copilot-instructions.local.md
 .env
 .env.*

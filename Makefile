@@ -133,6 +133,102 @@ test-c: build-c
 validate: lint test
 	@$(ROOT_DIR)/scripts/validate.sh
 
+.PHONY: ai-cli-doctor
+ai-cli-doctor:
+	@$(ROOT_DIR)/scripts/ai-cli-doctor.sh
+
+.PHONY: ai-context
+ai-context:
+	@$(ROOT_DIR)/scripts/ai-context-snapshot.sh
+
+.PHONY: ai-context-deep
+ai-context-deep:
+	@$(ROOT_DIR)/scripts/ai-context-snapshot.sh --deep
+
+.PHONY: ai-bootstrap
+ai-bootstrap:
+	@$(ROOT_DIR)/scripts/ai-bootstrap.sh
+
+.PHONY: ai-bootstrap-full
+ai-bootstrap-full:
+	@$(ROOT_DIR)/scripts/ai-bootstrap.sh --full
+
+.PHONY: ai-prompt-lint
+ai-prompt-lint:
+	@$(ROOT_DIR)/scripts/ai-prompt-lint.sh
+
+.PHONY: ai-agent-lint
+ai-agent-lint:
+	@$(ROOT_DIR)/scripts/ai-agent-lint.sh
+
+.PHONY: ai-missing-cli-help
+ai-missing-cli-help:
+	@$(ROOT_DIR)/scripts/ai-missing-cli-help.sh
+
+.PHONY: ai-install-missing-cli-plan
+ai-install-missing-cli-plan:
+	@$(ROOT_DIR)/scripts/ai-install-missing-cli.sh --plan
+
+.PHONY: ai-install-missing-cli-apply
+ai-install-missing-cli-apply:
+	@$(ROOT_DIR)/scripts/ai-install-missing-cli.sh --apply
+
+.PHONY: ai-fix-cli-paths
+ai-fix-cli-paths:
+	@$(ROOT_DIR)/scripts/ai-cli-fix-paths.sh
+
+.PHONY: ai-daily-ops
+ai-daily-ops:
+	@$(ROOT_DIR)/scripts/ai-daily-ops.sh
+
+.PHONY: ai-daily-ops-full
+ai-daily-ops-full:
+	@$(ROOT_DIR)/scripts/ai-daily-ops.sh --full
+
+.PHONY: ai-daily-ops-device
+ai-daily-ops-device:
+	@$(ROOT_DIR)/scripts/ai-daily-ops.sh --full --with-device
+
+.PHONY: ai-summary
+ai-summary:
+	@echo "=== OmniSec AI Tooling Summary ==="
+	@echo ""
+	@echo "Agent Configs:"
+	@echo "  AGENTS.md              - Primary agent instructions"
+	@echo "  .cursorrules            - Cursor IDE rules"
+	@echo "  .windsurfrules          - Windsurf IDE rules"
+	@echo "  .clinerules             - Cline extension rules"
+	@echo "  .aider.conf.yml         - Aider config"
+	@echo "  .continue/config.json   - Continue.dev config"
+	@echo "  .claude/settings.*.json - Claude CLI config"
+	@echo "  .github/copilot-instructions.md - Copilot instructions"
+	@echo ""
+	@echo "Prompts (.github/prompts/):"
+	@ls -1 $(ROOT_DIR)/.github/prompts/*.prompt.md 2>/dev/null | sed 's/.*\///' | sed 's/^/  /'
+	@echo ""
+	@echo "Instructions (.github/instructions/):"
+	@ls -1 $(ROOT_DIR)/.github/instructions/*.instructions.md 2>/dev/null | sed 's/.*\///' | sed 's/^/  /'
+	@echo ""
+	@echo "Make AI Targets:"
+	@echo "  make ai-cli-doctor     - Check AI CLI tooling availability"
+	@echo "  make ai-context        - Generate repo context snapshot"
+	@echo "  make ai-context-deep   - Generate deep repo context snapshot"
+	@echo "  make ai-bootstrap      - Standard workspace bootstrap"
+	@echo "  make ai-bootstrap-full - Full workspace bootstrap"
+	@echo "  make ai-prompt-lint    - Validate prompt frontmatter and required fields"
+	@echo "  make ai-agent-lint     - Validate agent files and frontmatter"
+	@echo "  make ai-missing-cli-help - Show install hints for missing AI CLIs"
+	@echo "  make ai-install-missing-cli-plan - Show install plan for missing AI CLIs"
+	@echo "  make ai-install-missing-cli-apply - Install supported missing AI CLIs"
+	@echo "  make ai-fix-cli-paths  - Normalize CLI paths and sudo-safe links"
+	@echo "  make ai-daily-ops      - Run standard daily AI operations checks"
+	@echo "  make ai-daily-ops-full - Daily ops with lint+test"
+	@echo "  make ai-daily-ops-device - Daily ops full + device AI status"
+	@echo "  make ai-summary        - Show this summary"
+	@echo ""
+	@echo "AI CLI Tools:"
+	@$(ROOT_DIR)/scripts/ai-cli-doctor.sh 2>/dev/null || echo "  (run 'make ai-cli-doctor' for details)"
+
 .PHONY: deploy
 deploy: stage
 	@echo "--- Deploying to device ---"
@@ -216,7 +312,22 @@ help:
 	@echo "  make lint"
 	@echo "  make test"
 	@echo "  make validate"
+	@echo "  make stage"
 	@echo "  make deploy"
 	@echo "  make clean"
 	@echo "  make dist"
 	@echo "  make version"
+	@echo "  make ai-cli-doctor"
+	@echo "  make ai-context"
+	@echo "  make ai-context-deep"
+	@echo "  make ai-bootstrap"
+	@echo "  make ai-bootstrap-full"
+	@echo "  make ai-prompt-lint"
+	@echo "  make ai-agent-lint"
+	@echo "  make ai-missing-cli-help"
+	@echo "  make ai-install-missing-cli-plan"
+	@echo "  make ai-install-missing-cli-apply"
+	@echo "  make ai-daily-ops"
+	@echo "  make ai-daily-ops-full"
+	@echo "  make ai-daily-ops-device"
+	@echo "  make ai-summary"

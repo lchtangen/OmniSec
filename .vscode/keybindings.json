@@ -1,0 +1,42 @@
+[
+    {
+        "key": "ctrl+alt+b",
+        "command": "workbench.action.tasks.runTask",
+        "args": "AI: Bootstrap (Standard)"
+    },
+    {
+        "key": "ctrl+alt+shift+b",
+        "command": "workbench.action.tasks.runTask",
+        "args": "AI: Bootstrap (Full)"
+    },
+    {
+        "key": "ctrl+alt+g",
+        "command": "workbench.action.tasks.runTask",
+        "args": "Gate: AI + Quality Full Stack"
+    },
+    {
+        "key": "ctrl+alt+r",
+        "command": "workbench.action.tasks.runTask",
+        "args": "AI: Repo Context Snapshot"
+    },
+    {
+        "key": "ctrl+alt+d",
+        "command": "workbench.action.tasks.runTask",
+        "args": "AI: Daily Ops (Full)"
+    },
+    {
+        "key": "ctrl+alt+p",
+        "command": "workbench.action.tasks.runTask",
+        "args": "AI: Prompt + Agent Gate"
+    },
+    {
+        "key": "ctrl+alt+i",
+        "command": "workbench.action.tasks.runTask",
+        "args": "AI: Install Missing CLIs (Plan)"
+    },
+    {
+        "key": "ctrl+alt+m",
+        "command": "workbench.action.tasks.runTask",
+        "args": "AI: Mega Ops (Host Full)"
+    }
+]

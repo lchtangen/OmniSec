@@ -268,6 +268,503 @@
             },
             "problemMatcher": []
         },
+        {
+            "label": "AI: Gemini CLI",
+            "type": "shell",
+            "command": "gemini",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Codeium CLI",
+            "type": "shell",
+            "command": "codeium",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Cody CLI",
+            "type": "shell",
+            "command": "cody",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Continue CLI",
+            "type": "shell",
+            "command": "cn",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Augment CLI",
+            "type": "shell",
+            "command": "auggie",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Fix CLI Paths + Sudo Links",
+            "type": "shell",
+            "command": "./scripts/ai-cli-fix-paths.sh",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: OpenCode CLI",
+            "type": "shell",
+            "command": "opencode",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: OpenCode Skills (Debug)",
+            "type": "shell",
+            "command": "opencode debug skill",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: OpenCode Agents (List)",
+            "type": "shell",
+            "command": "opencode agent list",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Codex Exec Review",
+            "type": "shell",
+            "command": "codex exec review",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Claude Agents",
+            "type": "shell",
+            "command": "claude agents",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: CLI Doctor (Host)",
+            "type": "shell",
+            "command": "./scripts/ai-cli-doctor.sh",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Prompt Lint",
+            "type": "shell",
+            "command": "./scripts/ai-prompt-lint.sh",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Agent Lint",
+            "type": "shell",
+            "command": "./scripts/ai-agent-lint.sh",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Missing CLI Install Hints",
+            "type": "shell",
+            "command": "./scripts/ai-missing-cli-help.sh",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Install Missing CLIs (Plan)",
+            "type": "shell",
+            "command": "./scripts/ai-install-missing-cli.sh --plan",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Install Missing CLIs (Apply)",
+            "type": "shell",
+            "command": "./scripts/ai-install-missing-cli.sh --apply",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Install + Fix + Verify",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "AI: Install Missing CLIs (Plan)",
+                "AI: Fix CLI Paths + Sudo Links",
+                "AI: CLI Doctor (Host)",
+                "AI: Missing CLI Install Hints"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Repo Context Snapshot",
+            "type": "shell",
+            "command": "./scripts/ai-context-snapshot.sh",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Daily Ops (Quick)",
+            "type": "shell",
+            "command": "./scripts/ai-daily-ops.sh",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Daily Ops (Full)",
+            "type": "shell",
+            "command": "./scripts/ai-daily-ops.sh --full",
+            "group": "test",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Daily Ops (Full + Device)",
+            "type": "shell",
+            "command": "./scripts/ai-daily-ops.sh --full --with-device",
+            "group": "test",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Prompt + Agent Gate",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "AI: Prompt Lint",
+                "AI: Agent Lint",
+                "AI: CLI Doctor (Host)",
+                "AI: Missing CLI Install Hints"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Mega Ops (Host Full)",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "AI: Install Missing CLIs (Plan)",
+                "AI: Fix CLI Paths + Sudo Links",
+                "AI: Prompt + Agent Gate",
+                "AI: Repo Context Snapshot",
+                "AI: Daily Ops (Full)",
+                "Gate: AI + Quality Full Stack"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Device AI Status",
+            "type": "shell",
+            "command": "./nhctl ai status",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Device AI Diagnose",
+            "type": "shell",
+            "command": "./nhctl ai diagnose",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Device AI Models",
+            "type": "shell",
+            "command": "./nhctl ai models",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Device AI Sessions (List)",
+            "type": "shell",
+            "command": "./nhctl ai sessions list",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Device AI Setup",
+            "type": "shell",
+            "command": "./nhctl ai setup",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Agent Router (Usage)",
+            "type": "shell",
+            "command": "./scripts/ai-agent-router.sh",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Bootstrap (Standard)",
+            "type": "shell",
+            "command": "./scripts/ai-bootstrap.sh",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Context Snapshot (Deep)",
+            "type": "shell",
+            "command": "./scripts/ai-context-snapshot.sh --deep",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: OpenCode CLI",
+            "type": "shell",
+            "command": "opencode",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Roo CLI",
+            "type": "shell",
+            "command": "roo",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Bootstrap (Full)",
+            "type": "shell",
+            "command": "./scripts/ai-bootstrap.sh --full",
+            "group": "test",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Workspace Bootstrap (Quick)",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "AI: CLI Doctor (Host)",
+                "AI: Repo Context Snapshot",
+                "Diag: Repo Doctor",
+                "Refactor: Rename Audit"
+            ],
+            "problemMatcher": []
+        },
 
         // ── Diagnostics ──────────────────────────────────────────────────────
         {
@@ -279,7 +776,7 @@
                 "panel": "shared",
                 "clear": true
             },
-            "problemMatcher": ["$shellcheck"]
+            "problemMatcher": []
         },
         {
             "label": "Diag: ADB devices",
@@ -369,6 +866,18 @@
             "label": "Refactor: Rename Quality Gate",
             "type": "shell",
             "command": "./scripts/pre-rename-audit.sh && ./repo-doctor.sh && make lint && make test",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Gate: AI + Quality Full Stack",
+            "type": "shell",
+            "command": "./scripts/pre-rename-audit.sh && ./repo-doctor.sh && make lint && make test && ./nhctl ai help",
             "group": "test",
             "presentation": {
                 "reveal": "always",

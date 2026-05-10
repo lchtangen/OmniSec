@@ -1,0 +1,36 @@
+{
+    "Prompt Frontmatter": {
+        "prefix": "prompt-frontmatter",
+        "body": [
+            "---",
+            "agent: \"agent\"",
+            "description: \"${1:Describe the prompt purpose}\"",
+            "---",
+            "",
+            "${2:Prompt content}"
+        ],
+        "description": "Insert standardized prompt frontmatter"
+    },
+    "AI CLI Triage Block": {
+        "prefix": "ai-triage-block",
+        "body": [
+            "Symptom: ${1:what failed}",
+            "Failing command: ${2:command}",
+            "Likely cause: ${3:root cause}",
+            "Smallest safe remediation: ${4:fix}",
+            "Verification: ${5:verification command}"
+        ],
+        "description": "Insert a compact AI CLI troubleshooting template"
+    },
+    "Task Checklist": {
+        "prefix": "ai-checklist",
+        "body": [
+            "1. Run ./scripts/pre-rename-audit.sh",
+            "2. Run ./repo-doctor.sh",
+            "3. Run make lint",
+            "4. Run make test",
+            "5. Run ./nhctl ai help"
+        ],
+        "description": "Insert OmniSec AI quality checklist"
+    }
+}

@@ -46,11 +46,27 @@
         ".aider*.yaml": "yaml",
         ".aider.conf.json": "jsonc",
         ".claude/**/*.json": "jsonc",
+        ".claude/agents/*.md": "markdown",
+        ".continue/**/*.json": "jsonc",
+        ".codeium/**/*.json": "jsonc",
+        ".cody/**/*.json": "jsonc",
         ".cursorrules": "markdown",
         ".clinerules": "markdown",
+        ".windsurfrules": "markdown",
         ".roo/rules/*.mdc": "markdown",
         ".cursor/rules/*.mdc": "markdown",
-        ".github/copilot-instructions*.md": "markdown"
+        ".github/copilot-instructions*.md": "markdown",
+        "*.prompt.md": "markdown",
+        "*.instructions.md": "markdown",
+        "*.agent.md": "markdown",
+        "AGENTS.md": "markdown",
+        "CLAUDE.md": "markdown",
+        "CODEX.md": "markdown",
+        "OPENCODE.md": "markdown",
+        "SKILL.md": "markdown",
+        ".opencode/**/*.json": "jsonc",
+        ".opencode/**/*.yml": "yaml",
+        ".opencode/**/*.yaml": "yaml"
     },
 
     // ── Search / explorer exclusions ─────────────────────────────────────────
@@ -69,7 +85,13 @@
         "**/.aider.chat.history.md": true,
         "**/.aider.input.history": true,
         "**/.aider.tags.cache.v*": true,
-        "**/.codex/**": true
+        "**/.codex/**": true,
+        "**/.continue/**": true,
+        "**/.gemini/**": true,
+        "**/.codeium/**": true,
+        "**/.cody/**": true,
+        "**/.sourcegraph/**": true,
+        "**/.opencode/**": true
     },
     "search.exclude": {
         "**/*.tar.gz": true,
@@ -85,7 +107,13 @@
         "**/.aider.chat.history.md": true,
         "**/.aider.input.history": true,
         "**/.aider.tags.cache.v*": true,
-        "**/.codex/**": true
+        "**/.codex/**": true,
+        "**/.continue/**": true,
+        "**/.gemini/**": true,
+        "**/.codeium/**": true,
+        "**/.cody/**": true,
+        "**/.sourcegraph/**": true,
+        "**/.opencode/**": true
     },
     "files.watcherExclude": {
         "**/*.tar.gz": true,
@@ -100,7 +128,13 @@
         "**/.aider.chat.history.md": true,
         "**/.aider.input.history": true,
         "**/.aider.tags.cache.v*": true,
-        "**/.codex/**": true
+        "**/.codex/**": true,
+        "**/.continue/**": true,
+        "**/.gemini/**": true,
+        "**/.codeium/**": true,
+        "**/.cody/**": true,
+        "**/.sourcegraph/**": true,
+        "**/.opencode/**": true
     },
     "search.followSymlinks": false,
 
@@ -149,6 +183,46 @@
             "path": "/usr/bin/env",
             "args": ["bash", "-lc", "aider"],
             "icon": "terminal-bash"
+        },
+        "Gemini CLI": {
+            "path": "/usr/bin/env",
+            "args": ["bash", "-lc", "gemini"],
+            "icon": "sparkle"
+        },
+        "Codeium CLI": {
+            "path": "/usr/bin/env",
+            "args": ["bash", "-lc", "codeium"],
+            "icon": "symbol-method"
+        },
+        "Cody CLI": {
+            "path": "/usr/bin/env",
+            "args": ["bash", "-lc", "cody"],
+            "icon": "extensions"
+        },
+        "Continue CLI": {
+            "path": "/usr/bin/env",
+            "args": ["bash", "-lc", "cn"],
+            "icon": "sync"
+        },
+        "Augment CLI": {
+            "path": "/usr/bin/env",
+            "args": ["bash", "-lc", "auggie"],
+            "icon": "sparkle-filled"
+        },
+        "OpenCode CLI": {
+            "path": "/usr/bin/env",
+            "args": ["bash", "-lc", "opencode"],
+            "icon": "code"
+        },
+        "Roo CLI": {
+            "path": "/usr/bin/env",
+            "args": ["bash", "-lc", "roo"],
+            "icon": "terminal"
+        },
+        "Windsurf CLI": {
+            "path": "/usr/bin/env",
+            "args": ["bash", "-lc", "windsurf"],
+            "icon": "terminal"
         }
     },
     "terminal.integrated.defaultProfile.linux": "zsh",
@@ -156,6 +230,8 @@
     "terminal.integrated.enablePersistentSessions": true,
     "terminal.integrated.defaultLocation": "editor",
     "terminal.integrated.tabs.enabled": true,
+    "terminal.integrated.shellIntegration.enabled": true,
+    "terminal.integrated.cwd": "${workspaceFolder}",
 
     // ── Remote SSH targets (visible in Remote Explorer) ──────────────────────
     "remote.SSH.configFile": "~/.ssh/config",
@@ -228,7 +304,6 @@
     "cSpell.language": "en,en-US",
     "cSpell.diagnosticLevel": "Warning",
     "cSpell.import": ["${workspaceFolder}/cspell.json"],
-    "cSpell.enabledLanguageIds": ["markdown", "shellscript", "yaml", "python", "c", "plaintext"],
     "python.analysis.typeCheckingMode": "basic",
     "python.analysis.autoImportCompletions": true,
     "python.analysis.inlayHints.variableTypes": true,
@@ -239,8 +314,26 @@
 
     // ── Copilot (project scope) ───────────────────────────────────────────────
     "chat.commandCenter.enabled": true,
+    "chat.useCustomizationsInParentRepositories": true,
+    "chat.promptFilesLocations": {
+        ".github/prompts": true
+    },
+    "chat.agentFilesLocations": {
+        ".github/agents": true,
+        ".claude/agents": true
+    },
+    "chat.agentSkillsLocations": {
+        ".github/skills": true,
+        ".agents/skills": true,
+        ".claude/skills": true
+    },
+    "chat.promptFilesRecommendations": {
+        ".github/prompts": true
+    },
     "github.copilot.nextEditSuggestions.enabled": true,
     "github.copilot.chat.localeOverride": "en",
+    "github.copilot.chat.organizationCustomAgents.enabled": true,
+    "github.copilot.chat.skillTool.enabled": true,
     "github.copilot.enable": {
         "*": true,
         "shellscript": true,
