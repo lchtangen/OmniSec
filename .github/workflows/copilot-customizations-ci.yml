@@ -1,0 +1,117 @@
+name: Copilot Customizations CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/copilot-instructions.md"
+      - ".github/instructions/**"
+      - ".github/agents/**"
+      - ".github/skills/**"
+      - ".github/prompts/**"
+      - ".agents/skills/**"
+      - ".claude/agents/**"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "CODEX.md"
+      - "OPENCODE.md"
+      - ".vscode/settings.json"
+      - ".vscode/tasks.json"
+      - ".github/workflows/copilot-setup-steps.yml"
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/copilot-instructions.md"
+      - ".github/instructions/**"
+      - ".github/agents/**"
+      - ".github/skills/**"
+      - ".github/prompts/**"
+      - ".agents/skills/**"
+      - ".claude/agents/**"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "CODEX.md"
+      - "OPENCODE.md"
+      - ".vscode/settings.json"
+      - ".vscode/tasks.json"
+      - ".github/workflows/copilot-setup-steps.yml"
+  workflow_dispatch:
+
+jobs:
+  validate-customizations:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate frontmatter and skill structure
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          root = pathlib.Path(".")
+          errors = []
+
+          def read_frontmatter(path: pathlib.Path):
+              text = path.read_text(encoding="utf-8")
+              m = re.match(r"^---\n(.*?)\n---\n", text, flags=re.S)
+              if not m:
+                  return None
+              return m.group(1)
+
+          def require_keys(path: pathlib.Path, keys):
+              fm = read_frontmatter(path)
+              if fm is None:
+                  errors.append(f"{path}: missing YAML frontmatter")
+                  return
+              for key in keys:
+                  if re.search(rf"(?m)^{re.escape(key)}\s*:", fm) is None:
+                      errors.append(f"{path}: missing required frontmatter key '{key}'")
+
+          for p in root.glob(".github/prompts/*.prompt.md"):
+              require_keys(p, ["description"])
+
+          for p in root.glob(".github/agents/*.agent.md"):
+              require_keys(p, ["description"])
+
+          for p in root.glob(".github/instructions/**/*.instructions.md"):
+              require_keys(p, ["applyTo"])
+
+          for base in [root / ".github" / "skills", root / ".agents" / "skills"]:
+              if not base.exists():
+                  continue
+              for skill_dir in sorted([d for d in base.iterdir() if d.is_dir()]):
+                  skill_file = skill_dir / "SKILL.md"
+                  if not skill_file.exists():
+                      errors.append(f"{skill_dir}: missing SKILL.md")
+                      continue
+                  require_keys(skill_file, ["name", "description"])
+                  fm = read_frontmatter(skill_file)
+                  if fm is None:
+                      continue
+                  m = re.search(r"(?m)^name\s*:\s*([a-z0-9-]+)\s*$", fm)
+                  if m is None:
+                      errors.append(f"{skill_file}: invalid or missing kebab-case name")
+                  else:
+                      skill_name = m.group(1)
+                      if skill_name != skill_dir.name:
+                          errors.append(
+                              f"{skill_file}: skill name '{skill_name}' must match directory '{skill_dir.name}'"
+                          )
+
+          if errors:
+              print("Customization validation failed:")
+              for err in errors:
+                  print(f"- {err}")
+              sys.exit(1)
+
+          print("Customization validation passed")
+          PY
+
+      - name: Validate repository quality gates
+        run: |
+          make lint
+          make test

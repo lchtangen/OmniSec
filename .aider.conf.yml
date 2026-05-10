@@ -1,0 +1,54 @@
+# OmniSec Aider AI Pair Programming Configuration
+# https://aider.chat/docs/config.html
+
+## Model settings
+model: claude-sonnet-4-20250514
+weak-model: claude-3-5-haiku-20241022
+editor-model: claude-sonnet-4-20250514
+# NOTE: Update these when Anthropic releases newer models.
+# Check: https://docs.anthropic.com/en/docs/about-claude/models
+
+## Output settings
+dark-mode: true
+colors: true
+pretty: true
+show-model-warnings: false
+stream: true
+
+## Project settings
+auto-commits: false
+dirty-commits: false
+attribute-author: false
+attribute-committer: false
+gitignore: false
+
+## Context settings
+lint: true
+lint-command: "make lint"
+test: true
+test-command: "make test"
+suggest-shell-commands: false
+
+## File settings
+encoding: utf-8
+input-history-file: /dev/null
+chat-history-file: /dev/null
+restore-chat-history: false
+
+## Cache settings
+cache-prompts: true
+cache-keepalive-pings: 5
+map-refresh: auto
+
+## Repository settings
+show-release-notes: false
+check-update: false
+analytics: false
+
+## Prompt settings
+# Read the project instructions for context
+prompt: |
+  Read AGENTS.md and .github/copilot-instructions.md before starting work.
+  Follow OmniSec conventions: host=Bash, device=POSIX sh, C=static-linked.
+  Always run `make lint && make test` after making changes.
+  Never edit payload/ directly — use `make stage` to regenerate it.
