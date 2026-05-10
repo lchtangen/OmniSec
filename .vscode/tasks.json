@@ -211,6 +211,64 @@
             "problemMatcher": []
         },
 
+        // ── AI Agent CLIs ──────────────────────────────────────────────────────
+        {
+            "label": "AI: Codex CLI",
+            "type": "shell",
+            "command": "codex",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Claude CLI",
+            "type": "shell",
+            "command": "claude",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: GitHub Copilot CLI",
+            "type": "shell",
+            "command": "gh copilot",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Aider CLI",
+            "type": "shell",
+            "command": "aider",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+
         // ── Diagnostics ──────────────────────────────────────────────────────
         {
             "label": "Diag: Repo Doctor",

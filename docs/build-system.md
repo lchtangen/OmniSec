@@ -113,7 +113,7 @@ make validate
 ## Docker
 
 ```bash
-make docker       # Build: nethunter-setup:2.0.0
+make docker       # Build: omnisec:2.0.0
 make docker-run   # Build and run with USB/SSH mounts
 ```
 

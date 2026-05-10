@@ -76,7 +76,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build Docker image
-        run: docker build -t omnisec:latest .
+        run: docker build -f docker/Dockerfile -t omnisec:latest .
       - name: Test Docker image
         run: docker run --rm omnisec:latest nhctl help
 

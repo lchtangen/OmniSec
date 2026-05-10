@@ -173,7 +173,7 @@ nethunter-setup/
 ├── VERSION.md             # Version info
 ├── CONTRIBUTING.md        # Coding standards
 ├── LICENSE                # GPLv3
-├── Dockerfile             # Dev container
+├── docker/Dockerfile      # Dev container
 ├── .github/workflows/     # CI/CD
 ├── src/                   # Source files (source of truth)
 │   ├── c/                 #   C source files

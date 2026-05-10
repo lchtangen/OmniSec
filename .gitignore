@@ -28,6 +28,22 @@ backups/partitions/
 
 # Local/editor/private state
 .claude/settings.local.json
+.claude/settings.*.json
+.claude/projects/
+.claude/todos/
+.claude/cache/
+.codex/
+.aider*
+.cursorrules.local
+.clinerules.local
+.cursor/
+.roo/
+.windsurf/
+.continue/
+.gemini/
+.codeium/
+.copilot/
+.github/copilot-instructions.local.md
 .env
 .env.*
 *.key

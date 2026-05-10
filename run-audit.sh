@@ -1,3 +1,4 @@
-#!/bin/bash
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
-exec "$SCRIPT_DIR/src/scripts/run-audit.sh" "$@"
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec "$(cd "$(dirname "$0")" && pwd)/scripts/run-audit.sh" "$@"

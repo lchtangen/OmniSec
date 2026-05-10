@@ -1,0 +1,41 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Bash: Debug Current Script",
+            "type": "bashdb",
+            "request": "launch",
+            "program": "${file}",
+            "cwd": "${workspaceFolder}",
+            "terminalKind": "integrated"
+        },
+        {
+            "name": "Bash: Debug nhctl help",
+            "type": "bashdb",
+            "request": "launch",
+            "program": "${workspaceFolder}/nhctl",
+            "args": ["help"],
+            "cwd": "${workspaceFolder}",
+            "terminalKind": "integrated"
+        },
+        {
+            "name": "Python: Debug Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "C/C++: Launch nh-diag",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/nh-diag",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "externalConsole": false,
+            "MIMode": "gdb"
+        }
+    ]
+}

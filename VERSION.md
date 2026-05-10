@@ -1,5 +1,7 @@
 # NetHunter Matrix Version
 
+NH_SETUP_VERSION=3.0.0-beta
+
 Current version: `3.0.0-beta`
 
 - Release: `NetHunter Matrix v3.0.0 Beta`

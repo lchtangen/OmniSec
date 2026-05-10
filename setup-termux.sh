@@ -1,2 +1,4 @@
-#!/bin/bash
-exec "$(dirname "$0")/src/scripts/setup-termux.sh" "$@"
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec "$(cd "$(dirname "$0")" && pwd)/scripts/setup-termux.sh" "$@"

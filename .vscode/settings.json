@@ -3,14 +3,18 @@
     "shellcheck.enable": true,
     "shellcheck.run": "onSave",
     "shellcheck.executablePath": "/usr/bin/shellcheck",
+    "shellcheck.customArgs": ["-x"],
     "shellcheck.exclude": ["SC1091"],
     "bashIde.shellcheckPath": "/usr/bin/shellcheck",
 
-    "editor.defaultFormatter": "mads-hartmann.bash-ide-vscode",
+    "editor.defaultFormatter": "foxundermoon.shell-format",
+    "shellformat.flag": "-i 4 -ci",
+    "shellformat.useEditorConfig": true,
     "[shellscript]": {
+        "editor.defaultFormatter": "foxundermoon.shell-format",
         "editor.tabSize": 4,
         "editor.insertSpaces": true,
-        "editor.formatOnSave": false,
+        "editor.formatOnSave": true,
         "editor.rulers": [100]
     },
 
@@ -27,31 +31,78 @@
         "*.sh": "shellscript",
         "nh-*": "shellscript",
         "nh-lib": "shellscript",
+        "Dockerfile*": "dockerfile",
+        "*.env*": "dotenv",
         "arch-*": "shellscript",
         "kali-*": "shellscript",
         "deploy-*": "shellscript",
+        ".github/workflows/*.yml": "yaml",
         "*.conf": "ini",
         "sshd_config": "ini",
         "*.md": "markdown",
         "*.c": "c",
-        "PKGBUILD": "shellscript"
+        "PKGBUILD": "shellscript",
+        ".aider*.yml": "yaml",
+        ".aider*.yaml": "yaml",
+        ".aider.conf.json": "jsonc",
+        ".claude/**/*.json": "jsonc",
+        ".cursorrules": "markdown",
+        ".clinerules": "markdown",
+        ".roo/rules/*.mdc": "markdown",
+        ".cursor/rules/*.mdc": "markdown",
+        ".github/copilot-instructions*.md": "markdown"
     },
 
     // ── Search / explorer exclusions ─────────────────────────────────────────
     "files.exclude": {
         "**/*.tar.gz": true,
+        "**/build": true,
+        "**/dist": true,
+        "**/payload": true,
+        "**/.pytest_cache": true,
+        "**/__pycache__": true,
         "**/node_modules": true,
-        "**/.git": true
+        "**/.git": true,
+        "**/.claude/projects/**": true,
+        "**/.claude/todos/**": true,
+        "**/.claude/cache/**": true,
+        "**/.aider.chat.history.md": true,
+        "**/.aider.input.history": true,
+        "**/.aider.tags.cache.v*": true,
+        "**/.codex/**": true
     },
     "search.exclude": {
         "**/*.tar.gz": true,
+        "**/build": true,
+        "**/dist": true,
+        "**/payload": true,
+        "**/__pycache__": true,
         "**/node_modules": true,
-        "**/package-lock.json": true
+        "**/package-lock.json": true,
+        "**/.claude/projects/**": true,
+        "**/.claude/todos/**": true,
+        "**/.claude/cache/**": true,
+        "**/.aider.chat.history.md": true,
+        "**/.aider.input.history": true,
+        "**/.aider.tags.cache.v*": true,
+        "**/.codex/**": true
     },
     "files.watcherExclude": {
         "**/*.tar.gz": true,
-        "**/node_modules/**": true
+        "**/build/**": true,
+        "**/dist/**": true,
+        "**/payload/**": true,
+        "**/__pycache__/**": true,
+        "**/node_modules/**": true,
+        "**/.claude/projects/**": true,
+        "**/.claude/todos/**": true,
+        "**/.claude/cache/**": true,
+        "**/.aider.chat.history.md": true,
+        "**/.aider.input.history": true,
+        "**/.aider.tags.cache.v*": true,
+        "**/.codex/**": true
     },
+    "search.followSymlinks": false,
 
     // ── Terminal ─────────────────────────────────────────────────────────────
     "terminal.integrated.profiles.linux": {
@@ -78,10 +129,33 @@
             "path": "/usr/bin/adb",
             "args": ["shell", "/debug_ramdisk/su", "-c", "zsh || bash"],
             "icon": "debug-console"
+        },
+        "Codex CLI": {
+            "path": "/usr/bin/env",
+            "args": ["bash", "-lc", "codex"],
+            "icon": "hubot"
+        },
+        "Claude CLI": {
+            "path": "/usr/bin/env",
+            "args": ["bash", "-lc", "claude"],
+            "icon": "comment-discussion"
+        },
+        "GitHub Copilot CLI": {
+            "path": "/usr/bin/env",
+            "args": ["bash", "-lc", "gh copilot"],
+            "icon": "github"
+        },
+        "Aider CLI": {
+            "path": "/usr/bin/env",
+            "args": ["bash", "-lc", "aider"],
+            "icon": "terminal-bash"
         }
     },
     "terminal.integrated.defaultProfile.linux": "zsh",
     "terminal.integrated.scrollback": 10000,
+    "terminal.integrated.enablePersistentSessions": true,
+    "terminal.integrated.defaultLocation": "editor",
+    "terminal.integrated.tabs.enabled": true,
 
     // ── Remote SSH targets (visible in Remote Explorer) ──────────────────────
     "remote.SSH.configFile": "~/.ssh/config",
@@ -93,20 +167,86 @@
 
     // ── Task runner ──────────────────────────────────────────────────────────
     "task.allowAutomaticTasks": "on",
+    "makefile.configureOnOpen": false,
+
+    // ── Diagnostics & productivity ───────────────────────────────────────────
+    "errorLens.enabled": true,
+    "errorLens.messageEnabled": true,
+    "problems.showCurrentInStatus": true,
+    "git.autofetch": true,
+    "git.pruneOnFetch": true,
+    "git.confirmSync": false,
+    "git.enableSmartCommit": true,
+    "git.untrackedChanges": "separate",
+    "git.openRepositoryInParentFolders": "always",
+    "scm.defaultViewMode": "tree",
+    "todo-tree.highlights.enabled": true,
+    "todo-tree.tree.showScanModeButton": true,
+    "todo-tree.general.tags": ["TODO", "FIXME", "BUG", "HACK", "NOTE", "SECURITY", "PERF"],
 
     // ── Editor ───────────────────────────────────────────────────────────────
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll": "explicit",
+        "source.organizeImports": "explicit"
+    },
+    "editor.inlineSuggest.enabled": true,
     "editor.tabSize": 4,
     "editor.insertSpaces": true,
+    "editor.stickyScroll.enabled": true,
+    "editor.bracketPairColorization.enabled": true,
+    "editor.guides.bracketPairs": "active",
+    "editor.minimap.enabled": false,
     "editor.renderWhitespace": "trailing",
     "editor.wordWrap": "off",
+    "workbench.editor.enablePreview": false,
+    "workbench.startupEditor": "none",
+    "explorer.compactFolders": false,
+    "files.autoSave": "onFocusChange",
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
+    "files.eol": "\n",
+
+    // ── Markdown/YAML/Python quality defaults ───────────────────────────────
+    "[markdown]": {
+        "editor.wordWrap": "on",
+        "editor.quickSuggestions": false
+    },
+    "markdownlint.configFile": "${workspaceFolder}/.markdownlint.jsonc",
+    "markdownlint.run": "onSave",
+    "[yaml]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.formatOnSave": true
+    },
+    "yaml.validate": true,
+    "yaml.format.enable": true,
+    "yaml.schemas": {
+        "https://json.schemastore.org/github-workflow.json": ".github/workflows/*.{yml,yaml}"
+    },
+    "cSpell.enabled": true,
+    "cSpell.language": "en,en-US",
+    "cSpell.diagnosticLevel": "Warning",
+    "cSpell.import": ["${workspaceFolder}/cspell.json"],
+    "cSpell.enabledLanguageIds": ["markdown", "shellscript", "yaml", "python", "c", "plaintext"],
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.inlayHints.variableTypes": true,
+    "python.analysis.inlayHints.functionReturnTypes": true,
+    "python.analysis.inlayHints.callArgumentNames": "partial",
+    "C_Cpp.default.cStandard": "c17",
+    "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
 
     // ── Copilot (project scope) ───────────────────────────────────────────────
+    "chat.commandCenter.enabled": true,
+    "github.copilot.nextEditSuggestions.enabled": true,
+    "github.copilot.chat.localeOverride": "en",
     "github.copilot.enable": {
         "*": true,
         "shellscript": true,
         "c": true,
+        "yaml": true,
+        "python": true,
         "markdown": true,
         "plaintext": false
     }

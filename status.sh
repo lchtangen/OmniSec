@@ -1,2 +1,4 @@
-#!/bin/bash
-exec "$(dirname "$0")/src/scripts/status.sh" "$@"
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec "$(cd "$(dirname "$0")" && pwd)/scripts/status.sh" "$@"

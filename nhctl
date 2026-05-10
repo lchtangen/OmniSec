@@ -402,22 +402,22 @@ nh_detect() {
 
 nh_discover() {
     log "scanning for ADB devices..."
-    "$SCRIPT_DIR/src/scripts/discover-adb.sh" "$@"
+    "$SCRIPT_DIR/scripts/discover-adb.sh" "$@"
 }
 
 nh_pair() {
     log "pairing wireless ADB device..."
-    "$SCRIPT_DIR/src/scripts/adb-pair.sh" "$@"
+    "$SCRIPT_DIR/scripts/adb-pair.sh" "$@"
 }
 
 nh_install_kali() {
     log "installing Kali ARM64 rootfs..."
-    "$SCRIPT_DIR/src/scripts/install-kali-rootfs.sh" "$@"
+    "$SCRIPT_DIR/scripts/install-kali-rootfs.sh" "$@"
 }
 
 nh_install_nethunter_app() {
     log "installing NetHunter app..."
-    "$SCRIPT_DIR/src/scripts/install-nethunter-app.sh" "$@"
+    "$SCRIPT_DIR/scripts/install-nethunter-app.sh" "$@"
 }
 
 usage() {
@@ -428,7 +428,7 @@ usage() {
     elif command -v nh-root-check >/dev/null 2>&1; then
         nh-root-check check >/dev/null 2>&1 && edition="ROOTED" || edition="ROOTLESS"
     fi
-    
+
 	cat <<EOF
 $NH_LABEL — BLACKICE v3.0
 Edition: $edition | Tools: 75+ (rooted) / 40+ (rootless) | Tests: 334 passed
@@ -436,7 +436,7 @@ Arch default: $ARCH_LABEL
 Kali default: $KALI_LABEL
 ADB default: $ADB_SERIAL
 
-usage: nhctl <command> [args]
+Usage: nhctl <command> [args]
 
 Management:
   status              Run host preflight and device nh-status
@@ -540,16 +540,15 @@ EOF
 nh_ai() {
     local subcmd="${1:-help}"
     shift 2>/dev/null || true
-    require_root
     case "$subcmd" in
-        chat|ask)       adbr "sh /data/local/nhsystem/bin/nh-ai chat $*" ;;
-        diagnose)       adbr "sh /data/local/nhsystem/bin/nh-ai diagnose" ;;
-        status)         adbr "sh /data/local/nhsystem/bin/nh-ai status" ;;
-        models)         adbr "sh /data/local/nhsystem/bin/nh-ai models" ;;
-        install|pull)   adbr "sh /data/local/nhsystem/bin/nh-ai install ${2:-}" ;;
-        recon)          adbr "sh /data/local/nhsystem/bin/nh-ai recon $*" ;;
-        sessions)       adbr "sh /data/local/nhsystem/bin/nh-ai sessions $*" ;;
-        setup)          adbr "sh /data/local/nhsystem/bin/nh-ai setup" ;;
+        chat|ask)       require_root; adbr "sh /data/local/nhsystem/bin/nh-ai chat $*" ;;
+        diagnose)       require_root; adbr "sh /data/local/nhsystem/bin/nh-ai diagnose" ;;
+        status)         require_root; adbr "sh /data/local/nhsystem/bin/nh-ai status" ;;
+        models)         require_root; adbr "sh /data/local/nhsystem/bin/nh-ai models" ;;
+        install|pull)   require_root; adbr "sh /data/local/nhsystem/bin/nh-ai install ${2:-}" ;;
+        recon)          require_root; adbr "sh /data/local/nhsystem/bin/nh-ai recon $*" ;;
+        sessions)       require_root; adbr "sh /data/local/nhsystem/bin/nh-ai sessions $*" ;;
+        setup)          require_root; adbr "sh /data/local/nhsystem/bin/nh-ai setup" ;;
         help|*)         echo "Usage: nhctl ai <command> [args]"
                         echo "Commands: chat, ask, diagnose, status, models, install, recon, sessions, setup"
                         echo "Alias: nhctl ask <question> = nhctl ai ask <question>"
@@ -698,7 +697,7 @@ case "$cmd" in
         ;;
     toolchain)
         shift 2>/dev/null || true
-        "$SCRIPT_DIR/src/scripts/nh-toolchain.sh" "$@"
+        "$SCRIPT_DIR/scripts/nh-toolchain.sh" "$@"
         ;;
     kismet)
         require_root
@@ -899,7 +898,10 @@ container)
         nh_install_nethunter_app "$@"
         ;;
     vscode-tunnel|vscode)
-        "$SCRIPT_DIR/src/scripts/setup-vscode-tunnel.sh" "$@"
+        "$SCRIPT_DIR/scripts/setup-vscode-tunnel.sh" "$@"
+        ;;
+    version)
+        echo "$NH_LABEL"
         ;;
     help|-h|--help)
         usage

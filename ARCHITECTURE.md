@@ -42,7 +42,7 @@ nethunter-setup/                          [P0 CRITICAL]
 ├── kernel/                               [P0] Matrix kernel build system
 │   ├── build-kernel.sh                   [P0] Primary build entrypoint
 │   ├── configs/fragments/                [P0] Modular config fragments
-│   ├── device/guacamole/                 [P0] Device-specific scripts
+│   ├── devices/guacamole/                [P0] Device-specific scripts
 │   ├── patches/                          [P1] Kernel patches
 │   ├── toolchain/                        [P1] Toolchain setup
 │   ├── anykernel3/                       [P1] Flashable packaging
