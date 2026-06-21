@@ -1,0 +1,119 @@
+{
+    "folders": [
+        {
+            "name": "OmniSec",
+            "path": "repos/desktop/linux/omnisec"
+        },
+        {
+            "name": "CyberFlash-Tool",
+            "path": "repos/desktop/linux/cyberflash-tool"
+        },
+        {
+            "name": "Kali-Workspace",
+            "path": "repos/desktop/linux/kali-workspace"
+        },
+        {
+            "name": "linux-omnisec",
+            "path": "repos/desktop/linux/linux-omnisec"
+        },
+        {
+            "name": "Security Tools (Linux)",
+            "path": "repos/desktop/linux/security-tools"
+        },
+        {
+            "name": "op7p-env",
+            "path": "repos/mobile/android/op7p-env"
+        },
+        {
+            "name": "VAULT-Android16",
+            "path": "repos/mobile/android/vault-android16"
+        },
+        {
+            "name": "Security Tools (Android)",
+            "path": "repos/mobile/android/security-tools"
+        },
+        {
+            "name": "Reference / Awesome Lists",
+            "path": "repos/reference"
+        },
+        {
+            "name": "Web Tools",
+            "path": "repos/web"
+        },
+        {
+            "name": "Themes",
+            "path": "themes"
+        },
+        {
+            "name": "Dashboard",
+            "path": "dashboard"
+        },
+        {
+            "name": "Scripts",
+            "path": "scripts"
+        }
+    ],
+    "settings": {
+        "workbench.colorTheme": "Dark+",
+        "workbench.startupEditor": "readme",
+        "files.autoSave": "onFocusChange",
+        "editor.fontFamily": "'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace",
+        "editor.fontSize": 13,
+        "editor.fontLigatures": true,
+        "editor.minimap.enabled": false,
+        "editor.renderWhitespace": "boundary",
+        "editor.bracketPairColorization.enabled": true,
+        "editor.guides.bracketPairs": true,
+        "terminal.integrated.fontFamily": "'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace",
+        "terminal.integrated.fontSize": 12,
+        "terminal.integrated.cursorBlinking": true,
+        "terminal.integrated.cursorStyle": "line",
+        "workbench.colorCustomizations": {
+            "editor.background": "#0d1117",
+            "sideBar.background": "#161b22",
+            "activityBar.background": "#161b22",
+            "panel.background": "#0d1117",
+            "terminal.background": "#0a0e14",
+            "terminal.foreground": "#c0caf5",
+            "terminal.ansiCyan": "#00d4ff",
+            "terminal.ansiGreen": "#00ff41",
+            "terminal.ansiMagenta": "#ff006e",
+            "terminal.ansiYellow": "#ffaa00",
+            "terminal.ansiRed": "#f85149"
+        },
+        "search.exclude": {
+            "**/.git": true,
+            "**/node_modules": true,
+            "**/__pycache__": true
+        },
+        "files.exclude": {
+            "**/__pycache__": true,
+            "**/.git": false
+        },
+        "explorer.confirmDragAndDrop": false,
+        "explorer.confirmDelete": false,
+        "git.enableSmartCommit": true,
+        "git.confirmSync": false,
+        "python.terminal.activateEnvironment": true,
+        "[python]": {
+            "editor.formatOnSave": true,
+            "editor.codeActionsOnSave": {
+                "source.organizeImports": "explicit"
+            }
+        }
+    },
+    "extensions": {
+        "recommendations": [
+            "ms-python.python",
+            "ms-python.vscode-pylance",
+            "ms-python.black-formatter",
+            "charliermarsh.ruff",
+            "eamodio.gitlens",
+            "github.vscode-github-actions",
+            "tamasfe.even-better-toml",
+            "aaron-bond.better-comments",
+            "streetsidesoftware.code-spell-checker",
+            "wayou.vscode-todo-highlight"
+        ]
+    }
+}

@@ -1,0 +1,308 @@
+#!/usr/bin/env python3
+"""
+cpe — OmniSec Cyberpunk Edition CLI
+Unified entry point to access all projects, tools, and knowledge.
+
+Usage:
+  cpe list [--all|--tools|--distros|--ref]
+  cpe search <query>
+  cpe open <project-id|tool-name>
+  cpe status
+  cpe theme [name]
+  cpe ask <question>
+  cpe serve [port]
+  cpe help
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import webbrowser
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+INDEX = ROOT / "index.json"
+CACHE_DIR = ROOT / ".cache"
+CACHE_DIR.mkdir(exist_ok=True)
+
+
+def load_index():
+    if not INDEX.exists():
+        print("[!] index.json not found — run from project root")
+        sys.exit(1)
+    return json.loads(INDEX.read_text())
+
+
+def print_header():
+    print("╔══════════════════════════════════════════════════════╗")
+    print("║     OmniSec Cyberpunk Edition — Unified CLI        ║")
+    print("╚══════════════════════════════════════════════════════╝")
+    print()
+
+
+def cmd_list(args):
+    data = load_index()
+    show = "all"
+    if "--tools" in args:
+        show = "tools"
+    elif "--distros" in args:
+        show = "distros"
+    elif "--ref" in args:
+        show = "ref"
+
+    if show in ("all", "tools"):
+        print("\n▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓")
+        print("  YOUR PROJECTS")
+        print("▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓")
+        for p in data.get("first_party", []):
+            status_icon = "●" if p.get("status") == "active" else "○"
+            print(f"  {status_icon} {p['id']:20s}  {p.get('tagline',''):30s}  {p.get('commits',0)} commits")
+
+    if show in ("all", "tools"):
+        print("\n▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓")
+        print("  TOOL CATALOG")
+        print("▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓")
+        for cat, tools in sorted(data.get("tools", {}).items()):
+            print(f"  {cat:20s}  {', '.join(tools[:4])}{'...' if len(tools) > 4 else ''}")
+
+    if show in ("all", "distros"):
+        print("\n▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓")
+        print("  DISTROS")
+        print("▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓")
+        for cat, distros in sorted(data.get("distros", {}).items()):
+            print(f"  {cat:20s}  {', '.join(distros)}")
+
+    if show in ("all", "ref"):
+        print("\n▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓")
+        print("  REFERENCE")
+        print("▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓")
+        for cat, refs in sorted(data.get("reference", {}).items()):
+            print(f"  {cat:20s}  {', '.join(refs)}")
+
+    print()
+
+
+def cmd_search(args):
+    if not args:
+        print("[!] Usage: cpe search <query>")
+        return
+    query = " ".join(args).lower()
+    data = load_index()
+    results = []
+
+    for p in data.get("first_party", []):
+        if query in p["id"].lower() or query in p["name"].lower() or query in p.get("description", "").lower():
+            results.append(("PROJECT", p["id"], p["path"], p.get("description", "")))
+
+    for cat, tools in data.get("tools", {}).items():
+        for t in tools:
+            if query in t.lower() or query in cat.lower():
+                results.append(("TOOL", t, f"tools/{cat}/{t}", f"Category: {cat}"))
+
+    for cat, distros in data.get("distros", {}).items():
+        for d in distros:
+            if query in d.lower():
+                results.append(("DISTRO", d, f"distros/{cat}/{d}", f"Category: {cat}"))
+
+    if results:
+        print(f"\n  Found {len(results)} result(s) for '{query}':\n")
+        for typ, name, path, desc in results:
+            print(f"  [{typ:7s}] {name:25s}  {path}")
+            print(f"           {desc}")
+            print()
+    else:
+        print(f"\n  No results for '{query}'\n")
+
+
+def cmd_open(args):
+    if not args:
+        print("[!] Usage: cpe open <project-id>")
+        return
+    query = " ".join(args).lower()
+    data = load_index()
+
+    for p in data.get("first_party", []):
+        if query == p["id"].lower() or query == p["name"].lower():
+            target = ROOT / p["path"]
+            if target.exists():
+                print(f"  Opening {p['name']} in VS Code...")
+                subprocess.run(["code", str(target)], check=False)
+                return
+            print(f"  Path not found: {target}")
+            return
+
+    for cat, tools in data.get("tools", {}).items():
+        for t in tools:
+            if query == t.lower():
+                target = ROOT / "tools" / cat / t
+                if target.exists():
+                    print(f"  Opening {t} in VS Code...")
+                    subprocess.run(["code", str(target)], check=False)
+                    return
+
+    print(f"  No project or tool found matching '{query}'")
+    print("  Try: cpe list")
+
+
+def cmd_status(args=None):
+    data = load_index()
+    print_header()
+
+    fp = data.get("first_party", [])
+    active = sum(1 for p in fp if p.get("status") == "active")
+    tools_count = sum(len(v) for v in data.get("tools", {}).values())
+    distros_count = sum(len(v) for v in data.get("distros", {}).values())
+    ref_count = sum(len(v) for v in data.get("reference", {}).values())
+    total_commits = sum(p.get("commits", 0) for p in fp)
+
+    print(f"  Projects:    {len(fp)} ({active} active)")
+    print(f"  Tools:       {tools_count}")
+    print(f"  Distros:     {distros_count}")
+    print(f"  Reference:   {ref_count}")
+    print(f"  Total repos: {data['metadata']['total_repos']}")
+    print(f"  Commits:     {total_commits}")
+    print()
+
+    # Check git status
+    print("  Git Status:")
+    for p in fp:
+        git_dir = ROOT / p["path"] / ".git"
+        if git_dir.exists():
+            try:
+                result = subprocess.run(
+                    ["git", "-C", str(ROOT / p["path"]), "status", "--short"],
+                    capture_output=True, text=True, timeout=5
+                )
+                changes = result.stdout.strip()
+                if changes:
+                    print(f"    ● {p['id']:20s}  {len(changes.split(chr(10)))} uncommitted changes")
+                else:
+                    print(f"    ○ {p['id']:20s}  clean")
+            except Exception:
+                print(f"    ? {p['id']:20s}  unknown")
+
+    print()
+    total_size = sum(
+        sum(f.stat().st_size for f in (ROOT / p["path"]).rglob("*") if f.is_file() and ".git" not in f.parts)
+        for p in fp if (ROOT / p["path"]).exists()
+    )
+    print(f"  Total project size: {total_size / 1024 / 1024:.1f} MB")
+
+
+def cmd_theme(args):
+    themes = {"cyber_dark", "cyber_green", "cyber_neon", "cyber_purple"}
+    name = args[0] if args else "cyber_dark"
+
+    if name not in themes:
+        print(f"[!] Unknown theme: {name}")
+        print(f"    Available: {', '.join(sorted(themes))}")
+        return
+
+    palette = {
+        "cyber_dark": ("#0d1117", "#00d4ff", "Cyan-on-black"),
+        "cyber_green": ("#0a0f0a", "#00ff41", "Matrix green"),
+        "cyber_neon": ("#0a0a0f", "#ff006e", "Neon pink"),
+        "cyber_purple": ("#0d0a1a", "#a855f7", "Royal purple"),
+    }
+
+    bg, fg, desc = palette[name]
+    print(f"\n  █ Applying theme: {name}")
+    print(f"  █ Background: {bg}  Foreground: {fg}")
+    print(f"  █ Description: {desc}")
+    print(f"\n  QSS:  themes/{name}.qss")
+    print(f"  Vars: themes/variables.py")
+    print()
+
+
+def cmd_ask(args):
+    if not args:
+        print("[!] Usage: cpe ask <question>")
+        print("    Ask questions about your projects using local AI (Ollama)")
+        return
+
+    question = " ".join(args)
+    data = load_index()
+    fp_context = "\n".join(
+        f"- {p['name']}: {p.get('description', '')} ({p.get('tech', [])})"
+        for p in data.get("first_party", [])
+    )
+    tools_context = "\n".join(
+        f"- {cat}: {', '.join(ts[:3])}"
+        for cat, ts in sorted(data.get("tools", {}).items())
+    )
+
+    prompt = f"""You are an AI assistant for OmniSec Cyberpunk Edition.
+The user has built these projects over the past year:
+
+--- PROJECTS ---
+{fp_context}
+
+--- TOOLS ---
+{tools_context}
+
+--- QUESTION ---
+{question}
+
+Answer concisely based on the information above."""
+
+    # Try Ollama
+    try:
+        result = subprocess.run(
+            ["ollama", "run", "qwen2.5-coder:7b", prompt],
+            capture_output=True, text=True, timeout=120
+        )
+        if result.returncode == 0:
+            print(f"\n  AI: {result.stdout.strip()}\n")
+            return
+    except FileNotFoundError:
+        pass
+    except subprocess.TimeoutExpired:
+        pass
+
+    # Fallback: local context-only answer
+    print(f"\n  [?] Ollama not available. Project context for '{question}':\n")
+    print(f"  {fp_context[:500]}")
+    print()
+
+
+def cmd_serve(args):
+    port = int(args[0]) if args else 8080
+    os.chdir(ROOT)
+    print(f"\n  Dashboard: http://localhost:{port}/dashboard/\n")
+    subprocess.run([sys.executable, "-m", "http.server", str(port)])
+
+
+def cmd_help():
+    print(__doc__)
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        cmd_help()
+        return
+
+    cmd = sys.argv[1]
+    args = sys.argv[2:]
+
+    commands = {
+        "list": cmd_list,
+        "search": cmd_search,
+        "open": cmd_open,
+        "status": cmd_status,
+        "theme": cmd_theme,
+        "ask": cmd_ask,
+        "serve": cmd_serve,
+    }
+
+    if cmd in commands:
+        print_header() if cmd != "status" else None
+        commands[cmd](args)
+    else:
+        print(f"[!] Unknown command: {cmd}")
+        print("    Try: cpe help")
+
+
+if __name__ == "__main__":
+    main()

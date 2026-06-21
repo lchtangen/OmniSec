@@ -1,0 +1,224 @@
+{
+    "metadata": {
+        "generated": "2026-05-13",
+        "name": "OmniSec Cyberpunk Edition",
+        "version": "3.0.0",
+        "user": "lchtangen",
+        "total_repos": 68,
+        "total_files": "~2100+"
+    },
+    "first_party": [
+        {
+            "id": "omnisec",
+            "name": "OmniSec",
+            "tagline": "NetHunter Matrix v3.0",
+            "description": "The Ultimate Mobile Security & Development Platform \u2014 192+ tools, 7 platforms, AI-native, post-quantum crypto, mesh networking.",
+            "path": "repos/desktop/linux/omnisec",
+            "git": "https://github.com/lchtangen/OmniSec.git",
+            "commits": 71,
+            "tech": [
+                "Python",
+                "Docker",
+                "Ansible",
+                "Kernel",
+                "Android",
+                "AI",
+                "Post-Quantum"
+            ],
+            "entry": "make run",
+            "status": "active"
+        },
+        {
+            "id": "cyberflash",
+            "name": "CyberFlash-Tool",
+            "tagline": "AI-Powered ROM Flasher",
+            "description": "Cross-platform Android ROM flashing tool with AI-powered ROM trust scoring, 23+ device profiles, and multi-brand flash engine.",
+            "path": "repos/desktop/linux/cyberflash-tool",
+            "git": "https://github.com/lchtangen/CyberFlash-Tool.git",
+            "commits": 142,
+            "tech": [
+                "Python 3.12",
+                "PySide6/Qt6",
+                "ADB",
+                "EDL",
+                "pytest"
+            ],
+            "entry": "python -m cyberflash",
+            "status": "active"
+        },
+        {
+            "id": "op7p-env",
+            "name": "op7p-env",
+            "tagline": "OnePlus 7 Pro Dev Environment",
+            "description": "ARM64 development environment running Ubuntu 24.04 chroot on OnePlus 7 Pro (Snapdragon 855). Go, Rust, Node, Python, Docker, Ollama.",
+            "path": "repos/mobile/android/op7p-env",
+            "git": "https://github.com/lchtangen/op7p-env.git",
+            "commits": 34,
+            "tech": [
+                "Go 1.26",
+                "Rust 1.94",
+                "Node 24",
+                "Python 3.12",
+                "Docker",
+                "Ollama"
+            ],
+            "entry": "code repos/mobile/android/op7p-env",
+            "status": "active"
+        },
+        {
+            "id": "linux-omnisec",
+            "name": "linux-omnisec",
+            "tagline": "Pentesting Kernel for Arch",
+            "description": "Custom-patched Linux kernel PKGBUILD with USB gadget/HID attacks, wireless monitoring, Bluetooth exploitation, and forensic filesystem support.",
+            "path": "repos/desktop/linux/linux-omnisec",
+            "git": "https://github.com/lchtangen/linux-omnisec.git",
+            "commits": 18,
+            "tech": [
+                "Linux 7.0.5",
+                "Arch PKGBUILD",
+                "USB Gadget",
+                "Netfilter"
+            ],
+            "entry": "cd repos/desktop/linux/linux-omnisec && makepkg -si",
+            "status": "active"
+        },
+        {
+            "id": "kali-workspace",
+            "name": "Kali-Workspace",
+            "tagline": "NetHunter Pentest Workspace",
+            "description": "Kali NetHunter workspace for OP7P with nh-* scripts, DuckyScript payloads, Python modules, and 36-category documentation library.",
+            "path": "repos/desktop/linux/kali-workspace",
+            "git": "https://github.com/lchtangen/Kali-Workspace.git",
+            "commits": 23,
+            "tech": [
+                "Kali NetHunter",
+                "Shell",
+                "Python",
+                "DuckyScript"
+            ],
+            "entry": "nhctl shell kali",
+            "status": "active"
+        },
+        {
+            "id": "vault-android16",
+            "name": "VAULT-Android16",
+            "tagline": "Encrypted Backup & Orchestration",
+            "description": "Git-crypt encrypted backup repository with master orchestration scripts, Android 16 setup automation, and Fennec browser configuration.",
+            "path": "repos/mobile/android/vault-android16",
+            "git": "https://github.com/lchtangen/VAULT-android16.git",
+            "commits": 12,
+            "tech": [
+                "Shell",
+                "git-crypt",
+                "Android 16",
+                "Automation"
+            ],
+            "entry": "git-crypt unlock",
+            "status": "archived"
+        }
+    ],
+    "tools": {
+        "ai-pentesting": [
+            "NeuroSploit",
+            "Zen-Ai-Pentest",
+            "metasploit-framework",
+            "fsociety",
+            "Lockdoor-Framework",
+            "Nettacker",
+            "blacksmith",
+            "red-run",
+            "pentest-ai"
+        ],
+        "exploitation": [
+            "pwndbg",
+            "pwntools",
+            "linux-exploit-suggester-2",
+            "Certipy"
+        ],
+        "forensics": [
+            "volatility",
+            "volatility3"
+        ],
+        "mobile": [
+            "Apktool",
+            "Frida-Script-Runner",
+            "Nethunter_for_KernelSU",
+            "PhoneSploit-Pro",
+            "RMS-Runtime-Mobile-Security",
+            "android-pentest-tool",
+            "apk.sh",
+            "frida-ui",
+            "medusa",
+            "noxen"
+        ],
+        "post-quantum": [
+            "MLA",
+            "PQClean",
+            "PQCrypto-VPN",
+            "latticearc"
+        ],
+        "zero-trust": [
+            "opennhp"
+        ],
+        "web": [
+            "TIDoS-Framework",
+            "kali-live"
+        ],
+        "c2": [
+            "SILENTTRINITY"
+        ],
+        "fuzzing": [
+            "boofuzz"
+        ],
+        "osint": [
+            "sandmap"
+        ],
+        "reverse-engineering": [
+            "apktool-re",
+            "apk-sh-re"
+        ],
+        "ebpf": [
+            "kprotect",
+            "Aegis-BPF"
+        ],
+        "web-fuzzing": [
+            "capsaicin",
+            "wfuzz"
+        ],
+        "android-re": [
+            "APKEditor",
+            "AndroHunter",
+            "Obfuscapk",
+            "androguard",
+            "apkAnalyzer",
+            "apkscan",
+            "droid-llm-hunter"
+        ],
+        "distros": [
+            "blackarch-iso"
+        ]
+    },
+    "distros": {
+        "archlinux": [
+            "blackarch-iso",
+            "archstrike-iso",
+            "BlackArchHarden",
+            "archiso_custom",
+            "archlive",
+            "ArchStrike",
+            "blackarch"
+        ],
+        "kali": [
+            "Nethunter-for-KernelSU-"
+        ]
+    },
+    "reference": {
+        "awesome-lists": [
+            "h4cker",
+            "awesome-security",
+            "awesome-security-hardening",
+            "awesome-post-quantum",
+            "awesome-zero-trust"
+        ]
+    }
+}

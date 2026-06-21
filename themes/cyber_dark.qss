@@ -1,0 +1,348 @@
+/* OmniSec Cyberpunk Edition — Unified Dark Theme */
+
+QMainWindow, QWidget {
+    background-color: {BACKGROUND};
+    color: {TEXT_PRIMARY};
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+}
+
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {PRIMARY}, stop:1 {ACCENT_2});
+    color: {BACKGROUND};
+    border: none;
+    border-radius: 6px;
+    padding: 8px 20px;
+    font-weight: bold;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+QPushButton:hover {
+    border: 1px solid {PRIMARY};
+}
+QPushButton:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {ACCENT_2}, stop:1 {PRIMARY});
+}
+QPushButton:disabled {
+    background: {SURFACE_2};
+    color: {TEXT_DISABLED};
+}
+QPushButton#danger {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {ERROR}, stop:1 #ff7700);
+}
+QPushButton#success {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {SUCCESS}, stop:1 {PRIMARY});
+}
+QPushButton#warning {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {WARNING}, stop:1 #ff7700);
+}
+
+QLineEdit, QTextEdit, QPlainTextEdit {
+    background-color: {SURFACE};
+    color: {SUCCESS};
+    border: 1px solid {PRIMARY};
+    border-radius: 6px;
+    padding: 8px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+}
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
+    border: 1px solid {ACCENT_2};
+}
+QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled {
+    background-color: {SURFACE_2};
+    color: {TEXT_DISABLED};
+    border: 1px solid {BORDER};
+}
+
+QListWidget, QTreeWidget, QTableWidget {
+    background-color: {SURFACE};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {PRIMARY};
+    border-radius: 8px;
+    outline: none;
+    alternate-background-color: rgba(0, 212, 255, 0.03);
+}
+QListWidget::item:selected, QTreeWidget::item:selected, QTableWidget::item:selected {
+    background-color: rgba(0, 212, 255, 0.2);
+    color: {TEXT_PRIMARY};
+}
+QListWidget::item:hover, QTreeWidget::item:hover, QTableWidget::item:hover {
+    background-color: rgba(0, 212, 255, 0.1);
+}
+
+QHeaderView::section {
+    background-color: {SURFACE_2};
+    color: {PRIMARY};
+    border: 1px solid {BORDER};
+    padding: 6px;
+    font-weight: bold;
+}
+
+QTabWidget::pane {
+    background-color: {SURFACE};
+    border: 1px solid {PRIMARY};
+    border-radius: 8px;
+    top: -1px;
+}
+QTabBar::tab {
+    background: {SURFACE_2};
+    color: {TEXT_SECONDARY};
+    border: 1px solid {BORDER};
+    padding: 10px 25px;
+    font-family: 'Consolas', monospace;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+QTabBar::tab:selected {
+    background: {SURFACE};
+    color: {PRIMARY};
+    border-bottom: 2px solid {PRIMARY};
+}
+QTabBar::tab:hover {
+    color: {ACCENT_2};
+}
+
+QGroupBox {
+    border: 1px solid {PRIMARY};
+    border-radius: 8px;
+    margin-top: 15px;
+    padding-top: 15px;
+    font-weight: bold;
+    color: {PRIMARY};
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 15px;
+    padding: 0 8px;
+    background-color: {SURFACE};
+}
+
+QProgressBar {
+    border: 1px solid {PRIMARY};
+    border-radius: 6px;
+    text-align: center;
+    color: {TEXT_PRIMARY};
+    background-color: {SURFACE};
+    height: 20px;
+}
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {PRIMARY}, stop:1 {ACCENT_2});
+    border-radius: 5px;
+}
+
+QSlider::groove:horizontal {
+    border: 1px solid {PRIMARY};
+    height: 8px;
+    background: {SURFACE};
+    border-radius: 4px;
+}
+QSlider::handle:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {PRIMARY}, stop:1 {ACCENT_2});
+    border: none;
+    width: 18px;
+    margin: -5px 0;
+    border-radius: 9px;
+}
+QSlider::groove:vertical {
+    border: 1px solid {PRIMARY};
+    width: 8px;
+    background: {SURFACE};
+    border-radius: 4px;
+}
+QSlider::handle:vertical {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {PRIMARY}, stop:1 {ACCENT_2});
+    border: none;
+    height: 18px;
+    margin: 0 -5px;
+    border-radius: 9px;
+}
+
+QComboBox {
+    background-color: {SURFACE};
+    color: {PRIMARY};
+    border: 1px solid {PRIMARY};
+    border-radius: 6px;
+    padding: 6px 12px;
+}
+QComboBox:focus {
+    border: 1px solid {ACCENT_2};
+}
+QComboBox::drop-down {
+    border: none;
+}
+QComboBox::down-arrow {
+    image: none;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid {PRIMARY};
+    margin-right: 8px;
+}
+QComboBox QAbstractItemView {
+    background-color: {SURFACE};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {PRIMARY};
+    selection-background-color: {ACCENT_2};
+}
+
+QCheckBox {
+    spacing: 8px;
+    color: {TEXT_PRIMARY};
+}
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 2px solid {PRIMARY};
+    border-radius: 3px;
+    background: {SURFACE};
+}
+QCheckBox::indicator:checked {
+    background: {PRIMARY};
+    border: 2px solid {PRIMARY};
+}
+QCheckBox::indicator:hover {
+    border: 2px solid {ACCENT_2};
+}
+
+QRadioButton {
+    spacing: 8px;
+    color: {TEXT_PRIMARY};
+}
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border: 2px solid {PRIMARY};
+    border-radius: 10px;
+    background: {SURFACE};
+}
+QRadioButton::indicator:checked {
+    background: {PRIMARY};
+}
+
+QScrollBar:vertical {
+    background: {BACKGROUND};
+    width: 10px;
+    border: none;
+}
+QScrollBar::handle:vertical {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {PRIMARY}, stop:1 {ACCENT_2});
+    border-radius: 5px;
+    min-height: 30px;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0;
+}
+QScrollBar:horizontal {
+    background: {BACKGROUND};
+    height: 10px;
+    border: none;
+}
+QScrollBar::handle:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {PRIMARY}, stop:1 {ACCENT_2});
+    border-radius: 5px;
+    min-width: 30px;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0;
+}
+
+QSplitter::handle {
+    background: {PRIMARY};
+    width: 2px;
+}
+
+QToolTip {
+    background-color: {SURFACE_2};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {PRIMARY};
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+QMenu {
+    background-color: {SURFACE};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {PRIMARY};
+    border-radius: 6px;
+    padding: 4px;
+}
+QMenu::item {
+    padding: 6px 24px;
+    border-radius: 4px;
+}
+QMenu::item:selected {
+    background-color: {ACCENT_2};
+    color: {BACKGROUND};
+}
+QMenu::separator {
+    height: 1px;
+    background: {BORDER};
+    margin: 4px 8px;
+}
+
+QStatusBar {
+    background-color: {SURFACE};
+    color: {TEXT_SECONDARY};
+    border-top: 1px solid {BORDER};
+}
+QStatusBar::item {
+    border: none;
+}
+
+QLabel#sidebar {
+    background-color: {SURFACE_2};
+    border-right: 1px solid {PRIMARY};
+}
+QLabel#statusbar {
+    background-color: {SURFACE_2};
+    border-top: 1px solid {PRIMARY};
+}
+
+QDialog {
+    background-color: {BACKGROUND};
+}
+
+QSpinBox, QDoubleSpinBox {
+    background-color: {SURFACE};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {PRIMARY};
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 1px solid {ACCENT_2};
+}
+
+QToolBar {
+    background-color: {SURFACE};
+    border-bottom: 1px solid {BORDER};
+    spacing: 4px;
+    padding: 4px;
+}
+QToolBar::separator {
+    width: 1px;
+    background: {BORDER};
+    margin: 4px;
+}
+
+QFrame#card {
+    background: {SURFACE};
+    border: 1px solid {PRIMARY};
+    border-radius: 12px;
+    padding: 15px;
+}
+QFrame#card:hover {
+    border: 1px solid {ACCENT_2};
+}

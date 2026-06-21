@@ -1,0 +1,11 @@
+# 68 embedded upstream repos — not tracked in meta-repo
+/repos/
+# Python module dumps
+/json
+/os
+/shutil
+/subprocess
+/sys
+/webbrowser
+# Caches
+/.cache/

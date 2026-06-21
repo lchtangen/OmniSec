@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OmniSec Universe — Unified Workspace</title>
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#21262d; --surface3:#2a3040;
+  --primary:#00d4ff; --primary-hover:#33ddff; --accent:#ff6d00;
+  --text:#e6edf3; --text2:#8b949e; --text3:#484f58; --border:#30363d;
+  --success:#3fb950; --warning:#d29922; --error:#f85149; --info:#58a6ff;
+  --font:'SF Mono','Consolas','Courier New',monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:var(--font); font-size:13px; min-height:100vh; }
+a { color:var(--primary); text-decoration:none; }
+a:hover { color:var(--primary-hover); text-shadow:0 0 8px var(--primary); }
+::selection { background:var(--primary); color:var(--bg); }
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:linear-gradient(var(--primary),var(--accent)); border-radius:3px; }
+
+header { background:linear-gradient(135deg,var(--surface),#0a1a2e); border-bottom:1px solid var(--primary); padding:12px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+header h1 { font-size:16px; font-weight:700; letter-spacing:2px; text-transform:uppercase; background:linear-gradient(90deg,var(--primary),var(--accent)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+header .stats { display:flex; gap:16px; }
+.stat { text-align:center; }
+.stat .num { font-size:18px; font-weight:700; color:var(--primary); }
+.stat .label { font-size:9px; color:var(--text2); text-transform:uppercase; letter-spacing:1px; }
+
+.tabs { display:flex; gap:0; background:var(--surface); border-bottom:1px solid var(--border); padding:0 24px; }
+.tab { padding:10px 20px; color:var(--text2); border:none; background:none; font-family:var(--font); font-size:11px; cursor:pointer; border-bottom:2px solid transparent; text-transform:uppercase; letter-spacing:1px; transition:all .2s; }
+.tab:hover { color:var(--text); }
+.tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+
+.tab-content { display:none; padding:20px 24px; }
+.tab-content.active { display:block; }
+
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px; margin-bottom:20px; }
+
+.card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; transition:all .2s; }
+.card:hover { border-color:var(--primary); box-shadow:0 4px 20px rgba(0,212,255,.08); }
+.card h3 { font-size:12px; color:var(--primary); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+.card .val { font-size:24px; font-weight:700; color:var(--text); }
+.card .sub { font-size:10px; color:var(--text2); margin-top:4px; }
+
+.badge { display:inline-block; font-size:9px; padding:2px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:.5px; }
+.badge-green { background:rgba(63,185,80,.15); color:var(--success); border:1px solid rgba(63,185,80,.3); }
+.badge-yellow { background:rgba(210,153,34,.15); color:var(--warning); border:1px solid rgba(210,153,34,.3); }
+.badge-red { background:rgba(248,81,73,.15); color:var(--error); border:1px solid rgba(248,81,73,.3); }
+
+.search-bar { display:flex; gap:8px; margin-bottom:16px; }
+.search-bar input { flex:1; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:8px 12px; font-family:var(--font); font-size:12px; outline:none; }
+.search-bar input:focus { border-color:var(--primary); box-shadow:0 0 8px rgba(0,212,255,.15); }
+.filter-group { display:flex; gap:4px; flex-wrap:wrap; }
+.filter-btn { background:var(--surface2); color:var(--text2); border:1px solid var(--border); border-radius:4px; padding:4px 10px; font-family:var(--font); font-size:10px; cursor:pointer; text-transform:uppercase; letter-spacing:.5px; }
+.filter-btn:hover, .filter-btn.active { border-color:var(--primary); color:var(--primary); }
+
+.project-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; transition:all .2s; cursor:default; position:relative; overflow:hidden; }
+.project-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--primary),var(--accent)); opacity:0; transition:opacity .2s; }
+.project-card:hover { border-color:var(--primary); transform:translateY(-1px); box-shadow:0 4px 20px rgba(0,212,255,.1); }
+.project-card:hover::before { opacity:1; }
+.project-card .name { font-size:14px; font-weight:700; color:var(--text); }
+.project-card .tagline { font-size:10px; color:var(--text2); }
+.project-card .desc { font-size:11px; color:var(--text2); margin:8px 0; line-height:1.5; }
+.project-card .tech { display:flex; flex-wrap:wrap; gap:4px; margin:8px 0; }
+.tech-tag { font-size:9px; background:rgba(0,212,255,.08); color:var(--primary); border:1px solid rgba(0,212,255,.15); border-radius:3px; padding:2px 6px; }
+.project-card .actions { display:flex; gap:6px; flex-wrap:wrap; }
+.project-card .actions button { font-size:9px; font-family:var(--font); padding:4px 10px; border-radius:4px; border:1px solid var(--border); background:var(--surface2); color:var(--text2); cursor:pointer; text-transform:uppercase; letter-spacing:.5px; }
+.project-card .actions button:hover { border-color:var(--primary); color:var(--primary); }
+.project-card .actions button.primary { background:linear-gradient(90deg,var(--primary),var(--accent)); color:var(--bg); border:none; font-weight:600; }
+.project-card .actions button.primary:hover { box-shadow:0 0 10px rgba(0,212,255,.3); }
+.project-card .meta { font-size:9px; color:var(--text3); margin-top:8px; padding-top:8px; border-top:1px solid var(--border); display:flex; justify-content:space-between; }
+
+.dep-graph { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:20px; }
+.dep-graph pre { color:var(--primary); font-size:11px; line-height:1.8; font-family:var(--font); }
+.dep-graph .edge { color:var(--text2); }
+.dep-graph .highlight { color:var(--success); font-weight:700; }
+
+.matrix-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px; margin-bottom:20px; }
+.matrix-cell { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px; text-align:center; }
+.matrix-cell .platform { font-size:10px; color:var(--text2); text-transform:uppercase; letter-spacing:1px; }
+.matrix-cell .build-status { font-size:20px; margin:4px 0; }
+.matrix-cell .action { font-size:9px; color:var(--primary); cursor:pointer; }
+.matrix-cell .action:hover { text-decoration:underline; }
+
+.tools-layout { display:grid; grid-template-columns:200px 1fr; gap:12px; }
+.tools-nav { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px; }
+.tools-nav h3 { font-size:10px; color:var(--primary); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
+.tools-nav-item { display:block; width:100%; text-align:left; background:none; border:none; color:var(--text2); padding:4px 8px; border-radius:3px; font-family:var(--font); font-size:10px; cursor:pointer; }
+.tools-nav-item:hover { color:var(--text); background:rgba(0,212,255,.05); }
+.tools-nav-item.active { color:var(--primary); background:rgba(0,212,255,.1); }
+.tools-content { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:14px; min-height:200px; }
+.tools-content h4 { color:var(--primary); font-size:11px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; }
+.tool-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:6px; }
+.tool-item { background:var(--surface2); border:1px solid var(--border); border-radius:5px; padding:8px 10px; font-size:10px; color:var(--text); }
+.tool-item .tool-name { font-weight:600; }
+.tool-item .tool-path { font-size:8px; color:var(--text3); }
+
+@media (max-width:768px) {
+  .tools-layout { grid-template-columns:1fr; }
+  .tabs { padding:0 12px; overflow-x:auto; }
+  header { padding:10px 16px; }
+  .tab-content { padding:12px 16px; }
+}
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+.dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:4px; }
+.dot.green { background:var(--success); box-shadow:0 0 6px var(--success); animation:pulse 2s infinite; }
+.dot.yellow { background:var(--warning); }
+.dot.red { background:var(--error); }
+.dot.gray { background:var(--text3); }
+</style>
+</head>
+<body>
+
+<header>
+  <div><h1>OmniSec Universe</h1><div style="font-size:10px;color:var(--text2);letter-spacing:1px">Unified Multi-Platform Workspace</div></div>
+  <div class="stats">
+    <div class="stat"><div class="num" id="st-proj">0</div><div class="label">Projects</div></div>
+    <div class="stat"><div class="num" id="st-tools">0</div><div class="label">Tools</div></div>
+    <div class="stat"><div class="num" id="st-repos">0</div><div class="label">Repos</div></div>
+    <div class="stat"><div class="num" id="st-commits">0</div><div class="label">Commits</div></div>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('overview',this)">Overview</button>
+  <button class="tab" onclick="switchTab('projects',this)">Projects</button>
+  <button class="tab" onclick="switchTab('matrix',this)">Build Matrix</button>
+  <button class="tab" onclick="switchTab('tools',this)">Tools</button>
+  <button class="tab" onclick="switchTab('graph',this)">Dependencies</button>
+</div>
+
+<div id="overview" class="tab-content active">
+  <div class="grid" id="health-grid"></div>
+  <div class="dep-graph" id="dep-overview"></div>
+  <div class="quick-actions" id="quick-actions" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+</div>
+
+<div id="projects" class="tab-content">
+  <div class="search-bar">
+    <input id="search" placeholder="Search projects..." oninput="filterProjects()">
+    <div class="filter-group" id="project-filters"></div>
+  </div>
+  <div class="grid" id="projects-grid"></div>
+</div>
+
+<div id="matrix" class="tab-content">
+  <div class="matrix-grid" id="matrix-grid"></div>
+  <div class="dep-graph">
+    <h3 style="color:var(--primary);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Build Commands</h3>
+    <pre id="build-commands"></pre>
+  </div>
+</div>
+
+<div id="tools" class="tab-content">
+  <div class="tools-layout">
+    <div class="tools-nav" id="tools-nav"></div>
+    <div class="tools-content" id="tools-content"><h4>Select a category</h4></div>
+  </div>
+</div>
+
+<div id="graph" class="tab-content">
+  <div class="dep-graph">
+    <h3 style="color:var(--primary);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Cross-Project Dependency Graph</h3>
+    <pre id="dep-graph-content"></pre>
+  </div>
+</div>
+
+<script>
+let DATA = null;
+
+async function init() {
+  try {
+    const r = await fetch('../index.json');
+    DATA = await r.json();
+  } catch { DATA = { first_party: [], tools: {}, distros: {}, reference: {} }; }
+  renderAll();
+}
+
+function renderAll() {
+  const fp = DATA.first_party || [];
+  const toolCount = Object.values(DATA.tools || {}).flat().length;
+  const totalCommits = fp.reduce((s,p) => s + (p.commits||0), 0);
+  document.getElementById('st-proj').textContent = fp.length;
+  document.getElementById('st-tools').textContent = toolCount;
+  document.getElementById('st-repos').textContent = toolCount + Object.values(DATA.distros||{}).flat().length + Object.values(DATA.reference||{}).flat().length;
+  document.getElementById('st-commits').textContent = totalCommits;
+  renderHealth();
+  renderDepOverview();
+  renderQuickActions();
+  renderProjects();
+  renderMatrix();
+  renderToolsNav();
+  renderDepGraph();
+}
+
+function switchTab(name,btn) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(name).classList.add('active');
+}
+
+function renderHealth() {
+  const g = document.getElementById('health-grid');
+  const fp = DATA.first_party || [];
+  const active = fp.filter(p=>p.status==='active').length;
+  const commits = fp.reduce((s,p)=>s+(p.commits||0),0);
+  const tools = Object.values(DATA.tools||{}).flat();
+  g.innerHTML = [
+    ['Active Projects',active,'',[active,fp.length]],
+    ['Total Commits',commits,'across all projects',[]],
+    ['Security Tools',tools.length,'in 11 categories',[]],
+    ['Tech Stack','6 platforms','Linux Android ARM64 macOS Win Docker',[]],
+  ].map(([l,v,s])=>`<div class="card"><h3>${l}</h3><div class="val">${v}</div><div class="sub">${s}</div></div>`).join('');
+}
+
+function renderDepOverview() {
+  document.getElementById('dep-overview').innerHTML = `<pre>
+  <span style="color:var(--primary)">OmniSec</span> <span style="color:var(--text2)">──── main platform (GUI + engine + CLI)</span>
+    <span style="color:var(--text2)">├──</span> <span style="color:var(--primary)">platform/</span>       PyQt6 desktop app + security engine
+    <span style="color:var(--text2)">├──</span> <span style="color:var(--primary)">kernel/</span>          9 ARM64 kernel variants
+    <span style="color:var(--text2)">├──</span> <span style="color:var(--primary)">payload/</span>         192+ nh-* security scripts
+    <span style="color:var(--text2)">├──</span> <span style="color:var(--primary)">nhctl</span>            unified CLI controller
+    <span style="color:var(--text2)">└──</span> <span style="color:var(--primary)">Docker</span>            multiarch ARM64 + x86_64
+
+  <span style="color:var(--primary)">CyberFlash-Tool</span> <span style="color:var(--text2)">──── ROM flashing module for OmniSec</span>
+  <span style="color:var(--primary)">linux-omnisec</span>   <span style="color:var(--text2)">──── kernel config fed into OmniSec/kernel</span>
+  <span style="color:var(--primary)">kali-workspace</span>  <span style="color:var(--text2)">──── nh-* payloads for NetHunter chroot</span>
+  <span style="color:var(--primary)">op7p-env</span>        <span style="color:var(--text2)">──── ARM64 dev environment building everything</span>
+  <span style="color:var(--primary)">vault-android16</span> <span style="color:var(--text2)">──── encrypted orchestration &amp; backup</span>
+
+  <span style="color:var(--success)">All 6 projects integrate into a single pipeline.</span></pre>`;
+}
+
+function renderQuickActions() {
+  document.getElementById('quick-actions').innerHTML = `
+    <div class="card" style="cursor:pointer;flex:1;min-width:120px;text-align:center;padding:12px" onclick="window.open('vscode://file/$(window.location.pathname.replace(/\/dashboard\/.*$/,''))','_blank')"><div style="font-size:20px;margin-bottom:4px">&#x1F4DD;</div><div style="font-size:10px;color:var(--text2)">Open in Code</div></div>
+    <div class="card" style="cursor:pointer;flex:1;min-width:120px;text-align:center;padding:12px" onclick="window.open(location.href.replace(/\/dashboard\/.*$/,'/Makefile'))"><div style="font-size:20px;margin-bottom:4px">&#x2699;</div><div style="font-size:10px;color:var(--text2)">Build System</div></div>
+    <div class="card" style="cursor:pointer;flex:1;min-width:120px;text-align:center;padding:12px" onclick="window.open(location.href.replace(/\/dashboard\/.*$/,'/index.json'))"><div style="font-size:20px;margin-bottom:4px">&#x1F4CA;</div><div style="font-size:10px;color:var(--text2)">Knowledge Base</div></div>
+  `;
+}
+
+function renderProjects() {
+  const grid = document.getElementById('projects-grid');
+  const fp = DATA.first_party || [];
+  grid.innerHTML = fp.map(p => {
+    const a = p.status === 'archived';
+    const tech = (p.tech||[]).map(t => `<span class="tech-tag">${t}</span>`).join('');
+    const git = p.git ? p.git.replace('https://github.com/','') : '';
+    return `<div class="project-card" data-status="${p.status}">
+      <div><span class="dot ${p.status}"></span><span class="name">${p.name}</span> <span class="tagline">${p.tagline||''}</span></div>
+      <div class="desc">${p.description}</div>
+      <div class="tech">${tech}</div>
+      <div class="actions">
+        <button class="primary" onclick="vsOpen('${p.path}')">&#x25B6; Open</button>
+        <button onclick="window.open('${p.git||'#'}','_blank')">&#x1F5C2; ${git||'Git'}</button>
+      </div>
+      <div class="meta"><span>${p.commits||0} commits</span><span>${p.entry||''}</span><span>${p.status}</span></div>
+    </div>`;
+  }).join('');
+  // Filters
+  const f = document.getElementById('project-filters');
+  const counts = { all: fp.length, active: fp.filter(p=>p.status==='active').length, archived: fp.filter(p=>p.status==='archived').length };
+  f.innerHTML = Object.entries(counts).map(([k,v]) =>
+    `<button class="filter-btn ${k==='all'?'active':''}" onclick="setProjFilter('${k}',this)">${k} (${v})</button>`
+  ).join('');
+}
+
+function setProjFilter(f,btn) {
+  document.querySelectorAll('#project-filters .filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.project-card').forEach(c => {
+    if (f==='all') { c.style.display=''; return; }
+    c.style.display = c.dataset.status===f ? '' : 'none';
+  });
+}
+
+function filterProjects() {
+  const q = document.getElementById('search').value.toLowerCase();
+  document.querySelectorAll('.project-card').forEach(c => {
+    c.style.display = c.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+function renderMatrix() {
+  const matrix = document.getElementById('matrix-grid');
+  const targets = [
+    ['Linux','&#x1F4BB;','ready','make linux'],
+    ['Android','&#x1F4F1;','ready','make android'],
+    ['ARM64','&#x2699;','ready','make arm64'],
+    ['macOS','&#x1F4BB;','partial','make macos'],
+    ['Windows','&#x1F4BB;','partial','make windows'],
+    ['Docker','&#x1F433;','ready','make docker'],
+  ];
+  matrix.innerHTML = targets.map(([p,i,s,c]) => `<div class="matrix-cell">
+    <div class="platform">${p}</div>
+    <div class="build-status">${i}</div>
+    <span class="badge badge-${s==='ready'?'green':'yellow'}">${s}</span>
+    <div class="action" onclick="showCmd('${c}')">${c}</div>
+  </div>`).join('');
+  document.getElementById('build-commands').textContent =
+    '# Build everything for all platforms\nmake all-platforms\n\n# Individual targets\nmake linux            # AppImage + .deb + Snap\nmake android          # Magisk module + payload\nmake arm64            # Kernel + cross tools\nmake macos            # Homebrew + .dmg\nmake windows          # PyInstaller\nmake docker           # Multiarch ARM64 + x86_64\n\n# Deploy\nmake deploy-android   # Push to device via ADB\nmake deploy-arch      # Install linux-omnisec kernel\nmake deploy-local     # Install locally\n\n# Quality\nmake lint             # Ruff + Black\nmake test             # Pytest all projects\nmake audit            # Full workspace audit\nmake status           # Health overview';
+}
+
+function showCmd(cmd) { alert(`Run: ${cmd}`); }
+
+let selCat = null;
+function renderToolsNav() {
+  const nav = document.getElementById('tools-nav');
+  const cats = DATA.tools || {};
+  const keys = Object.keys(cats).sort();
+  const all = keys.flatMap(k=>cats[k]);
+  nav.innerHTML = '<h3>Categories</h3>' +
+    `<button class="tools-nav-item ${selCat===null?'active':''}" onclick="selToolCat(null,this)">All (${all.length})</button>` +
+    keys.map(k => `<button class="tools-nav-item" onclick="selToolCat('${k}',this)">${k} (${cats[k].length})</button>`).join('');
+  if (selCat===null) renderToolsContent(null);
+}
+function selToolCat(c,btn) {
+  document.querySelectorAll('.tools-nav-item').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  selCat=c; renderToolsContent(c);
+}
+function renderToolsContent(c) {
+  const div = document.getElementById('tools-content');
+  const cats = DATA.tools || {};
+  if (c && cats[c]) {
+    div.innerHTML = `<h4>${c}</h4><div class="tool-list">${cats[c].map(t=>`<div class="tool-item"><div class="tool-name">${t}</div><div class="tool-path">/${c}/</div></div>`).join('')}</div>`;
+  } else {
+    div.innerHTML = `<h4>All Tools (${Object.values(cats).flat().length})</h4>${Object.entries(cats).map(([k,v])=>`<div style="margin-bottom:10px"><h4 style="font-size:10px;margin-bottom:4px">${k}</h4><div class="tool-list">${v.map(t=>`<div class="tool-item"><div class="tool-name">${t}</div></div>`).join('')}</div></div>`).join('')}`;
+  }
+}
+
+function renderDepGraph() {
+  document.getElementById('dep-graph-content').innerHTML = `<span class="highlight">OmniSec Universe</span> <span class="edge">── Unified Multi-Platform System</span>
+  <span class="edge">│</span>
+  <span class="edge">├──</span> <span style="color:var(--primary)">OmniSec</span> (NetHunter Matrix v3.0)
+  <span class="edge">│   ├──</span> platform/    <span class="edge">── PyQt6 desktop + security engine + AI</span>
+  <span class="edge">│   ├──</span> kernel/      <span class="edge">── 9 variants × 5 devices (ARM64)</span>
+  <span class="edge">│   ├──</span> payload/     <span class="edge">── 192+ nh-* security tools</span>
+  <span class="edge">│   ├──</span> nhctl        <span class="edge">── Unified CLI across 7 platforms</span>
+  <span class="edge">│   └──</span> Docker       <span class="edge">── Multiarch (ARM64 + x86_64)</span>
+  <span class="edge">│</span>
+  <span class="edge">├──</span> <span style="color:var(--primary)">CyberFlash-Tool</span>  <span class="edge">── Android ROM flasher (feeds into OmniSec)</span>
+  <span class="edge">│   ├──</span> 23+ device profiles
+  <span class="edge">│   ├──</span> Multi-brand flash engine
+  <span class="edge">│   └──</span> AI-powered ROM scoring
+  <span class="edge">│</span>
+  <span class="edge">├──</span> <span style="color:var(--primary)">linux-omnisec</span>     <span class="edge">── Kernel PKGBUILD (feeds OmniSec kernel config)</span>
+  <span class="edge">├──</span> <span style="color:var(--primary)">kali-workspace</span>    <span class="edge">── NetHunter payloads (feeds OmniSec nh-* scripts)</span>
+  <span class="edge">├──</span> <span style="color:var(--primary)">op7p-env</span>          <span class="edge">── ARM64 dev environment (builds everything)</span>
+  <span class="edge">└──</span> <span style="color:var(--primary)">vault-android16</span>   <span class="edge">── Encrypted orchestration layer</span>
+  <span class="edge"></span>
+  <span class="edge">  p  l  a  t  f  o  r  m  s  :</span>
+  <span class="edge">  Android  Linux  ARM64  macOS  Windows  Docker</span>`;
+}
+
+function vsOpen(path) {
+  window.open('vscode://file' + window.location.pathname.replace(/\/dashboard\/.*$/,'/' + path));
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# Audit data
+data/*/
+!data/.gitkeep
+
+# Generated files
+*.pyc
+.DS_Store
+.vscode/
+*.swp
+
+# Keep structure
+!docs/.gitkeep
+!scripts/.gitkeep
